@@ -5,6 +5,10 @@ description = "PDF/이미지 → 정규화된 Passage+Question 추출 패키지"
 requires-python = ">=3.12"
 dependencies = [
   "pydantic>=2.0.0",
+  # PyMuPDF — PDF 텍스트 추출 + PNG 변환 (Vision fallback 경로) — P0-5
+  # 대안 검토: pdfplumber (한국어 폰트 매핑 미흡), pdfminer.six (이미지 변환 불가),
+  # pypdf (메타/분할 위주). exam-generator audit §1.6 운영 검증. CLAUDE.md §3.4 명시.
+  "pymupdf>=1.24.0",
   # workspace 멤버 패키지 — 의존성 주입 구조 (ADR-0003 §D-3.2)
   # shared: canonical schema (Passage, Question, Translation, Vocabulary, ExtractionResult)
   # llm: StructuredLLMClient 프로토콜 + PromptSpec (CLAUDE.md §8.3)
