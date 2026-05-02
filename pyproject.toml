@@ -39,6 +39,20 @@ ignore = [
   "E501",  # line too long — ruff format이 처리
 ]
 
+# B008 예외 — FastAPI의 Depends/Query/Body 등은 default arg에 호출하는 게 표준 관용
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = [
+  "fastapi.Depends",
+  "fastapi.Query",
+  "fastapi.Path",
+  "fastapi.Body",
+  "fastapi.Header",
+  "fastapi.Cookie",
+  "fastapi.Form",
+  "fastapi.File",
+  "fastapi.Security",
+]
+
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
