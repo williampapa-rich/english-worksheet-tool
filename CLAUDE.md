@@ -3,9 +3,9 @@
 > 이 문서는 Claude Code CLI가 프로젝트 컨텍스트를 이해하기 위한 헌장(charter)이자, subagent들의 협업 규칙서다.
 > 변경 시 PR로 관리한다. 모든 핵심 의사결정은 여기 반영된다.
 
-**버전**: v0.2
+**버전**: v0.3
 **최종 갱신**: 2026-05-02
-**상태**: Phase 0 시작 전
+**상태**: Phase 0 시작 전 (Sprint 0 종료, 작업 #5만 잔여)
 
 ---
 
@@ -254,15 +254,29 @@ Tenant
           └─ items[] → Passage 참조
 ```
 
-### 6.2 Question의 변형 유형 (확장 예정)
+### 6.2 Question 유형 — 별도 카테고리가 아니라 기존 유형의 확장
 
-기존 `exam-generator`의 JSON 스키마를 1차 베이스로 사용하되, architect agent의 schema audit + domain-expert agent의 도메인 검증 결과에 따라 다음 케이스들을 검증/추가:
+**핵심 전제**: 변형 유형이라는 별도 카테고리는 없다. 모든 문제 유형은 기존
+`exam-generator`의 24개 유형 중 하나에 속한다. Phase 3의 "변형문제"도 기존 유형의
+파생일 뿐, 새 유형이 아니다.
+
+따라서:
+- **exam-generator의 24개 유형 enum을 그대로 흡수**해서 `Question.type`의 1차 source.
+- **세부 형태(sub-form)** — 자료 sweep 중 발견되는 새로운 표면 형태(예: 본문 내장형
+  어휘 선택, 다중 선택지 매트릭스 등)는 **기존 type 위에 부가 필드를 추가**하는
+  방식으로 표현. 새 type을 만들지 않는다.
+- **변형문제(VariantQuestion)** — 같은 24개 type 안에서 원본의 `derived_from_question_id`
+  + `variant_kind` 필드로 표현. 즉 "어휘 선택 변형 = `type=어휘 선택` + `variant_kind=어휘
+  교체`" 식.
+
+검증·추가가 필요한 케이스(자료 sweep으로 발견됨):
 
 - 본문 내장형 어휘 선택 (예: `(A) [long-term / short-term]`이 본문 중간에 박힌 형태)
 - 다중 선택지 매트릭스 (A/B/C 컬럼)
 - 기타 audit에서 발견되는 케이스
 
-**원칙**: breaking change 최소화. 새 필드 추가 위주, 기존 필드 변경 지양.
+**원칙**: breaking change 최소화. 새 필드 추가 위주, 기존 필드 변경 지양. **새 type은
+도입하지 않는다** — 기존 24개로 표현 불가능한 케이스가 발견되면 PM 결정.
 
 ---
 
@@ -406,13 +420,18 @@ Phase 0를 시작할 수 있는 기반을 깔고, architect + domain-expert의 a
 
 ## 11. Open Questions (계속 갱신)
 
-- [ ] 기존 `exam-generator` 스키마 구체 내용 — architect 첫 작업으로 해소
+- [x] 기존 `exam-generator` 스키마 구체 내용 — `docs/schema-coverage-audit.md` (v0.3, 2026-05-02)
 - [ ] HWPX 렌더링 시 텍스트 런 위에 텍스트박스를 정확히 align하는 방법 — backend-dev PoC 필요
 - [ ] 구문분석 에디터에서 annotation 충돌(같은 span에 라벨 2개 이상) 시 시각적 처리 방식 — frontend-dev + domain-expert 협의
 - [ ] DB 멀티테넌트 격리 방식: row-level filter vs PostgreSQL RLS — 결정 시점 Phase 4
 - [ ] LLM 비용 모니터링 / 캐싱 전략 — Phase 3 진입 전
 - [ ] 프롬프트 평가 / 회귀 테스트 자동화 — `admin/eval/`에서 다룸
 - [ ] 학생용 템플릿의 다중 변형 (1단/2단 등) 도입 시점 — Phase 2 종료 후 와이프 피드백 기반
+- [ ] **Annotation span 식별 방식** (character offset vs ProseMirror position vs token id) — Phase 1 진입 전 ADR (`audit §4-4`)
+- [ ] **마커 분리 vs inline 유지** (`①②③④⑤`, `_..._`, `______` 등) — Phase 1 진입 전 ADR (`audit §4-6`)
+- [ ] **Vocabulary 글로벌 마스터 도입 시점** — Phase 2/3 진입 전 ADR (`audit §4-3`)
+- [ ] **Question / VariantQuestion 단일 테이블 vs 별 테이블** — Phase 3 진입 전 ADR (`audit §4-5`)
+- [ ] **레퍼런스 프로그램 영상 분석** — `/Users/william/Downloads/ScreenRecording_04-24-2026 15-11-52_1.MP4` 프레임 단위 분석 → UI/기능 설계 입력. 산출물 위치: `docs/reference-program-analysis.md` (작업 #5와 병렬, Phase 1 진입 전 완료 권고)
 
 ---
 
@@ -422,3 +441,4 @@ Phase 0를 시작할 수 있는 기반을 깔고, architect + domain-expert의 a
 |---|---|---|
 | v0.1 | 2026-05-02 | 초안 작성 |
 | v0.2 | 2026-05-02 | (1) Phase 2 DoD 완화 + 점진 개선 영역 명시 (2) planner를 architect + domain-expert로 분리, agent 6개로 확장 (3) 섹션 3.6 "No Reinventing the Wheel" 원칙 추가, code-reviewer 체크리스트 + 라이브러리 도입 PR 규칙에 반영 (4) Sprint 0 작업 항목 갱신 |
+| v0.3 | 2026-05-02 | (1) §6.2 변형 유형 전제 정정 — 변형 유형은 별 카테고리가 아니라 기존 24개 유형의 sub-form/파생. exam-generator type enum 흡수가 1차 source. (2) §11 Open Questions 갱신 — schema audit 완료 표기, audit이 던진 미해결 ADR 항목 추가, 레퍼런스 영상 분석 항목 추가. |
