@@ -3,9 +3,9 @@
 > 이 문서는 Claude Code CLI가 프로젝트 컨텍스트를 이해하기 위한 헌장(charter)이자, subagent들의 협업 규칙서다.
 > 변경 시 PR로 관리한다. 모든 핵심 의사결정은 여기 반영된다.
 
-**버전**: v0.3
+**버전**: v0.4
 **최종 갱신**: 2026-05-02
-**상태**: Phase 0 진입 — Sprint 0 전 작업 완료 (작업 #5 포함, ADR-0002 / variant-type-catalog v0.3까지 머지)
+**상태**: Phase 0 종료 — Phase 1 진입 전 (P0-9 smoke test + runbook 머지 완료)
 
 ---
 
@@ -89,7 +89,20 @@
 
 ### 2.2 현재 위치
 
-**Phase 0 시작 전**. Sprint 0가 첫 한 주.
+**Phase 0 종료 / Phase 1 진입 전**.
+
+Phase 0 DoD 5개 모두 충족 (P0-9 smoke test + runbook 머지 완료):
+1. `shared/schemas/` 1차 정의 완료 — passage, question, annotation, worksheet, tenant, extraction
+2. Vision LLM 추출 파이프라인 — text / image / pdf 각 1건 smoke test 통과
+3. DB 에 Passage 저장/조회 — POST /passages/extract + GET /passages/{id}
+4. 멀티테넌트 스키마 (`tenant_id`) + 인증 stub — sentinel UUID 차단 + cross-tenant 격리
+5. architect `docs/schema-coverage-audit.md` 산출 완료
+
+Phase 1 진입 전 필수 ADR:
+- **ADR-0004**: Annotation span 식별 방식 (character offset vs ProseMirror position)
+- **ADR (마커 처리)**: `①②③④⑤`, `_..._`, `______` 등 마커 분리 vs inline 유지
+
+운영 가이드: `docs/phase-0-runbook.md`
 
 ---
 
@@ -442,3 +455,4 @@ Phase 0를 시작할 수 있는 기반을 깔고, architect + domain-expert의 a
 | v0.1 | 2026-05-02 | 초안 작성 |
 | v0.2 | 2026-05-02 | (1) Phase 2 DoD 완화 + 점진 개선 영역 명시 (2) planner를 architect + domain-expert로 분리, agent 6개로 확장 (3) 섹션 3.6 "No Reinventing the Wheel" 원칙 추가, code-reviewer 체크리스트 + 라이브러리 도입 PR 규칙에 반영 (4) Sprint 0 작업 항목 갱신 |
 | v0.3 | 2026-05-02 | (1) §6.2 변형 유형 전제 정정 — 변형 유형은 별 카테고리가 아니라 기존 24개 유형의 sub-form/파생. exam-generator type enum 흡수가 1차 source. (2) §11 Open Questions 갱신 — schema audit 완료 표기, audit이 던진 미해결 ADR 항목 추가, 레퍼런스 영상 분석 항목 추가. |
+| v0.4 | 2026-05-02 | §2.2 현재 위치 갱신 — Phase 0 종료, Phase 0 DoD 5개 충족 확인, Phase 1 진입 전 차단 ADR 명시. |
