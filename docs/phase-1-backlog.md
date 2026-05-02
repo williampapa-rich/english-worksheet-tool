@@ -157,7 +157,14 @@
   - 에디터 페이지가 passage_id 를 URL 로 받아 본문 + 기존 annotation 로드.
   - 저장 버튼 → API 호출 → 성공 토스트.
   - 새 annotation 생성 / 기존 수정 / 삭제 모두 라운드트립 동작.
-- **PR 단위**: 1 PR.
+  - **7종 `AnnotationKind` (`top_label` / `bottom_label` / `highlight` / `bracket` /
+    `arrow` / `inline_note` / `underline` — `shared/schemas/annotation.py`
+    `AnnotationKind` enum 기준) 각각 1건 이상이 포함된 라운드트립 시나리오 통과** —
+    에디터에서 작성 → API 저장 → 재로드 → 동일 렌더 확인.
+  - **Playwright E2E 골격 1케이스** (passage load → annotation 작성·저장 → HWPX
+    download) — 회귀 누적 방지용 최소 baseline. 자세한 시나리오는 후속 task 에서
+    확장. (P1-9 의 HWPX 다운로드 버튼이 머지된 후 1케이스 골격 확정.)
+- **PR 단위**: 1~2 PR (a: 라운드트립, b: Playwright 골격 — P1-9 직후).
 
 ---
 
@@ -183,6 +190,9 @@
     -> bytes` 함수.
   - 7종 annotation 모두 1건 이상 포함된 fixture passage 1건이 정상 HWPX 로 출력.
   - 단위 테스트: HWPX zip 구조 검증 + 핵심 XML 요소 존재 검증.
+  - **구현은 기존 `hwpx-auto-parser-for-template` 컴포넌트를 어댑터/래퍼로 재활용한다**
+    (CLAUDE.md §3.6, §4 — No Reinventing the Wheel). 재활용 불가 영역이 발견되면 해당
+    PR 에 근거 기록.
 - **PR 단위**: 2~3 PR (kind 별로 묶음 — a: 텍스트 런 계열 (highlight, underline,
   inline_note), b: 라벨 계열 (top, bottom, bracket), c: 화살표).
 
