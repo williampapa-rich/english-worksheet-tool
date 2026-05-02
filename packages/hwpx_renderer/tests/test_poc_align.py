@@ -13,9 +13,12 @@ P1-0b — HWPX 텍스트박스 align PoC 단위 테스트
        - label text "S" and "V"
     5. header.xml 에 charPr 3개가 정의되는지
 
-자동화 불가 범위:
-    - 한글 오피스에서 실제 렌더링된 align 정확도 검증.
-    - PM 이 생성된 fixture 파일을 한글 오피스로 열어 수동 확인 필요.
+자동화 불가 범위 (단위 테스트 한계):
+    - 단위 테스트는 zip 구조와 핵심 XML 요소만 검증한다.
+    - 한컴 스펙 적합성 (container.xml namespace, content.hpf 루트 요소, version.xml 포맷 등)
+      은 레퍼런스 HWPX diff 로만 검증 가능하며, 테스트 통과 = 한컴 오피스 오픈 가능을
+      보장하지 않는다.
+    - 한컴 오피스 실제 오픈 여부 및 렌더링 결과는 PM 수동 확인 필수.
     - fixture 파일 경로: packages/hwpx_renderer/tests/fixtures/poc_align.hwpx
 """
 
@@ -96,6 +99,7 @@ REQUIRED_FILES = [
     "Contents/content.hpf",
     "META-INF/container.xml",
     "META-INF/manifest.xml",
+    "META-INF/container.rdf",  # 레퍼런스 HWPX 분석으로 필수 확인 (2026-05-03)
     "version.xml",
     "settings.xml",
     "Preview/PrvText.txt",

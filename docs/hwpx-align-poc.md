@@ -166,7 +166,30 @@ CLAUDE.md §3.6 원칙 ("No Reinventing the Wheel") 에 따라 기존 컴포넌�
 
 ---
 
-## 6. PM 검증 기록
+## 6. 단위 테스트 한계 (2026-05-03 추가)
+
+**단위 테스트는 zip/XML 구조만 검증한다 — 한컴 스펙 적합성은 보장하지 않는다.**
+
+P1-0b 커밋(`9814faf`) 이후 PM 이 한글 오피스로 fixture 를 열었을 때 "파일 손상" 에러가 발생했다. 28개 단위 테스트는 모두 통과했었으나, 다음 항목들이 레퍼런스 HWPX 와 불일치했다:
+
+| 파일 | 이전 (잘못된) 구조 | 수정 후 (레퍼런스 일치) |
+|---|---|---|
+| `META-INF/container.xml` | `xmlns:container` + `media-type="application/oebps-package+xml"` | `xmlns:ocf` + `xmlns:hpf` + `media-type="application/hwpml-package+xml"` |
+| `Contents/content.hpf` | `hpf:rootfile` 루트 요소 | `opf:package` 루트 + `opf:metadata` + `opf:manifest` + `opf:spine` |
+| `version.xml` | `hv:version` 자식 요소 구조 | `hv:HCFVersion` 단일 요소 (attribute-only) |
+| `META-INF/container.rdf` | **파일 없음** | RDF document (header + section 등록) |
+| `settings.xml` | `hs:settings` 빈 요소 | `ha:HWPApplicationSetting` 구조 |
+
+수정은 레퍼런스 HWPX(`exam-generator/templates/template.hwpx`, `samples/평가원_영어_양식.hwpx`)를 unzip + diff 하여 진행했다.
+
+**교훈**: HWPX 호환성 확인 방법 순서:
+1. 레퍼런스 HWPX 와 생성 HWPX 를 unzip 후 파일별 diff
+2. 한컴 오피스에서 직접 열기 (PM 수동 확인)
+3. 단위 테스트는 구조 회귀 방지용이며, 스펙 적합성 검증 수단이 아님
+
+---
+
+## 7. PM 검증 기록
 
 (PM 이 한글 오피스에서 열어본 후 기입)
 

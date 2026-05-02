@@ -380,49 +380,112 @@ def _build_section0() -> str:
 
 _MIMETYPE = b"application/hwp+zip"
 
-_VERSION_XML = """\
-<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<hv:version xmlns:hv="http://www.hancom.co.kr/hwpml/2011/version">
-  <hv:appVersion major="9" minor="0" micro="0" buildNumber="2105"/>
-  <hv:fileVersion major="1" minor="3" micro="0" buildNumber="0"/>
-</hv:version>
-"""
+# version.xml: 레퍼런스에서 확인한 HCFVersion 단일 요소 구조
+# 이전 hv:version + 자식 요소 방식은 스펙 불일치 → 손상 원인 #3
+_VERSION_XML = (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    '<hv:HCFVersion xmlns:hv="http://www.hancom.co.kr/hwpml/2011/version"'
+    ' tagetApplication="WORDPROCESSOR"'
+    ' major="5" minor="1" micro="1" buildNumber="0"'
+    ' os="10" xmlVersion="1.5"'
+    ' application="Hancom Office Hangul"'
+    ' appVersion="12.30.0.6382 MAC64LEDarwin_25.3.0"/>'
+)
 
-_SETTINGS_XML = """\
-<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<hs:settings xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section"/>
-"""
+# settings.xml: 레퍼런스에서 확인한 HWPApplicationSetting 구조
+_SETTINGS_XML = (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    "<ha:HWPApplicationSetting"
+    ' xmlns:ha="http://www.hancom.co.kr/hwpml/2011/app"'
+    ' xmlns:config="urn:oasis:names:tc:opendocument:xmlns:config:1.0">'
+    '<ha:CaretPosition listIDRef="0" paraIDRef="0" pos="0"/>'
+    "</ha:HWPApplicationSetting>"
+)
 
-_CONTENT_HPF = """\
-<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<hpf:rootfile
-  xmlns:hpf="http://www.hancom.co.kr/schema/2011/hpf"
-  xmlns:dc="http://purl.org/dc/elements/1.1/"
-  xmlns:opf="http://www.idpf.org/2007/opf/">
-  <hpf:item id="header" mediaType="application/xml" href="header.xml"/>
-  <hpf:item id="section0" mediaType="application/xml" href="section0.xml"/>
-</hpf:rootfile>
-"""
+# content.hpf: 레퍼런스(template.hwpx / 평가원_영어_양식.hwpx)에서 확인한 opf:package 구조
+# 이전 hpf:rootfile 구조는 스펙 불일치 → 한컴 "파일 손상" 원인 #1
+_CONTENT_HPF = (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    "<opf:package"
+    ' xmlns:ha="http://www.hancom.co.kr/hwpml/2011/app"'
+    ' xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph"'
+    ' xmlns:hp10="http://www.hancom.co.kr/hwpml/2016/paragraph"'
+    ' xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section"'
+    ' xmlns:hc="http://www.hancom.co.kr/hwpml/2011/core"'
+    ' xmlns:hh="http://www.hancom.co.kr/hwpml/2011/head"'
+    ' xmlns:hhs="http://www.hancom.co.kr/hwpml/2011/history"'
+    ' xmlns:hm="http://www.hancom.co.kr/hwpml/2011/master-page"'
+    ' xmlns:hpf="http://www.hancom.co.kr/schema/2011/hpf"'
+    ' xmlns:dc="http://purl.org/dc/elements/1.1/"'
+    ' xmlns:opf="http://www.idpf.org/2007/opf/"'
+    ' xmlns:ooxmlchart="http://www.hancom.co.kr/hwpml/2016/ooxmlchart"'
+    ' xmlns:hwpunitchar="http://www.hancom.co.kr/hwpml/2016/HwpUnitChar"'
+    ' xmlns:epub="http://www.idpf.org/2007/ops"'
+    ' xmlns:config="urn:oasis:names:tc:opendocument:xmlns:config:1.0"'
+    ' version="" unique-identifier="" id="">'
+    "<opf:metadata>"
+    "<opf:title>poc_align</opf:title>"
+    "<opf:language>en</opf:language>"
+    "</opf:metadata>"
+    "<opf:manifest>"
+    '<opf:item id="header" href="Contents/header.xml" media-type="application/xml"/>'
+    '<opf:item id="section0" href="Contents/section0.xml" media-type="application/xml"/>'
+    '<opf:item id="settings" href="settings.xml" media-type="application/xml"/>'
+    "</opf:manifest>"
+    "<opf:spine>"
+    '<opf:itemref idref="header" linear="yes"/>'
+    '<opf:itemref idref="section0" linear="yes"/>'
+    "</opf:spine>"
+    "</opf:package>"
+)
 
-_CONTAINER_XML = """\
-<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container"
-           xmlns:pkg="http://www.idpf.org/2007/opf">
-  <rootfiles>
-    <rootfile full-path="Contents/content.hpf"
-              media-type="application/oebps-package+xml"/>
-  </rootfiles>
-</container>
-"""
+# container.xml: 레퍼런스에서 확인한 ocf:container + hpf namespace 구조
+# 이전 xmlns:container + application/oebps-package+xml 는 스펙 불일치 → 손상 원인 #2
+_CONTAINER_XML = (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    "<ocf:container"
+    ' xmlns:ocf="urn:oasis:names:tc:opendocument:xmlns:container"'
+    ' xmlns:hpf="http://www.hancom.co.kr/schema/2011/hpf">'
+    "<ocf:rootfiles>"
+    '<ocf:rootfile full-path="Contents/content.hpf"'
+    ' media-type="application/hwpml-package+xml"/>'
+    '<ocf:rootfile full-path="Preview/PrvText.txt"'
+    ' media-type="text/plain"/>'
+    '<ocf:rootfile full-path="META-INF/container.rdf"'
+    ' media-type="application/rdf+xml"/>'
+    "</ocf:rootfiles>"
+    "</ocf:container>"
+)
 
-_MANIFEST_XML = """\
-<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<manifest xmlns="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0">
-  <file-entry full-path="/" media-type="application/hwp+zip"/>
-  <file-entry full-path="Contents/header.xml" media-type="application/xml"/>
-  <file-entry full-path="Contents/section0.xml" media-type="application/xml"/>
-</manifest>
-"""
+# manifest.xml: 레퍼런스와 동일한 빈 odf:manifest
+_MANIFEST_XML = (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    '<odf:manifest xmlns:odf="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0"/>'
+)
+
+# container.rdf: 레퍼런스에서 확인한 RDF 구조 (header + section0 등록)
+_CONTAINER_RDF = (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    '<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">'
+    '<rdf:Description rdf:about="">'
+    '<ns0:hasPart xmlns:ns0="http://www.hancom.co.kr/hwpml/2016/meta/pkg#"'
+    ' rdf:resource="Contents/header.xml"/>'
+    "</rdf:Description>"
+    '<rdf:Description rdf:about="Contents/header.xml">'
+    '<rdf:type rdf:resource="http://www.hancom.co.kr/hwpml/2016/meta/pkg#HeaderFile"/>'
+    "</rdf:Description>"
+    '<rdf:Description rdf:about="">'
+    '<ns0:hasPart xmlns:ns0="http://www.hancom.co.kr/hwpml/2016/meta/pkg#"'
+    ' rdf:resource="Contents/section0.xml"/>'
+    "</rdf:Description>"
+    '<rdf:Description rdf:about="Contents/section0.xml">'
+    '<rdf:type rdf:resource="http://www.hancom.co.kr/hwpml/2016/meta/pkg#SectionFile"/>'
+    "</rdf:Description>"
+    '<rdf:Description rdf:about="">'
+    '<rdf:type rdf:resource="http://www.hancom.co.kr/hwpml/2016/meta/pkg#Document"/>'
+    "</rdf:Description>"
+    "</rdf:RDF>"
+)
 
 _PRV_TEXT = "The quick brown fox jumps over the lazy dog."
 
@@ -443,15 +506,20 @@ def build_poc_hwpx() -> bytes:
     """
     section0_xml = _build_section0()
 
-    files: dict[str, bytes] = {
+    # DEFLATED 파일 목록
+    deflated_files: dict[str, bytes] = {
         "Contents/header.xml": _HEADER_XML.encode("utf-8"),
         "Contents/section0.xml": section0_xml.encode("utf-8"),
         "Contents/content.hpf": _CONTENT_HPF.encode("utf-8"),
         "META-INF/container.xml": _CONTAINER_XML.encode("utf-8"),
         "META-INF/manifest.xml": _MANIFEST_XML.encode("utf-8"),
+        "META-INF/container.rdf": _CONTAINER_RDF.encode("utf-8"),
         "settings.xml": _SETTINGS_XML.encode("utf-8"),
-        "version.xml": _VERSION_XML.encode("utf-8"),
         "Preview/PrvText.txt": _PRV_TEXT.encode("utf-8"),
+    }
+    # STORED 파일 목록 (레퍼런스에서 version.xml 은 STORED)
+    stored_files: dict[str, bytes] = {
+        "version.xml": _VERSION_XML.encode("utf-8"),
     }
 
     buf = io.BytesIO()
@@ -461,8 +529,11 @@ def build_poc_hwpx() -> bytes:
         info.compress_type = zipfile.ZIP_STORED
         zout.writestr(info, _MIMETYPE)
 
-        for name, data in files.items():
+        for name, data in deflated_files.items():
             zout.writestr(name, data, compress_type=zipfile.ZIP_DEFLATED)
+
+        for name, data in stored_files.items():
+            zout.writestr(zipfile.ZipInfo(name), data)
 
     buf.seek(0)
     return buf.read()
