@@ -12,6 +12,7 @@
 
 import os
 import sys
+import uuid
 from pathlib import Path
 
 import pytest
@@ -63,32 +64,50 @@ def pg_engine():  # type: ignore[return]
 
     ADR-0005 §D-5.7: Docker compose PostgreSQL 에 연결.
     세션 레벨로 생성해 연결 오버헤드를 줄인다.
+
+    Schema 생성: 운영과 동일하게 Alembic 마이그레이션으로 생성 (test_migrations.py
+    와 같은 패턴). ``worksheet_api.models`` import 부수 효과로 Base.metadata 의
+    tenants / workspaces 가 SQLModel.metadata 에 attach 되어 cross-metadata FK 가
+    해소된다.
+
+    Python 3.14 호환: ``asyncio.get_event_loop()`` 는 running loop 없으면 RuntimeError.
+    fixture 단위 ``new_event_loop()`` 로 명시적 loop 관리.
     """
     import asyncio
 
+    from alembic import command
+    from alembic.config import Config
     from sqlalchemy.ext.asyncio import create_async_engine
-    from sqlmodel import SQLModel
 
     url = _get_test_db_url()
     if "sqlite" in url:
         pytest.skip("통합 테스트는 PostgreSQL 전용 (JSONB 컬럼)")
 
+    # Alembic 으로 schema 생성 (동기 — psycopg2 드라이버 사용)
+    api_root = Path(__file__).parent.parent
+    cfg = Config(str(api_root / "alembic.ini"))
+    cfg.set_main_option("script_location", str(api_root / "alembic"))
+    # env.py 가 DATABASE_URL 환경변수를 우선시하므로 그대로 사용
+    command.upgrade(cfg, "head")
+
+    # async engine 은 테스트가 사용
+    loop = asyncio.new_event_loop()
     engine = create_async_engine(url, echo=False)
-
-    async def _setup() -> None:
-        import worksheet_api.models  # noqa: F401 — SQLModel.metadata 등록
-
-        async with engine.begin() as conn:
-            await conn.run_sync(SQLModel.metadata.create_all)
-
-    asyncio.get_event_loop().run_until_complete(_setup())
 
     yield engine
 
-    async def _teardown() -> None:
-        await engine.dispose()
+    loop.run_until_complete(engine.dispose())
+    loop.close()
+    # schema 는 다음 세션을 위해 downgrade — DB 깨끗하게
+    command.downgrade(cfg, "base")
 
-    asyncio.get_event_loop().run_until_complete(_teardown())
+
+# 통합 테스트 표준 테넌트 / 워크스페이스 UUID — 각 테스트 파일이 동일 값 사용.
+# pg_session 픽스처가 매 테스트 시작 시 이 UUID 들을 tenants / workspaces 에 시드.
+TEST_TENANT_A = uuid.UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+TEST_WORKSPACE_A = uuid.UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
+TEST_TENANT_B = uuid.UUID("cccccccc-cccc-cccc-cccc-cccccccccccc")
+TEST_WORKSPACE_B = uuid.UUID("dddddddd-dddd-dddd-dddd-dddddddddddd")
 
 
 @pytest.fixture
@@ -96,10 +115,22 @@ async def pg_session(pg_engine):  # type: ignore[return]
     """테스트별 async session — 종료 시 rollback 으로 격리.
 
     ADR-0005 §D-5.7 의 transaction rollback 기반 격리 패턴.
+
+    Repository 테스트가 TENANT_A / TENANT_B 의 데이터를 만들 수 있도록, 매 테스트
+    시작 시 tenants / workspaces 행을 시드한다. rollback 으로 자동 정리됨.
     """
     from sqlmodel.ext.asyncio.session import AsyncSession
+    from worksheet_api.models.tenant import Tenant, Workspace
 
     async with AsyncSession(pg_engine) as session:
         async with session.begin():
+            # 표준 테스트 테넌트 / 워크스페이스 시드
+            session.add(Tenant(id=TEST_TENANT_A, name="test-tenant-a"))
+            session.add(Tenant(id=TEST_TENANT_B, name="test-tenant-b"))
+            await session.flush()
+            session.add(Workspace(id=TEST_WORKSPACE_A, tenant_id=TEST_TENANT_A, name="ws-a"))
+            session.add(Workspace(id=TEST_WORKSPACE_B, tenant_id=TEST_TENANT_B, name="ws-b"))
+            await session.flush()
+
             yield session
             await session.rollback()

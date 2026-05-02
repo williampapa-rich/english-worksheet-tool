@@ -28,18 +28,18 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 # ORM 모델 import — 반드시 metadata 참조보다 먼저 import 해야 autogenerate 작동
 # (ADR-0005 §D-5.4 함정 #2: import 빠지면 autogenerate 가 테이블 삭제 마이그레이션 생성)
+# 본 import 의 부수 효과로 Sprint 0 의 tenants / workspaces 가 SQLModel.metadata 에도
+# attach 됨 (worksheet_api/models/__init__.py 참고) — cross-metadata FK 해소.
 import worksheet_api.models  # noqa: F401
-from worksheet_api.db import Base
 
 # alembic.ini 의 logging 설정 적용
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# autogenerate 대상 메타데이터 — 두 metadata 를 리스트로 전달 (Alembic 1.7+)
-# - Base.metadata: Sprint 0 의 Tenant / Workspace (DeclarativeBase)
-# - SQLModel.metadata: Phase 0 도메인 ORM 클래스들 (SQLModel table=True)
-target_metadata = [Base.metadata, SQLModel.metadata]
+# autogenerate 대상 메타데이터 — SQLModel.metadata 단일 (tenants / workspaces 도
+# import 부수 효과로 attach 되어 있음).
+target_metadata = SQLModel.metadata
 
 
 def get_url() -> str:
