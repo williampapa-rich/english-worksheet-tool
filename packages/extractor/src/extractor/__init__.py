@@ -10,6 +10,7 @@ ADR-0003 §D-3.6: sentinel UUID 패턴.
 공개 API:
   - Extractor: 프로토콜 (Protocol) — 모든 입력 타입의 공통 인터페이스.
   - extract_from_text: 텍스트 입력 추출 함수 (P0-3).
+  - extract_from_image: 이미지 입력 추출 함수 (P0-4, Claude Vision).
   - SENTINEL_UUID: sentinel UUID 상수 (uuid.UUID(int=0)).
   - is_sentinel: sentinel UUID 여부 확인 함수.
   - 에러: EmptyInputError, ExtractionError, PdfParseError, UnsupportedMediaTypeError.
@@ -25,6 +26,7 @@ from extractor.errors import (
     PdfParseError,
     UnsupportedMediaTypeError,
 )
+from extractor.image import extract_from_image
 from extractor.normalizer import (
     RawExtractionItem,
     RawExtractionResponse,
@@ -42,6 +44,7 @@ __all__ = [
     "Extractor",
     # 함수
     "extract_from_text",
+    "extract_from_image",
     "is_sentinel",
     "make_llm_meta",
     "normalize",
