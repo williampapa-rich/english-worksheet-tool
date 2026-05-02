@@ -53,7 +53,7 @@
     (마우스 / 키보드 / 컨텍스트 메뉴 동작별 표).
 - **PR 단위**: 1 PR.
 
-#### P1-0b — HWPX 텍스트박스 align PoC
+#### P1-0b — HWPX 텍스트박스 align PoC [done]
 
 - **담당**: backend-dev
 - **의존**: -
@@ -65,6 +65,8 @@
   - 결과 요약: "정확히 align 가능 / 부분 / 불가능 + 우회안" 1페이지 메모를
     `docs/hwpx-align-poc.md` 로 산출.
 - **PR 단위**: 1 PR. (CLAUDE.md §11 Open Question 해소)
+- **완료**: fixture `packages/hwpx_renderer/tests/fixtures/poc_align.hwpx` + 28 unit tests
+  passed + `docs/hwpx-align-poc.md`. PM 수동 확인(한글 오피스 열기) 대기 중.
 
 #### P1-0c — Vocabulary 글로벌 마스터 ADR (선택적, Phase 2 차단이 우선)
 
