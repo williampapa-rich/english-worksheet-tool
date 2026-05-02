@@ -54,6 +54,14 @@ Thumbs.db
 admin/reference-analysis/frames/
 admin/reference-analysis/source-videos/
 
+# ─── Extractor fixture 자료 (저작권 이슈 — 아잉카 / 학교 내신 등) ────────────
+# 자료 자체는 무시하지만 디렉토리 구조 (.gitkeep) 와 README 는 추적
+admin/fixtures/extractor/**/*
+!admin/fixtures/extractor/**/
+!admin/fixtures/extractor/README.md
+!admin/fixtures/extractor/**/README.md
+!admin/fixtures/extractor/**/.gitkeep
+
 # ─── 기타 ───────────────────────────────────────────────────────────────────
 *.log
 *.tmp
