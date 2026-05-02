@@ -1,0 +1,12 @@
+{
+  "name": "@english-worksheet-tool/editor",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Tiptap 구문분석 에디터 extensions — 상단/하단 라벨, 괄호, 하이라이트, 밑줄, 화살표",
+  "scripts": {
+    "test": "vitest",
+    "lint": "biome check src/"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

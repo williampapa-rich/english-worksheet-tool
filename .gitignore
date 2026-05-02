@@ -1,0 +1,52 @@
+# ─── Python ────────────────────────────────────────────────────────────────
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+*.so
+
+# mypy 캐시
+.mypy_cache/
+.dmypy.json
+
+# ruff 캐시
+.ruff_cache/
+
+# pytest 캐시
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ─── Node.js ────────────────────────────────────────────────────────────────
+node_modules/
+dist/
+.next/
+out/
+.vite/
+*.tsbuildinfo
+
+# pnpm
+.pnpm-store/
+
+# ─── 환경변수 / 시크릿 ──────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# ─── OS / IDE ───────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ─── 기타 ───────────────────────────────────────────────────────────────────
+*.log
+*.tmp

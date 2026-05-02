@@ -1,0 +1,5 @@
+packages:
+  # React 웹앱 (배포 대상)
+  - "apps/web"
+  # Tiptap 구문분석 에디터 extensions
+  - "packages/editor"

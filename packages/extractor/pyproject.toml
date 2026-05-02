@@ -1,0 +1,6 @@
+[project]
+name = "extractor"
+version = "0.1.0"
+description = "PDF/이미지 → 정규화된 Passage+Question 추출 패키지"
+requires-python = ">=3.12"
+dependencies = []

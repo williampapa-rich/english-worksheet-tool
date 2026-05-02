@@ -1,0 +1,6 @@
+[project]
+name = "api"
+version = "0.1.0"
+description = "영어 학습 자료 생성 도구 — FastAPI 서버"
+requires-python = ">=3.12"
+dependencies = []

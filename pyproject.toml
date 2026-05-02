@@ -1,0 +1,62 @@
+[project]
+name = "english-worksheet-tool"
+version = "0.1.0"
+description = "영어 학원 강사용 학습 자료 생성 도구"
+requires-python = ">=3.12"
+readme = "README.md"
+
+# uv workspace 정의 — 멤버 패키지들을 하나의 가상환경으로 관리
+[tool.uv.workspace]
+members = [
+  "apps/api",
+  "packages/extractor",
+  "packages/llm",
+  "packages/hwpx_renderer",
+  "shared",
+]
+
+# 개발 도구 의존성 (PEP 735 dependency-groups)
+[dependency-groups]
+dev = [
+  "ruff>=0.9.0",
+  "mypy>=1.15.0",
+  "pre-commit>=4.2.0",
+  "pytest>=8.3.0",
+  "pytest-asyncio>=0.25.0",
+]
+
+# ─── ruff 설정 ──────────────────────────────────────────────────────────────
+
+[tool.ruff]
+# Python 3.12+ 타겟
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+# E/W: pycodestyle, F: pyflakes, I: isort, UP: pyupgrade, B: flake8-bugbear
+select = ["E", "W", "F", "I", "UP", "B"]
+ignore = [
+  "E501",  # line too long — ruff format이 처리
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# ─── mypy 설정 ──────────────────────────────────────────────────────────────
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+# 워크스페이스 멤버 경로 포함
+mypy_path = ["shared", "apps/api/src", "packages"]
+exclude = [
+  "^alembic/",
+  "^\\.venv/",
+]
+
+# ─── pytest 설정 ────────────────────────────────────────────────────────────
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["apps/api/tests", "packages"]

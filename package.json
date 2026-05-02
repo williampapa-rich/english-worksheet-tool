@@ -1,0 +1,20 @@
+{
+  "name": "english-worksheet-tool",
+  "version": "0.1.0",
+  "private": true,
+  "description": "영어 학원 강사용 학습 자료 생성 도구 — 모노레포 루트",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "scripts": {
+    "lint": "biome check .",
+    "format": "biome format --write ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["@biomejs/biome"]
+  }
+}

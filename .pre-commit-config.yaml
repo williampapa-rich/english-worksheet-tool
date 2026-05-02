@@ -1,0 +1,34 @@
+repos:
+  # 공통 파일 위생 검사
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: end-of-file-fixer       # 파일 끝 개행 강제
+      - id: trailing-whitespace     # 줄 끝 공백 제거
+      - id: check-yaml              # YAML 문법 검사
+      - id: check-toml              # TOML 문법 검사
+      - id: check-json              # JSON 문법 검사
+      - id: check-merge-conflict    # 머지 충돌 마커 검출
+      - id: check-added-large-files # 대용량 파일 커밋 방지
+        args: ["--maxkb=1000"]
+      - id: detect-private-key      # 시크릿 키 커밋 방지
+
+  # Python: ruff (format + lint 통합)
+  # 대안 검토: black+flake8+isort 조합 vs ruff — ruff가 단일 도구로 모두 대체, 속도 10~100배 빠름
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.10
+    hooks:
+      - id: ruff          # lint (isort 포함)
+        args: ["--fix"]
+      - id: ruff-format   # format (black 호환)
+
+  # TypeScript/JavaScript: biome
+  # 대안 검토: eslint+prettier vs biome — biome이 단일 바이너리로 통합, 속도 빠름
+  - repo: local
+    hooks:
+      - id: biome-check
+        name: biome check (TypeScript/JavaScript)
+        language: node
+        entry: npx biome check --write
+        types_or: [javascript, jsx, ts, tsx, json]
+        pass_filenames: true

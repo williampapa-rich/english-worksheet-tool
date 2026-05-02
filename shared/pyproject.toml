@@ -1,0 +1,8 @@
+[project]
+name = "shared"
+version = "0.1.0"
+description = "공유 Pydantic 스키마 — 시스템의 척추 (읽기 전용, architect 관리)"
+requires-python = ">=3.12"
+dependencies = [
+  "pydantic>=2.0.0",
+]

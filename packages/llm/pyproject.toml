@@ -1,0 +1,6 @@
+[project]
+name = "llm"
+version = "0.1.0"
+description = "Anthropic SDK 래퍼, 프롬프트 로딩, structured output 검증 패키지"
+requires-python = ">=3.12"
+dependencies = []
