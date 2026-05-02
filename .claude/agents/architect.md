@@ -1,7 +1,7 @@
 ---
 name: architect
 description: 시스템 아키텍트 + 데이터 모델러. canonical schema(`shared/schemas/`)의 설계와 진화, 시스템 추상화, 정규화 결정, 의존성 방향, 스키마 호환성 관리를 담당. 새 도메인 엔티티 도입, 스키마 변경, 모듈 간 경계 결정이 필요할 때 호출. 직접 구현 코드는 작성하지 않음 (Pydantic 모델 정의는 예외).
-tools: Read, Glob, Grep, Edit, Write
+tools: Read, Glob, Grep, Edit, Write, Bash
 model: opus
 ---
 

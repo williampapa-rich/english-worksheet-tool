@@ -1,7 +1,7 @@
 ---
 name: domain-expert
 description: 영어 시험 출제 + 영어 교육 도메인 전문가. 변형 유형 카탈로그, 출제 품질 기준, 교육적 적절성(어휘 수준, 지문 난이도), 자료 sweep을 담당. 새 변형 유형 정의, 학습 자료 분류, 출제 적절성 검토, LLM 변형 생성 프롬프트 작성 시 호출. 코드/스키마 직접 수정은 하지 않고, 도메인 관점 코멘트와 docs/ 산출물로 기여.
-tools: Read, Glob, Grep, Edit, Write
+tools: Read, Glob, Grep, Edit, Write, Bash
 model: opus
 ---
 
