@@ -50,6 +50,10 @@ Thumbs.db
 # ─── Claude Code ────────────────────────────────────────────────────────────
 .claude/worktrees/
 
+# ─── 작업용 자료 (분석 입력, 산출물은 docs/에) ──────────────────────────────
+admin/reference-analysis/frames/
+admin/reference-analysis/source-videos/
+
 # ─── 기타 ───────────────────────────────────────────────────────────────────
 *.log
 *.tmp
