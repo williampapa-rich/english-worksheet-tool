@@ -3,4 +3,29 @@ name = "api"
 version = "0.1.0"
 description = "영어 학습 자료 생성 도구 — FastAPI 서버"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+  # API 서버
+  "fastapi>=0.115.0",
+  "uvicorn[standard]>=0.32.0",
+  # 환경변수 관리 — 대안: python-dotenv 단독 사용은 Pydantic 통합이 없어서 탈락
+  "pydantic-settings>=2.7.0",
+  # DB — SQLAlchemy 2.x async + asyncpg 드라이버
+  # 대안: databases 라이브러리는 SQLAlchemy 생태계(Alembic)와 통합이 약해서 탈락
+  "sqlalchemy[asyncio]>=2.0.0",
+  "asyncpg>=0.30.0",
+  # 마이그레이션 — Alembic은 SQLAlchemy 공식 마이그레이션 도구 (CLAUDE.md 3.6)
+  "alembic>=1.14.0",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3.0",
+  "pytest-asyncio>=0.25.0",
+  # httpx: FastAPI TestClient(ASGITransport) 용. requests 대신 httpx를 선택한 이유는
+  # ASGITransport가 httpx에만 있어서 requests로는 async ASGI 앱을 인-프로세스로 테스트 불가
+  "httpx>=0.28.0",
+]
+
+[tool.uv]
+# workspace 멤버로 등록된 패키지는 uv가 로컬 경로로 처리
+package = true
