@@ -12,6 +12,7 @@ members = [
   "packages/extractor",
   "packages/llm",
   "packages/hwpx_renderer",
+  "packages/qa_validator",
   "shared",
 ]
 
