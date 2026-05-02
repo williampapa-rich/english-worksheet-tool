@@ -8,6 +8,7 @@ repos:
       - id: check-yaml              # YAML 문법 검사
       - id: check-toml              # TOML 문법 검사
       - id: check-json              # JSON 문법 검사
+        exclude: ^(.*/)?(tsconfig.*\.json|biome\.json|\.vscode/.*\.json)$  # 주석 허용 JSONC
       - id: check-merge-conflict    # 머지 충돌 마커 검출
       - id: check-added-large-files # 대용량 파일 커밋 방지
         args: ["--maxkb=1000"]
