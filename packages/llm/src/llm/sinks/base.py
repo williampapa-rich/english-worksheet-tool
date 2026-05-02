@@ -88,27 +88,40 @@ class UsageSink(Protocol):
 class MultiplexUsageSink:
     """여러 sink 에 동시에 기록하는 멀티플렉서.
 
-    P0-2b 에서 DB sink 추가 시:
+    P0-2b PM-4 패턴:
         jsonl_sink = JsonlUsageSink(...)
         db_sink = DbUsageSink(...)
         client = AnthropicStructuredLLMClient(
             sink=MultiplexUsageSink(sinks=[jsonl_sink, db_sink])
         )
 
-    현재 (P0-2a): jsonl sink 1개라 MultiplexUsageSink 와 JsonlUsageSink 동작 동일.
-    골격만 정의해 P0-2b 확장 경로를 열어둠.
+    PM-4 안전망:
+        - 모든 sink 를 asyncio.gather 로 동시 호출 (순차 대기 없음).
+        - 한 sink 실패해도 다른 sink 는 계속 기록 (return_exceptions=True).
+        - DB sink 실패해도 jsonl sink 는 계속 → 데이터 손실 없음.
     """
 
     sinks: list[UsageSink] = field(default_factory=list)
 
     async def record(self, event: UsageEvent) -> None:
-        """모든 sink 에 순차 기록. 각 sink 실패는 독립 처리 (다음 sink 에 영향 없음)."""
+        """모든 sink 에 동시 기록. 각 sink 실패는 독립 처리 (다른 sink 에 영향 없음).
+
+        asyncio.gather(return_exceptions=True) 를 사용해 모든 sink 를 병렬 호출.
+        한 sink 의 예외가 다른 sink 의 실행을 막지 않는다.
+        """
+        import asyncio
         import logging
 
         logger = logging.getLogger(__name__)
-        for sink in self.sinks:
-            try:
-                await sink.record(event)
-            except Exception as exc:  # noqa: BLE001
-                # sink 실패가 호출 실패로 전파되면 안 됨
-                logger.warning("UsageSink.record 실패 (무시): %s", exc)
+        results = await asyncio.gather(
+            *(sink.record(event) for sink in self.sinks),
+            return_exceptions=True,
+        )
+        for sink, result in zip(self.sinks, results, strict=True):
+            if isinstance(result, Exception):
+                # sink 실패가 호출 실패로 전파되면 안 됨 — PM-4 안전망
+                logger.warning(
+                    "MultiplexUsageSink: %s 실패 (무시): %s",
+                    type(sink).__name__,
+                    result,
+                )
