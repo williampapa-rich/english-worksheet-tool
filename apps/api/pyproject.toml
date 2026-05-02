@@ -28,6 +28,10 @@ dev = [
   # httpx: FastAPI TestClient(ASGITransport) 용. requests 대신 httpx를 선택한 이유는
   # ASGITransport가 httpx에만 있어서 requests로는 async ASGI 앱을 인-프로세스로 테스트 불가
   "httpx>=0.28.0",
+  # psycopg2-binary: Alembic 통합 테스트 전용 동기 드라이버. Alembic 의 command.upgrade /
+  # downgrade 는 본질적으로 동기 (SQLAlchemy 1.x API) 라 asyncpg 는 사용 불가. 운영 코드는
+  # asyncpg 만 사용. test_migrations.py 가 +asyncpg 를 떼고 psycopg2 로 fallback.
+  "psycopg2-binary>=2.9.10",
 ]
 
 [tool.uv]

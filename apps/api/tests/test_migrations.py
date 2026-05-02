@@ -93,11 +93,18 @@ class TestMigrationRoundTrip:
             pytest.skip("통합 테스트는 PostgreSQL 전용 (JSONB 컬럼)")
 
     def _get_alembic_cfg(self):  # type: ignore[return]
-        """Alembic Config 객체를 반환한다."""
+        """Alembic Config 객체를 반환한다.
+
+        ``script_location`` 은 ``alembic.ini`` 에서 ``script_location = alembic`` 으로
+        상대경로 — 실행 cwd 에 의존. pytest 를 repo root 에서 돌리면 cwd 가 root 라
+        이를 절대경로로 덮어써 안전하게 한다.
+        """
         from alembic.config import Config
 
-        alembic_ini = Path(__file__).parent.parent / "alembic.ini"
+        api_root = Path(__file__).parent.parent  # apps/api/
+        alembic_ini = api_root / "alembic.ini"
         cfg = Config(str(alembic_ini))
+        cfg.set_main_option("script_location", str(api_root / "alembic"))
         cfg.set_main_option("sqlalchemy.url", _get_test_db_url())
         return cfg
 

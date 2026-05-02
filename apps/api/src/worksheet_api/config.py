@@ -17,6 +17,9 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
+        # .env 에는 docker-compose / 미래 기능용 변수 (POSTGRES_*, APP_ENV, SECRET_KEY 등)
+        # 가 함께 들어 있으므로, 본 Settings 가 명시한 필드 외의 변수는 무시.
+        extra="ignore",
     )
 
     # ── DB ──────────────────────────────────────────────────────────────────
