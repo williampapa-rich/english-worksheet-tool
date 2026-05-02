@@ -3,9 +3,9 @@
 > 이 문서는 Claude Code CLI가 프로젝트 컨텍스트를 이해하기 위한 헌장(charter)이자, subagent들의 협업 규칙서다.
 > 변경 시 PR로 관리한다. 모든 핵심 의사결정은 여기 반영된다.
 
-**버전**: v0.3
+**버전**: v0.4
 **최종 갱신**: 2026-05-02
-**상태**: Phase 0 시작 전 (Sprint 0 종료, 작업 #5만 잔여)
+**상태**: Phase 0 종료 — Phase 1 진입 전 (P0-9 smoke test + runbook 머지 완료)
 
 ---
 
@@ -89,7 +89,20 @@
 
 ### 2.2 현재 위치
 
-**Phase 0 시작 전**. Sprint 0가 첫 한 주.
+**Phase 0 종료 / Phase 1 진입 전**.
+
+Phase 0 DoD 5개 모두 충족 (P0-9 smoke test + runbook 머지 완료):
+1. `shared/schemas/` 1차 정의 완료 — passage, question, annotation, worksheet, tenant, extraction
+2. Vision LLM 추출 파이프라인 — text / image / pdf 각 1건 smoke test 통과
+3. DB 에 Passage 저장/조회 — POST /passages/extract + GET /passages/{id}
+4. 멀티테넌트 스키마 (`tenant_id`) + 인증 stub — sentinel UUID 차단 + cross-tenant 격리
+5. architect `docs/schema-coverage-audit.md` 산출 완료
+
+Phase 1 진입 전 필수 ADR:
+- **ADR-0004**: Annotation span 식별 방식 (character offset vs ProseMirror position)
+- **ADR (마커 처리)**: `①②③④⑤`, `_..._`, `______` 등 마커 분리 vs inline 유지
+
+운영 가이드: `docs/phase-0-runbook.md`
 
 ---
 
@@ -427,8 +440,8 @@ Phase 0를 시작할 수 있는 기반을 깔고, architect + domain-expert의 a
 - [ ] LLM 비용 모니터링 / 캐싱 전략 — Phase 3 진입 전
 - [ ] 프롬프트 평가 / 회귀 테스트 자동화 — `admin/eval/`에서 다룸
 - [ ] 학생용 템플릿의 다중 변형 (1단/2단 등) 도입 시점 — Phase 2 종료 후 와이프 피드백 기반
-- [ ] **Annotation span 식별 방식** (character offset vs ProseMirror position vs token id) — Phase 1 진입 전 ADR (`audit §4-4`)
-- [ ] **마커 분리 vs inline 유지** (`①②③④⑤`, `_..._`, `______` 등) — Phase 1 진입 전 ADR (`audit §4-6`)
+- [x] **Annotation span 식별 방식** — `docs/adr/0004-annotation-span-identification.md` (character offset 채택, 메모리는 ProseMirror position 하이브리드)
+- [x] **마커 분리 vs inline 유지** — `docs/adr/0006-marker-processing-policy.md` (출제용 마커 분리 / 단락·지칭 라벨 inline 보존 하이브리드)
 - [ ] **Vocabulary 글로벌 마스터 도입 시점** — Phase 2/3 진입 전 ADR (`audit §4-3`)
 - [ ] **Question / VariantQuestion 단일 테이블 vs 별 테이블** — Phase 3 진입 전 ADR (`audit §4-5`)
 - [ ] **레퍼런스 프로그램 영상 분석** — `/Users/william/Downloads/ScreenRecording_04-24-2026 15-11-52_1.MP4` 프레임 단위 분석 → UI/기능 설계 입력. 산출물 위치: `docs/reference-program-analysis.md` (작업 #5와 병렬, Phase 1 진입 전 완료 권고)
@@ -442,3 +455,5 @@ Phase 0를 시작할 수 있는 기반을 깔고, architect + domain-expert의 a
 | v0.1 | 2026-05-02 | 초안 작성 |
 | v0.2 | 2026-05-02 | (1) Phase 2 DoD 완화 + 점진 개선 영역 명시 (2) planner를 architect + domain-expert로 분리, agent 6개로 확장 (3) 섹션 3.6 "No Reinventing the Wheel" 원칙 추가, code-reviewer 체크리스트 + 라이브러리 도입 PR 규칙에 반영 (4) Sprint 0 작업 항목 갱신 |
 | v0.3 | 2026-05-02 | (1) §6.2 변형 유형 전제 정정 — 변형 유형은 별 카테고리가 아니라 기존 24개 유형의 sub-form/파생. exam-generator type enum 흡수가 1차 source. (2) §11 Open Questions 갱신 — schema audit 완료 표기, audit이 던진 미해결 ADR 항목 추가, 레퍼런스 영상 분석 항목 추가. |
+| v0.4 | 2026-05-02 | §2.2 현재 위치 갱신 — Phase 0 종료, Phase 0 DoD 5개 충족 확인, Phase 1 진입 전 차단 ADR 명시. |
+| v0.5 | 2026-05-02 | §11 Open Questions 갱신 — Phase 1 진입 차단 ADR 2개 해소 표기 (ADR-0004 Annotation span 식별 방식, ADR-0006 마커 처리 정책). |

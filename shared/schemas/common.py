@@ -59,6 +59,10 @@ class BaseEntity(TimestampMixin):
         # 알 수 없는 필드 거부 — LLM 출력의 silent drift 방지. Pydantic v2 의 datetime
         # JSON 직렬화는 기본 ISO 8601 (Tiptap / FastAPI / Anthropic 모두 호환).
         extra="forbid",
+        # ORM 객체 (SQLModel / SQLAlchemy) 의 attribute 접근으로 model_validate 가능하게.
+        # ADR-0005 §D-5.5 의 ORM → 도메인 변환 (`Passage.model_validate(passage_orm)`)
+        # 이 동작하려면 필요. P0-1 (Repository 레이어) 차단 항목.
+        from_attributes=True,
     )
 
     id: EntityId = Field(

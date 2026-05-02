@@ -9,8 +9,12 @@ dependencies = [
   "uvicorn[standard]>=0.32.0",
   # 환경변수 관리 — 대안: python-dotenv 단독 사용은 Pydantic 통합이 없어서 탈락
   "pydantic-settings>=2.7.0",
-  # DB — SQLAlchemy 2.x async + asyncpg 드라이버
-  # 대안: databases 라이브러리는 SQLAlchemy 생태계(Alembic)와 통합이 약해서 탈락
+  # DB — SQLModel (Pydantic v2 + SQLAlchemy 2.x 통합) + asyncpg 드라이버
+  # 대안: pydantic-sqlalchemy는 2023년 이후 유지보수 불활성으로 탈락.
+  #       imperative mapping은 boilerplate 과다로 탈락.
+  #       SQLModel은 tiangolo(FastAPI 저자) 개발 + 광범위한 커뮤니티. ADR-0005 PM-2 확정.
+  "sqlmodel>=0.0.21",
+  # SQLModel은 sqlalchemy[asyncio]를 의존성으로 포함하지만 명시적으로 기재
   "sqlalchemy[asyncio]>=2.0.0",
   "asyncpg>=0.30.0",
   # 마이그레이션 — Alembic은 SQLAlchemy 공식 마이그레이션 도구 (CLAUDE.md 3.6)
@@ -24,6 +28,10 @@ dev = [
   # httpx: FastAPI TestClient(ASGITransport) 용. requests 대신 httpx를 선택한 이유는
   # ASGITransport가 httpx에만 있어서 requests로는 async ASGI 앱을 인-프로세스로 테스트 불가
   "httpx>=0.28.0",
+  # psycopg2-binary: Alembic 통합 테스트 전용 동기 드라이버. Alembic 의 command.upgrade /
+  # downgrade 는 본질적으로 동기 (SQLAlchemy 1.x API) 라 asyncpg 는 사용 불가. 운영 코드는
+  # asyncpg 만 사용. test_migrations.py 가 +asyncpg 를 떼고 psycopg2 로 fallback.
+  "psycopg2-binary>=2.9.10",
 ]
 
 [tool.uv]

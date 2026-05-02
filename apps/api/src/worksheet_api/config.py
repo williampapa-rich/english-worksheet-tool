@@ -1,6 +1,7 @@
 """애플리케이션 설정 — pydantic-settings로 환경변수를 타입-세이프하게 로드."""
 
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import PostgresDsn
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -17,6 +18,9 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
+        # .env 에는 docker-compose / 미래 기능용 변수 (POSTGRES_*, APP_ENV, SECRET_KEY 등)
+        # 가 함께 들어 있으므로, 본 Settings 가 명시한 필드 외의 변수는 무시.
+        extra="ignore",
     )
 
     # ── DB ──────────────────────────────────────────────────────────────────
@@ -24,9 +28,20 @@ class Settings(BaseSettings):
     database_url: PostgresDsn
 
     # ── 멀티테넌트 stub ──────────────────────────────────────────────────────
-    # Phase 4 OAuth 도입 전까지 단일 테넌트를 환경변수로 고정
-    # 실제 사용은 후속 PR의 Depends(get_current_tenant)에서 처리
+    # Phase 4 OAuth 도입 전까지 단일 테넌트/워크스페이스를 환경변수로 고정.
+    # 실제 사용은 repositories/tenant_context.py 의 get_tenant_context() Depends 에서 처리.
     mvp_tenant_id: str = "00000000-0000-0000-0000-000000000001"
+    # P0-6 TenantContext 에서 사용. Sprint 0 의 단일 워크스페이스 sentinel 기본값.
+    mvp_workspace_id: str = "00000000-0000-0000-0000-000000000002"
+
+    # ── LLM ─────────────────────────────────────────────────────────────────
+    # None 이면 환경변수 ANTHROPIC_API_KEY 에서 읽음 (AnthropicStructuredLLMClient 기본 동작).
+    # extractor 가 LLM 호출 안 하면 None 도 OK. 실제 사용 시점에 None 이면 PermanentLLMError.
+    anthropic_api_key: str | None = None
+
+    # LLM 사용량 JSONL 백업 로그 경로 (PM-4 jsonl sink).
+    # DB sink 실패 시 이 파일이 안전망 역할.
+    llm_usage_log_path: Path = Path("var/llm_usage.jsonl")
 
     # ── 서버 ─────────────────────────────────────────────────────────────────
     debug: bool = False

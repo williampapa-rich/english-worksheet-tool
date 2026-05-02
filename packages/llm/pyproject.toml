@@ -3,4 +3,40 @@ name = "llm"
 version = "0.1.0"
 description = "Anthropic SDK 래퍼, 프롬프트 로딩, structured output 검증 패키지"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+  # Anthropic 공식 Python SDK.
+  # 대안 검토:
+  #   - 직접 HTTP 호출 (httpx): boilerplate 폭발, 스트리밍/재시도/헤더 관리 직접 구현 필요 → 기각
+  #   - litellm: 멀티 프로바이더 추상화 — 우리는 Anthropic 1종이라 불필요한 복잡도 → 기각
+  #   - instructor: structured output 특화 라이브러리 — Anthropic SDK tool_use 패턴으로 충분
+  #     (ADR-0001 §Alternatives §C, ADR-0003 §D-3.2 기각 기록)
+  # 채택 이유: Anthropic 공식 SDK, exam-generator 검증 패턴 흡수 (CLAUDE.md §3.6)
+  # 사용 범위: packages/llm/src/llm/client.py — AnthropicStructuredLLMClient
+  "anthropic>=0.40.0",
+
+  # YAML frontmatter 파싱 (docs/prompts/*.md).
+  # 대안 검토:
+  #   - tomllib (stdlib): TOML 포맷이라 markdown frontmatter 관습과 불일치 → 기각
+  #   - 직접 파싱 (split + json): YAML 의 다양한 타입 처리 직접 구현 필요 → 기각
+  # 채택 이유: YAML frontmatter 는 markdown 생태계 표준 (Jekyll, Hugo 등).
+  #   PyYAML 은 stdlib 수준으로 성숙한 라이브러리. 단순 yaml.safe_load() 만 사용.
+  # 사용 범위: packages/llm/src/llm/prompt.py — PromptSpec.load_frontmatter()
+  "pyyaml>=6.0",
+
+  # Pydantic v2 — structured output 검증 및 PromptSpec 모델
+  # (워크스페이스 루트 공유 의존성이지만 명시적으로 선언)
+  "pydantic>=2.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/llm"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+markers = [
+  "integration: 실제 Anthropic API 호출 필요 (ANTHROPIC_API_KEY 환경변수 필수, CI skip)",
+]

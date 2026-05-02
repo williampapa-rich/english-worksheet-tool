@@ -40,6 +40,7 @@ CLAUDE.md 섹션 7.7의 체크리스트를 모든 PR에 적용한다.
 - [ ] DB 쿼리에 `tenant_id` 필터 누락 없는가?
 - [ ] FastAPI 엔드포인트에 `current_tenant` 의존성 주입이 있는가?
 - [ ] 한 테넌트가 다른 테넌트 데이터를 볼 수 있는 경로가 있는가?
+- [ ] **sentinel UUID 누수**: extractor 등에서 placeholder 로 쓰는 `uuid.UUID(int=0)` 가 응답 / DB / 로그에 그대로 노출되지 않는가? (ADR-0003 D-3.6) Repository write 시점에 sentinel 검증 코드가 있는가?
 
 이건 critical. 발견 시 PM에게 직접 보고.
 

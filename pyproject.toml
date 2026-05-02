@@ -12,6 +12,7 @@ members = [
   "packages/extractor",
   "packages/llm",
   "packages/hwpx_renderer",
+  "packages/qa_validator",
   "shared",
 ]
 
@@ -73,4 +74,7 @@ exclude = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["apps/api/tests", "packages"]
+testpaths = ["apps/api/tests", "packages", "shared/schemas/tests"]
+markers = [
+  "integration: PostgreSQL Docker 가 필요한 통합 테스트 (deselect with '-m not integration')",
+]
