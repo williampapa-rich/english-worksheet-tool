@@ -255,7 +255,19 @@ dev = [
 [[package]]
 name = "extractor"
 version = "0.1.0"
-source = { virtual = "packages/extractor" }
+source = { editable = "packages/extractor" }
+dependencies = [
+    { name = "llm" },
+    { name = "pydantic" },
+    { name = "shared" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "llm", editable = "packages/llm" },
+    { name = "pydantic", specifier = ">=2.0.0" },
+    { name = "shared", editable = "shared" },
+]
 
 [[package]]
 name = "fastapi"
@@ -1043,7 +1055,7 @@ wheels = [
 [[package]]
 name = "shared"
 version = "0.1.0"
-source = { virtual = "shared" }
+source = { editable = "shared" }
 dependencies = [
     { name = "pydantic" },
 ]
