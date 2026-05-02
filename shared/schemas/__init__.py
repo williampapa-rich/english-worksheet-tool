@@ -40,6 +40,10 @@ from shared.schemas.extraction import (
     ExtractionRequest,
     ExtractionResult,
 )
+from shared.schemas.llm_usage import (
+    LlmUsageLog,
+    LlmUsageStatus,
+)
 from shared.schemas.passage import (
     Passage,
     SourceMeta,
@@ -85,6 +89,9 @@ __all__ = [
     "ExtractionMetaRef",
     "ExtractionRequest",
     "ExtractionResult",
+    # llm_usage
+    "LlmUsageLog",
+    "LlmUsageStatus",
     # passage
     "Passage",
     "SourceMeta",
