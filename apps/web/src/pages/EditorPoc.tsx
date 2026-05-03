@@ -137,7 +137,46 @@ export function EditorPoc() {
     if (!editor) return;
     const updateChips = () => {
       const doc = editor.getJSON();
-      setChips(buildChips(doc));
+      const initialChips = buildChips(doc);
+
+      // spanText 를 ProseMirror doc.textBetween 으로 재계산.
+      // buildChips 의 character offset slice 는 단일 단락 가정 (annotationSerializer
+      // pmPosToCharOffset = pmPos - 2) — 다중 단락 / 단어 경계 / mark range 끝 계산에서
+      // 마지막 글자가 누락되는 케이스 발생. ProseMirror mark range 직접 사용으로 회피.
+      const pmDoc = editor.state.doc;
+      const annotationIdToRange = new Map<string, { from: number; to: number }>();
+      pmDoc.descendants((node, pos) => {
+        if (!node.isText) return;
+        for (const mark of node.marks) {
+          const annId = (mark.attrs.annotationId as string | null | undefined) ?? null;
+          if (!annId) continue;
+          const start = pos;
+          const end = pos + node.nodeSize;
+          const existing = annotationIdToRange.get(annId);
+          if (!existing) {
+            annotationIdToRange.set(annId, { from: start, to: end });
+          } else {
+            // 같은 annotationId 의 split 조각 — 범위 확장
+            annotationIdToRange.set(annId, {
+              from: Math.min(existing.from, start),
+              to: Math.max(existing.to, end),
+            });
+          }
+        }
+      });
+
+      const refinedChips = initialChips.map((chip) => {
+        const range = annotationIdToRange.get(chip.annotationId);
+        if (!range) return chip;
+        const rawText = pmDoc.textBetween(range.from, range.to, "\n");
+        const truncated =
+          rawText.length <= 30
+            ? rawText
+            : `${rawText.slice(0, Math.ceil(29 / 2))}…${rawText.slice(rawText.length - Math.floor(29 / 2))}`;
+        return { ...chip, spanText: truncated };
+      });
+
+      setChips(refinedChips);
     };
     editor.on("update", updateChips);
     updateChips(); // 초기 실행
