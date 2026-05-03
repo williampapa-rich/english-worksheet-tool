@@ -130,10 +130,10 @@ _HEADER_XML = """\
         <hh:spacing hangul="0" latin="0" hanja="0" japanese="0" other="0" symbol="0" user="0"/>
         <hh:relSz hangul="100" latin="100" hanja="100" japanese="100" other="100" symbol="100" user="100"/>
         <hh:offset hangul="0" latin="0" hanja="0" japanese="0" other="0" symbol="0" user="0"/>
-        <hh:bold value="0"/>
-        <hh:italic value="0"/>
+        <hh:bold/>
+        <hh:italic/>
         <hh:underline type="NONE" shape="SOLID" color="#000000"/>
-        <hh:strikeout type="NONE" shape="SOLID" color="#000000"/>
+        <hh:strikeout shape="NONE" color="#000000"/>
         <hh:outline type="NONE"/>
         <hh:shadow type="NONE" color="#000000" offsetX="0" offsetY="0"/>
       </hh:charPr>
@@ -145,10 +145,10 @@ _HEADER_XML = """\
         <hh:spacing hangul="0" latin="0" hanja="0" japanese="0" other="0" symbol="0" user="0"/>
         <hh:relSz hangul="100" latin="100" hanja="100" japanese="100" other="100" symbol="100" user="100"/>
         <hh:offset hangul="0" latin="0" hanja="0" japanese="0" other="0" symbol="0" user="0"/>
-        <hh:bold value="0"/>
-        <hh:italic value="0"/>
+        <hh:bold/>
+        <hh:italic/>
         <hh:underline type="NONE" shape="SOLID" color="#000000"/>
-        <hh:strikeout type="NONE" shape="SOLID" color="#000000"/>
+        <hh:strikeout shape="NONE" color="#000000"/>
         <hh:outline type="NONE"/>
         <hh:shadow type="NONE" color="#000000" offsetX="0" offsetY="0"/>
       </hh:charPr>
@@ -160,10 +160,10 @@ _HEADER_XML = """\
         <hh:spacing hangul="0" latin="0" hanja="0" japanese="0" other="0" symbol="0" user="0"/>
         <hh:relSz hangul="100" latin="100" hanja="100" japanese="100" other="100" symbol="100" user="100"/>
         <hh:offset hangul="0" latin="0" hanja="0" japanese="0" other="0" symbol="0" user="0"/>
-        <hh:bold value="1"/>
-        <hh:italic value="0"/>
+        <hh:bold/>
+        <hh:italic/>
         <hh:underline type="NONE" shape="SOLID" color="#000000"/>
-        <hh:strikeout type="NONE" shape="SOLID" color="#000000"/>
+        <hh:strikeout shape="NONE" color="#000000"/>
         <hh:outline type="NONE"/>
         <hh:shadow type="NONE" color="#000000" offsetX="0" offsetY="0"/>
       </hh:charPr>
