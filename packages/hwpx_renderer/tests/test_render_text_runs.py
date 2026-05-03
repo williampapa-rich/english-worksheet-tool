@@ -380,3 +380,44 @@ def test_header_charpr_item_cnt_equals_charpr_count(header_xml: str) -> None:
 
     actual_count = len(re.findall(r"<hh:charPr ", header_xml))
     assert actual_count == item_cnt, f"itemCnt={item_cnt} 이지만 실제 charPr 요소 수={actual_count}"
+
+
+# ── 10. content.hpf opf:item id 확장자 금지 회귀 테스트 (P1-8a 2차 fix) ───────
+# 배경: _make_content_hpf 가 section 파일명("section0.xml")을 opf:item id 로 그대로 사용하면
+#       한컴 파서가 id 에 점(".")이 포함된 식별자를 거부해 파일 손상 팝업을 발생시킨다.
+#       poc_align.hwpx / template.hwpx 양쪽 모두 id="section0" (확장자 없음) 패턴을 사용한다.
+
+
+def test_content_hpf_section_item_id_has_no_extension(content_hpf: str) -> None:
+    """content.hpf 의 opf:item id 에 파일 확장자(".xml")가 포함되면 안 된다.
+
+    한컴 파서는 id 속성에 "."이 포함된 식별자를 파싱 에러로 처리해
+    "파일이 손상되었습니다" 팝업을 띄운다.
+    올바른 패턴: id="section0" href="Contents/section0.xml"
+    잘못된 패턴: id="section0.xml" href="Contents/section0.xml"
+    """
+    # opf:item id 목록 추출 (header / section / settings 모두 포함)
+    item_ids = re.findall(r'<opf:item\s+id="([^"]+)"', content_hpf)
+    assert item_ids, "content.hpf 에서 opf:item 요소를 찾을 수 없음"
+
+    for item_id in item_ids:
+        assert "." not in item_id, (
+            f"opf:item id='{item_id}' 에 확장자가 포함되어 있음 — "
+            "한컴 파서 파일 손상 팝업 유발. _make_content_hpf 의 _stem() 함수 확인 필요."
+        )
+
+
+def test_content_hpf_section_itemref_idref_matches_item_id(content_hpf: str) -> None:
+    """opf:spine 의 itemref idref 가 manifest 의 item id 와 정확히 일치해야 한다.
+
+    id/idref 불일치는 한컴 파서가 섹션 파일을 찾지 못해 손상 거부를 유발한다.
+    """
+    item_ids = set(re.findall(r'<opf:item\s+id="([^"]+)"', content_hpf))
+    item_refs = re.findall(r'<opf:itemref\s+idref="([^"]+)"', content_hpf)
+
+    assert item_refs, "content.hpf 에서 opf:itemref 요소를 찾을 수 없음"
+
+    for idref in item_refs:
+        assert idref in item_ids, (
+            f"opf:itemref idref='{idref}' 에 대응하는 opf:item id 가 manifest 에 없음"
+        )

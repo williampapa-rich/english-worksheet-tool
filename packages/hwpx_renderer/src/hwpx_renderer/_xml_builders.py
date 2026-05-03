@@ -301,12 +301,26 @@ _SECTION_RDF_ENTRY = (
 
 
 def _make_content_hpf(section_names: list[str], title: str = "document") -> str:
-    """content.hpf (opf:package) XML 생성."""
+    """content.hpf (opf:package) XML 생성.
+
+    opf:item id 는 파일명에서 확장자를 제거한 식별자를 사용한다.
+    예: "section0.xml" → id="section0".
+    한컴 파서는 id 에 확장자(".")가 포함되면 파일 손상 팝업을 띄운다.
+    (poc_align fixture 및 template.hwpx 모두 id="section0" 패턴 사용 — P1-8a 2차 fix)
+    """
+
+    def _stem(filename: str) -> str:
+        """파일명에서 확장자를 제거한 stem 반환. 예: 'section0.xml' → 'section0'."""
+        dot = filename.rfind(".")
+        return filename[:dot] if dot > 0 else filename
+
     section_items = "".join(
-        f'<opf:item id="{name}" href="Contents/{name}" media-type="application/xml"/>'
+        f'<opf:item id="{_stem(name)}" href="Contents/{name}" media-type="application/xml"/>'
         for name in section_names
     )
-    section_refs = "".join(f'<opf:itemref idref="{name}" linear="yes"/>' for name in section_names)
+    section_refs = "".join(
+        f'<opf:itemref idref="{_stem(name)}" linear="yes"/>' for name in section_names
+    )
     return (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         "<opf:package"
