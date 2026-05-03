@@ -90,7 +90,10 @@
 [data-annotation-kind="top_label"] {
   position: relative;
   display: inline-block;
-  margin-top: calc(0.84em - 0.9px); /* 위 라벨 공간 — 60% 축소 (PM 폴리싱 2차) */
+  /* line-height 1 + padding-top 으로 border 가 텍스트 바로 위에 붙도록 보정 (PM 폴리싱 3차) */
+  line-height: 1;
+  padding-top: 1px;
+  margin-top: calc(0.84em - 0.9px); /* 위 라벨 공간 — 60% 축소 */
   border-top: 2px solid var(--current-anno-color, var(--anno-color-0));
   --current-anno-color: var(--anno-color-0);
   /* outer underline 마크가 있을 때 inline-block 안의 텍스트에도 underline 전파 */
@@ -100,9 +103,8 @@
 [data-annotation-kind="top_label"]::before {
   content: attr(data-top-label-text);
   position: absolute;
-  top: calc(-0.78em - 0.3px); /* 라벨 — 60% 축소 (PM 폴리싱 2차) */
-  left: 50%;
-  transform: translateX(-50%);
+  top: calc(-0.78em - 0.3px); /* 라벨 — 60% 축소 */
+  left: 0; /* 구/절 = 좌측 정렬 (PM) */
   font-size: 0.65em;
   font-weight: 600;
   color: #1e3a5f;
@@ -167,7 +169,10 @@
 [data-annotation-kind="bottom_label"] {
   position: relative;
   display: inline-block;
-  margin-bottom: calc(0.84em - 0.9px); /* 아래 라벨 공간 — 60% 축소 (PM 폴리싱 2차) */
+  /* line-height 1 + padding-bottom 으로 border 가 텍스트 바로 아래에 붙도록 보정 (PM 폴리싱 3차) */
+  line-height: 1;
+  padding-bottom: 1px;
+  margin-bottom: calc(0.84em - 0.9px); /* 아래 라벨 공간 — 60% 축소 */
   border-bottom: 2px solid var(--current-anno-color, var(--anno-color-0));
   --current-anno-color: var(--anno-color-0);
   /* outer underline 마크가 있을 때 inline-block 안의 텍스트에도 underline 전파 */

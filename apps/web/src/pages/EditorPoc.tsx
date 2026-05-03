@@ -300,24 +300,6 @@ export function EditorPoc() {
       );
       if (!text) return;
 
-      // 구/절 입력 시 괄호 선택 — 라벨 감싸기 (drafts 단계는 prompt, 정식 모달은 후속)
-      let finalText = text;
-      if (entry.markKind === "top_label") {
-        const bracketChoice = prompt(
-          "괄호 모양 선택 — 숫자 입력:\n0: 없음\n1: []\n2: {}\n3: ()\n4: ⌜⌟\n5: <>",
-          "0"
-        );
-        const wraps: Record<string, [string, string]> = {
-          "1": ["[", "]"],
-          "2": ["{", "}"],
-          "3": ["(", ")"],
-          "4": ["⌜", "⌟"],
-          "5": ["<", ">"],
-        };
-        const wrap = bracketChoice ? wraps[bracketChoice] : undefined;
-        if (wrap) finalText = `${wrap[0]}${text}${wrap[1]}`;
-      }
-
       const annotationId = crypto.randomUUID();
 
       if (entry.markKind === "bottom_label") {
@@ -325,24 +307,46 @@ export function EditorPoc() {
           .chain()
           .focus()
           .setBottomLabel({
-            text: finalText,
+            text,
             colorIndex: selectedColorIndex,
             category: entry.category,
             annotationId,
           })
           .run();
-      } else {
-        editor
-          .chain()
-          .focus()
-          .setTopLabel({
-            text: finalText,
-            colorIndex: selectedColorIndex,
-            category: entry.category,
-            annotationId,
-          })
-          .run();
+        return;
       }
+
+      // top_label (구/절) — 괄호 옵션은 본문 annotation 자체를 감싸는 별 bracket mark
+      const bracketChoice = prompt(
+        "괄호 모양 선택 — 숫자 입력 (본문 annotation 을 감쌈):\n0: 없음\n1: []\n2: {}\n3: ()\n4: ⌜⌟\n5: <>",
+        "0"
+      );
+      const bracketStyleMap: Record<string, "[]" | "{}" | "()"> = {
+        "1": "[]",
+        "2": "{}",
+        "3": "()",
+      };
+      // bracket mark spec 은 () / {} / [] 3종만 — ⌜⌟ / <> 는 PR #16 schema 변경 필요해 드래프트 보류
+      const bracketStyle = bracketChoice ? bracketStyleMap[bracketChoice] : undefined;
+
+      let chain = editor.chain().focus().setTopLabel({
+        text,
+        colorIndex: selectedColorIndex,
+        category: entry.category,
+        annotationId,
+      });
+
+      // 괄호 옵션 선택 시 bracket mark 도 같은 span 에 별 annotation 으로 동시 적용
+      // 단 ⌜⌟ / <> 는 schema 미지원이라 본 PR 에서 보류 (top_label 만 적용)
+      if (bracketStyle) {
+        chain = chain.setBracket({
+          bracketStyle,
+          colorIndex: selectedColorIndex,
+          category: entry.category,
+          annotationId: crypto.randomUUID(),
+        });
+      }
+      chain.run();
     },
     [editor, selectedColorIndex]
   );
