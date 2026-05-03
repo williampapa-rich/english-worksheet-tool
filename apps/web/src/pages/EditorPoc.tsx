@@ -12,7 +12,8 @@ import {
 } from "@english-worksheet-tool/editor";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { HexColorPicker } from "react-colorful";
 import { Link } from "react-router-dom";
 import {
   AnalysisTable,
@@ -157,7 +158,11 @@ function buildChips(
 // ---------------------------------------------------------------------------
 
 export function EditorPoc() {
-  const [selectedColorIndex, setSelectedColorIndex] = useState<number>(1);
+  const [selectedColorIndex, setSelectedColorIndex] = useState<number | null>(1);
+  const [customColor, setCustomColor] = useState<string | null>(null);
+  const [showColorWheel, setShowColorWheel] = useState(false);
+  const [pickerDraftHex, setPickerDraftHex] = useState("#ffffff");
+  const colorWheelRef = useRef<HTMLDivElement>(null);
   const [serializedJson, setSerializedJson] = useState<string | null>(null);
   const [chips, setChips] = useState<AnnotationChip[]>([]);
 
@@ -178,6 +183,18 @@ export function EditorPoc() {
     },
   });
 
+  // 색상 휠 팝오버 outside click 감지
+  useEffect(() => {
+    if (!showColorWheel) return;
+    function handleOutside(e: MouseEvent) {
+      if (colorWheelRef.current && !colorWheelRef.current.contains(e.target as Node)) {
+        setShowColorWheel(false);
+      }
+    }
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [showColorWheel]);
+
   // doc 변경 감지 → chips 갱신
   useEffect(() => {
     if (!editor) return;
@@ -196,10 +213,21 @@ export function EditorPoc() {
   // 핸들러 — annotation 적용 (annotationId 주입)
   // ---------------------------------------------------------------------------
 
+  /** 현재 활성 색 hex 반환 — customColor 우선, 없으면 palette */
+  function resolveHighlightHex(): string {
+    if (customColor !== null) return customColor;
+    const palette = COLOR_PALETTE.find((c) => c.index === selectedColorIndex);
+    return palette?.hex ?? "#fef08a";
+  }
+
+  /** colorIndex 정수 반환 — customColor 모드(palette 선택 해제)면 1로 fallback */
+  function resolveColorIndex(): number {
+    return selectedColorIndex ?? 1;
+  }
+
   const handleHighlight = () => {
     if (!editor) return;
-    const palette = COLOR_PALETTE.find((c) => c.index === selectedColorIndex);
-    const color = palette?.hex ?? "#fef08a";
+    const color = resolveHighlightHex();
     const annotationId = crypto.randomUUID();
     // 툴바 5종 → category: "note" 자동 주입
     editor.chain().focus().setMark("highlight", { color, annotationId, category: "note" }).run();
@@ -221,7 +249,7 @@ export function EditorPoc() {
       .focus()
       .setBracket({
         bracketStyle: style as "()" | "{}" | "[]",
-        colorIndex: selectedColorIndex,
+        colorIndex: resolveColorIndex(),
         category: "note",
         annotationId,
       })
@@ -245,7 +273,7 @@ export function EditorPoc() {
       .setArrow({
         arrowTargetStart: targetStart,
         arrowTargetEnd: targetEnd,
-        colorIndex: selectedColorIndex,
+        colorIndex: resolveColorIndex(),
         category: "note",
         annotationId,
       })
@@ -262,7 +290,7 @@ export function EditorPoc() {
       .focus()
       .setInlineNote({
         text,
-        colorIndex: selectedColorIndex,
+        colorIndex: resolveColorIndex(),
         category: "note",
         annotationId,
       })
@@ -320,6 +348,8 @@ export function EditorPoc() {
       const entry = modalState.entry;
       const annotationId = crypto.randomUUID();
 
+      const colorIdx = selectedColorIndex ?? 1;
+
       if (entry.markKind === "bottom_label") {
         editor
           .chain()
@@ -327,7 +357,7 @@ export function EditorPoc() {
           .setTextSelection({ from, to })
           .setBottomLabel({
             text: params.text,
-            colorIndex: selectedColorIndex,
+            colorIndex: colorIdx,
             category: entry.category,
             annotationId,
           })
@@ -336,7 +366,7 @@ export function EditorPoc() {
         // top_label (구/절)
         let chain = editor.chain().focus().setTextSelection({ from, to }).setTopLabel({
           text: params.text,
-          colorIndex: selectedColorIndex,
+          colorIndex: colorIdx,
           category: entry.category,
           annotationId,
         });
@@ -345,7 +375,7 @@ export function EditorPoc() {
         if (params.bracketStyle) {
           chain = chain.setBracket({
             bracketStyle: params.bracketStyle,
-            colorIndex: selectedColorIndex,
+            colorIndex: colorIdx,
             category: entry.category,
             annotationId: crypto.randomUUID(),
           });
@@ -493,29 +523,87 @@ export function EditorPoc() {
                 </div>
               </div>
 
-              {/* 툴바 그룹 2: color_index picker (12색 swatch) */}
+              {/* 툴바 그룹 2: color_index picker (12색 swatch + 무지개 휠) */}
               <div className="px-4 py-2 border-b border-gray-100 bg-gray-50 flex items-center gap-3">
                 <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">
                   색상
                 </span>
-                <div className="flex flex-wrap gap-1">
+                <div className="flex flex-wrap gap-1 items-center">
                   {COLOR_PALETTE.map((c) => (
                     <button
                       key={c.index}
                       type="button"
                       title={`색 ${c.index} (${c.label})`}
-                      onClick={() => setSelectedColorIndex(c.index)}
+                      onClick={() => {
+                        setSelectedColorIndex(c.index);
+                        setCustomColor(null);
+                        setShowColorWheel(false);
+                      }}
                       className={[
                         "w-5 h-5 rounded-full border-2 transition-transform",
-                        selectedColorIndex === c.index
+                        selectedColorIndex === c.index && customColor === null
                           ? "border-gray-700 scale-125"
                           : "border-transparent hover:scale-110",
                       ].join(" ")}
                       style={{ backgroundColor: c.hex }}
                     />
                   ))}
+
+                  {/* 무지개 색상 휠 버튼 */}
+                  <div className="relative" ref={colorWheelRef}>
+                    <button
+                      type="button"
+                      title="자유 색상 (highlight only)"
+                      onClick={() => {
+                        setShowColorWheel((v) => !v);
+                        if (!showColorWheel) {
+                          setPickerDraftHex(customColor ?? "#ffffff");
+                        }
+                      }}
+                      className={[
+                        "w-5 h-5 rounded-full border-2 transition-transform overflow-hidden",
+                        customColor !== null
+                          ? "border-gray-700 scale-125"
+                          : "border-transparent hover:scale-110",
+                      ].join(" ")}
+                      style={{
+                        background: "conic-gradient(red, yellow, lime, cyan, blue, magenta, red)",
+                      }}
+                      aria-label="자유 색상 휠 열기"
+                    />
+                    {showColorWheel && (
+                      <div
+                        className="absolute top-7 left-0 z-50 bg-white rounded-xl shadow-xl border border-gray-200 p-3 flex flex-col gap-2"
+                        style={{ minWidth: 200 }}
+                      >
+                        <HexColorPicker color={pickerDraftHex} onChange={setPickerDraftHex} />
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-xs text-gray-500 font-mono flex-1">
+                            {pickerDraftHex}
+                          </span>
+                          <button
+                            type="button"
+                            className="px-2 py-1 text-xs font-semibold bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+                            onClick={() => {
+                              setCustomColor(pickerDraftHex);
+                              setSelectedColorIndex(null);
+                              setShowColorWheel(false);
+                            }}
+                          >
+                            적용
+                          </button>
+                        </div>
+                        <p className="text-xs text-gray-400 leading-snug">
+                          * 자유 색상은 형광펜(highlight)에만 적용됩니다. 다른 annotation 은 기본
+                          팔레트로 대체됩니다.
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <span className="text-xs text-gray-400">선택: #{selectedColorIndex}</span>
+                <span className="text-xs text-gray-400">
+                  {customColor !== null ? `자유: ${customColor}` : `선택: #${selectedColorIndex}`}
+                </span>
               </div>
 
               {/* 툴바 제어: 직렬화 / 초기화 */}
