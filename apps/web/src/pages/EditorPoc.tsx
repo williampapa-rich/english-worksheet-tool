@@ -297,13 +297,7 @@ export function EditorPoc() {
       .run();
   };
 
-  // ---------------------------------------------------------------------------
-  // 핸들러 — unset (선택 영역 mark 해제)
-  // ---------------------------------------------------------------------------
-
-  const handleUnsetBracket = () => editor?.chain().focus().unsetBracket().run();
-  const handleUnsetArrow = () => editor?.chain().focus().unsetArrow().run();
-  const handleUnsetInlineNote = () => editor?.chain().focus().unsetInlineNote().run();
+  // 삭제는 분석표 칩 x 로만 (PM 결정) — 툴바 unset 핸들러 제거됨.
 
   // ---------------------------------------------------------------------------
   // 핸들러 — 분석표 진입 버튼 (성분/구/절)
@@ -504,21 +498,18 @@ export function EditorPoc() {
                     active={isBracketActive}
                     disabled={!editor}
                     onClick={handleBracket}
-                    onUnset={handleUnsetBracket}
                   />
                   <AnnotationButton
                     label="화살표"
                     active={isArrowActive}
                     disabled={!editor}
                     onClick={handleArrow}
-                    onUnset={handleUnsetArrow}
                   />
                   <AnnotationButton
                     label="노트"
                     active={isInlineNoteActive}
                     disabled={!editor}
                     onClick={handleInlineNote}
-                    onUnset={handleUnsetInlineNote}
                   />
                 </div>
               </div>
@@ -688,10 +679,10 @@ interface AnnotationButtonProps {
   active: boolean;
   disabled: boolean;
   onClick: () => void;
-  onUnset?: () => void;
 }
 
-function AnnotationButton({ label, active, disabled, onClick, onUnset }: AnnotationButtonProps) {
+function AnnotationButton({ label, active, disabled, onClick }: AnnotationButtonProps) {
+  // 삭제는 분석표 칩 x 로만 — 툴바 버튼은 추가 전용 (PM 결정).
   return (
     <span className="inline-flex rounded-lg overflow-hidden border border-gray-200">
       <button
@@ -705,17 +696,6 @@ function AnnotationButton({ label, active, disabled, onClick, onUnset }: Annotat
       >
         {label}
       </button>
-      {onUnset && (
-        <button
-          type="button"
-          onClick={onUnset}
-          disabled={disabled}
-          title={`${label} 해제`}
-          className="px-1.5 py-1 text-xs text-gray-400 bg-white hover:bg-red-50 hover:text-red-500 border-l border-gray-200 transition-colors disabled:opacity-50"
-        >
-          ×
-        </button>
-      )}
     </span>
   );
 }

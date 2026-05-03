@@ -189,7 +189,8 @@ export function LabelEntryModal({ open, entryKind, onSubmit, onClose }: LabelEnt
       onKeyDown={handleOverlayKeyDown}
       role="presentation"
     >
-      <dialog className="modal-box" open aria-labelledby="modal-title">
+      {/* biome-ignore lint/a11y/useSemanticElements: <dialog> 가 정중앙 정렬을 강제로 깨서 div 사용 (PM 정중앙 요구) */}
+      <div className="modal-box" role="dialog" aria-modal="true" aria-labelledby="modal-title">
         <p id="modal-title" className="modal-title">
           {TITLES[entryKind]}
         </p>
@@ -264,7 +265,7 @@ export function LabelEntryModal({ open, entryKind, onSubmit, onClose }: LabelEnt
             확인
           </button>
         </div>
-      </dialog>
+      </div>
     </div>
   );
 }
