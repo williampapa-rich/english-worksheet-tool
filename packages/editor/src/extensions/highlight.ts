@@ -10,13 +10,30 @@
  *
  * multicolor: true 로 설정해야 나중에 색상별로 의미 구분(주어 = 노랑, 동사 = 초록 등)이 가능.
  *
+ * P1-2b: annotationId attr 추가 — Highlight.extend() 로 기존 attrs 에 annotationId 추가.
+ *
  * NOTE: AnnotationKind.HIGHLIGHT 의 TypeScript 미러 값 = "highlight"
  * (shared/schemas/annotation.py AnnotationKind.HIGHLIGHT = "highlight")
  * Python schema 변경 시 ANNOTATION_KIND 상수 파일도 동기화 필요.
  */
 import Highlight from "@tiptap/extension-highlight";
 
-export const HighlightMark = Highlight.configure({
+export const HighlightMark = Highlight.extend({
+  addAttributes() {
+    return {
+      // 기존 Highlight attrs (color) 상속
+      ...this.parent?.(),
+      annotationId: {
+        default: null,
+        parseHTML: (element: Element) => element.getAttribute("data-annotation-id") ?? null,
+        renderHTML: (attributes: Record<string, unknown>) => {
+          if (!attributes.annotationId) return {};
+          return { "data-annotation-id": attributes.annotationId as string };
+        },
+      },
+    };
+  },
+}).configure({
   multicolor: true,
 });
 

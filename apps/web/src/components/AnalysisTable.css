@@ -1,0 +1,121 @@
+/*
+ * AnalysisTable.css — 분석표 + 칩 스타일 (P1-2b)
+ *
+ * --anno-color-N 변수는 EditorPoc.css :root 에서 정의됨.
+ * 이 파일은 AnalysisTable 컴포넌트 전용 스타일만 담는다.
+ */
+
+/* ---------------------------------------------------------------------------
+ * 분석표 외곽
+ * --------------------------------------------------------------------------- */
+.analysis-table {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.analysis-table--empty {
+  padding: 16px;
+  text-align: center;
+}
+
+.analysis-table__empty-msg {
+  font-size: 0.8rem;
+  color: #9ca3af;
+}
+
+.analysis-table__header {
+  padding: 8px 16px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  background: #f9fafb;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+/* ---------------------------------------------------------------------------
+ * 행
+ * --------------------------------------------------------------------------- */
+.analysis-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.analysis-row:last-child {
+  border-bottom: none;
+}
+
+.analysis-row__label {
+  min-width: 88px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #6b7280;
+  padding-top: 3px;
+  white-space: nowrap;
+}
+
+.analysis-row__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* ---------------------------------------------------------------------------
+ * 칩
+ * --------------------------------------------------------------------------- */
+.anno-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px 2px 4px;
+  border-radius: 999px;
+  border: 1.5px solid #d1d5db;
+  background: #f3f4f6;
+  font-size: 0.75rem;
+  color: #374151;
+  max-width: 260px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* colorIndex 가 있으면 배경/테두리를 변수로 덮어쓴다 (인라인 style 로 주입) */
+
+.anno-chip__kind {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #1e3a5f;
+  background: rgba(0, 0, 0, 0.08);
+  border-radius: 999px;
+  padding: 0 5px;
+  line-height: 1.6;
+  flex-shrink: 0;
+}
+
+.anno-chip__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+
+.anno-chip__remove {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.6rem;
+  color: #9ca3af;
+  padding: 0 0 0 2px;
+  line-height: 1;
+  transition: color 0.15s;
+}
+
+.anno-chip__remove:hover {
+  color: #ef4444;
+}

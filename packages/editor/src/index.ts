@@ -40,3 +40,7 @@ export type {
   MarkAttrs,
   AnnotationSpanV1,
 } from "./serialization/annotationSerializer";
+
+// Utils (P1-2b)
+export { collectMarkRangesByAnnotationId } from "./utils/markRanges";
+export type { MarkRange } from "./utils/markRanges";

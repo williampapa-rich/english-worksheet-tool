@@ -26,6 +26,7 @@ declare module "@tiptap/core" {
         text: string;
         colorIndex?: number;
         category?: string | null;
+        annotationId?: string | null;
       }) => ReturnType;
       /**
        * 선택 범위의 인라인 노트를 해제한다.
@@ -74,6 +75,14 @@ export const InlineNoteMark = Mark.create<InlineNoteOptions>({
         renderHTML: (attributes) => {
           if (!attributes.category) return {};
           return { "data-category": attributes.category as string };
+        },
+      },
+      annotationId: {
+        default: null,
+        parseHTML: (element) => element.getAttribute("data-annotation-id") ?? null,
+        renderHTML: (attributes) => {
+          if (!attributes.annotationId) return {};
+          return { "data-annotation-id": attributes.annotationId as string };
         },
       },
     };
