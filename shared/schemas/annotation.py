@@ -17,6 +17,15 @@
     (ADR-0004 §"후속 작업" 참조).
   - ``kind == arrow ↔ arrow_target_span is not None`` model validator 강제.
 
+**v0.3 변경 (P1-annotation-input-dto)**:
+  - ``SyntaxAnnotationInput`` API 입력 DTO 추가 (architect 검토 요청 — 필드 변경 최소화).
+    클라이언트가 모를 수 없는 서버-side 컨텍스트 필드 (``tenant_id``,
+    ``workspace_id``, ``passage_id``) 를 required 에서 제거. 라우터가 path param +
+    TenantContext 로 주입.
+  - ``SyntaxAnnotation`` 에 ``annotation_id: UUID | None`` 추가 (ADR-Lite — 옵션 A
+    영속화 채택). 에디터 chip 단위 그룹 ID 를 DB 에 보존해 라운드트립 강건성을 확보.
+    이 필드는 PK ``id`` (DB 부여 UUID) 와 별개로 에디터가 관리하는 논리 식별자.
+
 **Annotation 통합 vs 마커 분리** (ADR-0006):
   - 출제용 마커 (``marker_circled`` / ``marker_blank`` 등) 는 ADR-0006 결정에 따라 본
     ``SyntaxAnnotation`` 모델 외부 (Question.markers 또는 Passage 메타) 에서 다룬다.
@@ -27,6 +36,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 from typing import Annotated, Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Discriminator, Field, model_validator
 
@@ -138,6 +148,9 @@ class SyntaxAnnotation(WorkspaceScopedEntity):
       - ``span`` = 본문 내 위치 (모든 kind 의 출발점 — arrow 의 출발점 포함).
       - ``arrow_target_span`` = 화살표 도착점 span (kind == arrow 일 때만).
         모델 invariant: ``kind == arrow ↔ arrow_target_span is not None`` (validator 강제).
+      - ``annotation_id`` = 에디터 chip 단위 논리 ID (v0.3 추가). 에디터가 부여하는
+        그룹 식별자로, DB PK ``id`` 와 별개. 라운드트립 시 에디터 상태 복원에 사용.
+        nullable — 에디터가 미지정하거나 구형 클라이언트 호환 시 None 가능.
     """
 
     passage_id: EntityId = Field(
@@ -189,6 +202,16 @@ class SyntaxAnnotation(WorkspaceScopedEntity):
         ),
     )
 
+    annotation_id: UUID | None = Field(
+        default=None,
+        description=(
+            "에디터 chip 단위 논리 식별자 (v0.3, P1-annotation-input-dto). "
+            "DB PK ``id`` 와 별개 — 에디터(Tiptap)가 chip 그룹에 부여하는 UUID. "
+            "같은 chip 의 여러 mark 가 동일 annotation_id 를 공유. "
+            "nullable — 구형 클라이언트 또는 에디터가 미지정 시 None."
+        ),
+    )
+
     @model_validator(mode="after")
     def _check_arrow_target(self) -> SyntaxAnnotation:
         if self.kind == AnnotationKind.ARROW and self.arrow_target_span is None:
@@ -196,6 +219,77 @@ class SyntaxAnnotation(WorkspaceScopedEntity):
         if self.kind != AnnotationKind.ARROW and self.arrow_target_span is not None:
             raise ValueError(
                 f"SyntaxAnnotation: arrow_target_span is only valid when "
+                f"kind == 'arrow' (got kind == {self.kind.value!r})."
+            )
+        return self
+
+
+class SyntaxAnnotationInput(BaseModel):
+    """POST /passages/{passage_id}/annotations 의 개별 annotation 입력 DTO.
+
+    **architect 검토 요청**: 본 모델은 ``SyntaxAnnotation`` 도메인 모델의 sibling 으로
+    ``shared/schemas/annotation.py`` 에 위치한다. 의존성 방향 (shared → apps) 위반 없음.
+    도메인 모델에 비해 서버-side 컨텍스트 필드가 제거 또는 optional 화된 API 전용 입력 뷰.
+
+    **P1-annotation-input-dto ADR-Lite**:
+      ``tenant_id`` / ``workspace_id`` / ``passage_id`` 를 클라이언트 입력에서 제거:
+        - ``tenant_id``, ``workspace_id``: TenantContext (서버 의존성 주입) 으로 결정.
+          클라이언트가 이 값을 알 방법이 없고, 알더라도 신뢰할 수 없다.
+        - ``passage_id``: URL path param 으로 전달됨 — body 중복은 불필요.
+      ``annotation_id``: 에디터 chip ID 영속화 (옵션 A 채택) — 클라이언트가 보내면 저장.
+      ``id``, ``created_at``, ``updated_at``: 서버 생성 값 — 입력 불필요.
+
+    라우터는 본 DTO 를 수신 후 ``tenant_id`` / ``workspace_id`` / ``passage_id`` 를 주입해
+    ``SyntaxAnnotation`` 도메인 모델로 변환한다.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: AnnotationKind = Field(
+        ...,
+        description="Annotation 시각 종류 (영상 레퍼런스 §2 의 7종).",
+    )
+    category: AnnotationCategory | None = Field(
+        default=None,
+        description="하단 분석표 행 분류. Optional.",
+    )
+    span: AnnotationSpan = Field(
+        ...,
+        description="본문 내 위치. arrow kind 일 땐 출발점.",
+    )
+    color_index: int | None = Field(
+        default=None,
+        ge=1,
+        le=12,
+        description="12색 팔레트 인덱스 (1~12).",
+    )
+    text: str | None = Field(
+        default=None,
+        description="표시 텍스트 (top_label / bottom_label / inline_note).",
+    )
+    bracket_style: Literal["()", "{}", "[]"] | None = Field(
+        default=None,
+        description="괄호 모양 (kind == bracket 일 때).",
+    )
+    arrow_target_span: AnnotationSpan | None = Field(
+        default=None,
+        description="화살표 도착점 span (kind == arrow 일 때 필수).",
+    )
+    annotation_id: UUID | None = Field(
+        default=None,
+        description=(
+            "에디터 chip 단위 논리 식별자. DB PK 와 별개. "
+            "같은 chip 의 여러 mark 가 동일 annotation_id 를 공유."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _check_arrow_target(self) -> SyntaxAnnotationInput:
+        if self.kind == AnnotationKind.ARROW and self.arrow_target_span is None:
+            raise ValueError("SyntaxAnnotationInput: kind == 'arrow' requires arrow_target_span.")
+        if self.kind != AnnotationKind.ARROW and self.arrow_target_span is not None:
+            raise ValueError(
+                f"SyntaxAnnotationInput: arrow_target_span is only valid when "
                 f"kind == 'arrow' (got kind == {self.kind.value!r})."
             )
         return self

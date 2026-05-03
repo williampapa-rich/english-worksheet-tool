@@ -27,13 +27,16 @@ class TestMigrationFileStructure:
         return Path(__file__).parent.parent / "alembic" / "versions"
 
     def test_migration_files_exist(self) -> None:
-        """Sprint 0 + P0-1 + P1-3 마이그레이션 파일이 존재한다."""
+        """Sprint 0 + P0-1 + P1-3 + P1-annotation-input-dto 마이그레이션 파일이 존재한다."""
         versions = self._get_versions_dir()
         files = list(versions.glob("*.py"))
         names = [f.name for f in files]
         assert any("a1b2c3d4e5f6" in n for n in names), "Sprint 0 마이그레이션 (a1b2c3d4e5f6) 누락"
         assert any("b3c4d5e6f7a8" in n for n in names), "P0-1 마이그레이션 (b3c4d5e6f7a8) 누락"
         assert any("c5d6e7f8a9b0" in n for n in names), "P1-3 마이그레이션 (c5d6e7f8a9b0) 누락"
+        assert any("d6e7f8a9b0c1" in n for n in names), (
+            "P1-annotation-input-dto 마이그레이션 (d6e7f8a9b0c1) 누락"
+        )
 
     def test_p1_3_migration_chain(self) -> None:
         """P1-3 마이그레이션의 down_revision 이 P0-1 을 가리킨다."""
@@ -53,6 +56,25 @@ class TestMigrationFileStructure:
         assert hasattr(module, "downgrade")
         assert module.revision == "c5d6e7f8a9b0"
         assert module.down_revision == "b3c4d5e6f7a8"
+
+    def test_annotation_id_migration_chain(self) -> None:
+        """P1-annotation-input-dto 마이그레이션의 down_revision 이 P1-3 을 가리킨다."""
+        import importlib.util
+
+        versions = self._get_versions_dir()
+        files = list(versions.glob("*d6e7f8a9b0c1*"))
+        assert files, "P1-annotation-input-dto 마이그레이션 파일을 찾을 수 없다"
+
+        spec = importlib.util.spec_from_file_location("migration_annotation_id", files[0])
+        assert spec is not None
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)  # type: ignore[attr-defined]
+
+        assert hasattr(module, "upgrade")
+        assert hasattr(module, "downgrade")
+        assert module.revision == "d6e7f8a9b0c1"
+        assert module.down_revision == "c5d6e7f8a9b0"
 
     def test_p0_1_down_revision(self) -> None:
         """P0-1 마이그레이션의 down_revision 이 Sprint 0 revision 을 가리킨다."""

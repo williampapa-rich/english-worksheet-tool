@@ -58,6 +58,7 @@ def _make_annotation(
     kind: AnnotationKind = AnnotationKind.HIGHLIGHT,
     start: int = 0,
     end: int = 5,
+    annotation_id: uuid.UUID | None = None,
 ) -> SyntaxAnnotation:
     """테스트용 SyntaxAnnotation 생성 헬퍼."""
     return SyntaxAnnotation(
@@ -67,6 +68,7 @@ def _make_annotation(
         kind=kind,
         span=_make_span(start=start, end=end),
         color_index=1,
+        annotation_id=annotation_id,
     )
 
 
@@ -319,3 +321,48 @@ class TestSyntaxAnnotationRepositoryIntegration:
         assert ann.arrow_target_span is not None
         assert ann.arrow_target_span.start == 10
         assert ann.arrow_target_span.end == 15
+
+    @pytest.mark.asyncio
+    async def test_annotation_id_roundtrip(self, pg_session) -> None:
+        """annotation_id (에디터 chip ID) 가 DB 에 저장되고 그대로 복원된다 (옵션 A).
+
+        P1-annotation-input-dto: annotation_id 영속화 검증.
+        저장 → list_by_passage → 동일 annotation_id 확인.
+        """
+        from worksheet_api.repositories.passage import PassageRepository
+
+        chip_id = uuid.UUID("cccccccc-cccc-cccc-cccc-cccccccccccc")
+
+        passage_repo = PassageRepository(pg_session, _ctx_a())
+        passage = await passage_repo.create(_make_passage())
+
+        annotation_repo = SyntaxAnnotationRepository(pg_session, _ctx_a())
+        ann_with_chip = _make_annotation(passage_id=passage.id, annotation_id=chip_id)
+        ann_without_chip = _make_annotation(passage_id=passage.id, start=10, end=15)
+
+        saved = await annotation_repo.replace_all(passage.id, [ann_with_chip, ann_without_chip])
+
+        assert len(saved) == 2
+
+        listed = await annotation_repo.list_by_passage(passage.id)
+        assert len(listed) == 2
+
+        chip_ids = {ann.annotation_id for ann in listed}
+        assert chip_id in chip_ids
+        assert None in chip_ids  # annotation_id 없는 annotation 은 None 보존
+
+    @pytest.mark.asyncio
+    async def test_annotation_id_none_roundtrip(self, pg_session) -> None:
+        """annotation_id=None 으로 저장하면 복원 시에도 None."""
+        from worksheet_api.repositories.passage import PassageRepository
+
+        passage_repo = PassageRepository(pg_session, _ctx_a())
+        passage = await passage_repo.create(_make_passage())
+
+        annotation_repo = SyntaxAnnotationRepository(pg_session, _ctx_a())
+        ann = _make_annotation(passage_id=passage.id, annotation_id=None)
+
+        saved = await annotation_repo.replace_all(passage.id, [ann])
+
+        assert len(saved) == 1
+        assert saved[0].annotation_id is None

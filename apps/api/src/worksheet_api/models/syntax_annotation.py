@@ -121,3 +121,13 @@ class SyntaxAnnotationORM(WorkspaceScopedORMBase, table=True):
             "AnnotationSpan → JSONB, nullable. kind == arrow 일 때만 non-None."
         ),
     )
+
+    annotation_id: uuid.UUID | None = Field(
+        default=None,
+        sa_column=Column(PG_UUID(as_uuid=True), nullable=True),
+        description=(
+            "에디터 chip 단위 논리 식별자 (v0.3, P1-annotation-input-dto). "
+            "DB PK id 와 별개 — Tiptap 에디터가 chip 에 부여하는 UUID. "
+            "nullable — 구형 클라이언트 호환 및 에디터 미지정 시 NULL."
+        ),
+    )
