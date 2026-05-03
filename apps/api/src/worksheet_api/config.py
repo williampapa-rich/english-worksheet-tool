@@ -3,7 +3,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import PostgresDsn
+from pydantic import PostgresDsn, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -47,6 +47,26 @@ class Settings(BaseSettings):
     debug: bool = False
     app_title: str = "영어 학습 자료 생성 도구 API"
     app_version: str = "0.1.0"
+
+    # ── CORS ──────────────────────────────────────────────────────────────────
+    # 허용할 origin 목록. 환경변수 CORS_ORIGINS 에 comma-separated 로 override 가능.
+    # 기본값: Vite dev server (http://localhost:5173).
+    # 예: CORS_ORIGINS=http://localhost:5173,https://app.example.com
+    cors_origins: list[str] = ["http://localhost:5173"]
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, v: object) -> list[str]:
+        """CORS_ORIGINS 환경변수 comma-separated string 파싱 지원.
+
+        환경변수에서 넘어오는 값이 "a,b,c" 형태일 때 ["a","b","c"] 로 변환.
+        이미 list 이면 그대로 반환.
+        """
+        if isinstance(v, str):
+            return [origin.strip() for origin in v.split(",") if origin.strip()]
+        if isinstance(v, list):
+            return [str(item) for item in v]
+        return ["http://localhost:5173"]
 
 
 @lru_cache
