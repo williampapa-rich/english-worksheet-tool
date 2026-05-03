@@ -1,7 +1,8 @@
 """SyntaxAnnotationORM — shared/schemas/annotation.SyntaxAnnotation 의 DB 매핑.
 
 JSONB 컬럼 (ADR-0005 §D-5.6):
-  - ``span``: AnnotationSpan Pydantic 모델 → JSONB (placeholder — ADR-0003 미확정).
+  - ``span``: AnnotationSpan Pydantic 모델 → JSONB (P1-3 / ADR-0004 적용 후 v0.2 구조 —
+    discriminated union ``character_offset_v1``).
   - ``arrow_target_span``: AnnotationSpan nullable → JSONB.
 
 Enum 컬럼 (ADR-0005 함정 #3 회피):
@@ -88,11 +89,13 @@ class SyntaxAnnotationORM(WorkspaceScopedORMBase, table=True):
         description="AnnotationCategory StrEnum 값 → String 저장 (nullable).",
     )
 
-    # span: AnnotationSpan placeholder → JSONB (ADR-0003 미확정)
     span: dict[str, Any] | None = Field(
         default=None,
         sa_column=Column(JSONB, nullable=False),
-        description="본문 내 위치 (AnnotationSpan → JSONB, placeholder).",
+        description=(
+            "본문 내 위치 (AnnotationSpan → JSONB). "
+            "P1-3 (ADR-0004) 적용 후 v0.2 구조 — discriminated union character_offset_v1."
+        ),
     )
 
     color_index: int | None = Field(
@@ -110,9 +113,11 @@ class SyntaxAnnotationORM(WorkspaceScopedORMBase, table=True):
         sa_column=Column(String(8), nullable=True),
         description="괄호 모양 ('()' / '{}' / '[]'). kind == bracket 일 때.",
     )
-    # arrow 도착점 span → JSONB (nullable)
     arrow_target_span: dict[str, Any] | None = Field(
         default=None,
         sa_column=Column(JSONB, nullable=True),
-        description="화살표 도착점 span (AnnotationSpan → JSONB, nullable).",
+        description=(
+            "P1-3 정식화 — arrow kind 의 도착점 span (출발점 = span 필드). "
+            "AnnotationSpan → JSONB, nullable. kind == arrow 일 때만 non-None."
+        ),
     )

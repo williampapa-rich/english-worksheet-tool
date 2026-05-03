@@ -156,7 +156,9 @@ function collectMarksFromDoc(doc: JSONContent): CollectedMark[] {
  *   - doc (pos 0) → paragraph (pos 1) → 텍스트 시작 (pos 2)
  *   - charOffset k → pmPos = k + 2 (단락 1개 기준)
  *
- * 다중 단락은 P1-3 에서 정책 확정 후 업데이트.
+ * 단일 단락 가정 v0.1. 다중 단락 정책은 P1-2 (인터랙션 UI) 또는 P1-5 (DB API) 진입 시
+ * 별도 follow-up 으로 결정 — 본 함수 + ``pmPosToCharOffset`` + ``AnnotationSpanV1``
+ * 생성 사이트 모두 동시 갱신 필요.
  */
 function charOffsetToPmPos(charOffset: number): number {
   // 단락 열기 노드(pos 0=doc, pos 1=paragraph open) + 글자 위치
@@ -229,6 +231,13 @@ export function docToAnnotations(doc: JSONContent): SerializedAnnotation[] {
           start: targetStart,
           end: targetEnd,
         };
+      } else {
+        // arrow_target_span 이 null 이면 백엔드 ValidationError 발생. drop 하고 경고.
+        console.warn(
+          "[annotationSerializer] ARROW mark 에 arrowTargetStart/arrowTargetEnd 가 없어 annotation 을 제외합니다.",
+          { charStart: raw.charStart, charEnd: raw.charEnd, attrs: raw.attrs }
+        );
+        continue;
       }
     }
 
