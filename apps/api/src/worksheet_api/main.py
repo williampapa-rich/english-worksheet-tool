@@ -4,7 +4,7 @@ from fastapi import FastAPI
 
 import worksheet_api.models  # noqa: F401  # Alembic autogenerate용 모델 메타데이터 등록
 from worksheet_api.config import get_settings
-from worksheet_api.routers import health, passages
+from worksheet_api.routers import annotations, health, passages
 
 
 # FastAPI 앱 인스턴스
@@ -26,6 +26,7 @@ def create_app() -> FastAPI:
     )
     application.include_router(health.router)
     application.include_router(passages.router)
+    application.include_router(annotations.router)
     return application
 
 
