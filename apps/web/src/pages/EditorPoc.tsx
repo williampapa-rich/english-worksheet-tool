@@ -80,16 +80,55 @@ const CATEGORY_OPTIONS = [
 // ---------------------------------------------------------------------------
 
 /**
+ * extractDocText — ProseMirror JSON 의 모든 text 노드를 순회해 본문을 단락 사이
+ * "\n" 으로 잇는다. annotationSerializer 의 charOffset 계산 규칙과 동일해야
+ * span.start / span.end 가 본문 인덱스로 일치한다.
+ */
+function extractDocText(
+  doc: ReturnType<NonNullable<ReturnType<typeof useEditor>>["getJSON"]>
+): string {
+  if (!doc || !Array.isArray(doc.content)) return "";
+  const paragraphs: string[] = [];
+
+  type JsonNode = { type?: string; text?: string; content?: JsonNode[] };
+
+  function paragraphText(node: JsonNode): string {
+    if (!node.content) return "";
+    let s = "";
+    for (const child of node.content) {
+      if (child.type === "text") s += child.text ?? "";
+    }
+    return s;
+  }
+
+  for (const node of doc.content as JsonNode[]) {
+    if (node.type === "paragraph") paragraphs.push(paragraphText(node));
+  }
+  return paragraphs.join("\n");
+}
+
+/**
+ * truncate — 30자 초과 시 양 끝 살리고 가운데 ... 처리.
+ */
+function truncate(s: string, max = 30): string {
+  if (s.length <= max) return s;
+  const head = Math.ceil((max - 1) / 2);
+  const tail = Math.floor((max - 1) / 2);
+  return `${s.slice(0, head)}…${s.slice(s.length - tail)}`;
+}
+
+/**
  * buildChips — editor.getJSON() doc 을 docToAnnotations 로 파싱 후
  * annotationId 별로 dedup 해서 AnnotationChip[] 로 변환한다.
  *
- * 같은 annotationId 의 split 조각은 첫 조각의 텍스트를 spanText 로 사용한다 (단순화).
- * 각 annotationId 는 1칩만 생성한다.
+ * 같은 annotationId 의 split 조각은 첫 조각만 칩으로 표기한다 (dedup).
+ * spanText 는 본문에서 character offset 으로 slice 한 실제 텍스트 (30자 줄임).
  */
 function buildChips(
   doc: ReturnType<NonNullable<ReturnType<typeof useEditor>>["getJSON"]>
 ): AnnotationChip[] {
   const annotations = docToAnnotations(doc);
+  const bodyText = extractDocText(doc);
   const seen = new Map<string, AnnotationChip>();
 
   for (const ann of annotations) {
@@ -103,9 +142,8 @@ function buildChips(
         ? (ann.text ?? "")
         : "";
 
-    // spanText: 백엔드 body_text 없으므로 span offset 으로 표시 (짧게)
-    // 에디터 doc 텍스트에서 직접 slice 하려면 별도 순회 필요 — 드래프트는 offset 표시
-    const spanText = `[${ann.span.start}–${ann.span.end}]`;
+    const rawSpan = bodyText.slice(ann.span.start, ann.span.end);
+    const spanText = truncate(rawSpan);
 
     seen.set(id, {
       annotationId: id,

@@ -93,6 +93,8 @@
   margin-top: calc(1.4em - 1.5px); /* 위 라벨 공간 — 본문에 1.5px 더 가깝게 (PM 폴리싱) */
   border-top: 2px solid var(--current-anno-color, var(--anno-color-0));
   --current-anno-color: var(--anno-color-0);
+  /* outer underline 마크가 있을 때 inline-block 안의 텍스트에도 underline 전파 */
+  text-decoration: inherit;
 }
 
 [data-annotation-kind="top_label"]::before {
@@ -167,6 +169,8 @@
   margin-bottom: calc(1.4em - 1.5px); /* 아래 라벨 공간 — 본문에 1.5px 더 가깝게 (PM 폴리싱) */
   border-bottom: 2px solid var(--current-anno-color, var(--anno-color-0));
   --current-anno-color: var(--anno-color-0);
+  /* outer underline 마크가 있을 때 inline-block 안의 텍스트에도 underline 전파 */
+  text-decoration: inherit;
 }
 
 [data-annotation-kind="bottom_label"]::after {
