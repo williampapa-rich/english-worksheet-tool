@@ -126,6 +126,7 @@
   - Pydantic 단위 테스트 갱신.
   - **breaking change 가능** — 마이그레이션 스크립트 + Alembic revision 동봉.
 - **PR 단위**: 1 PR (작은 schema PR + 마이그레이션).
+- **머지**: PR #5 (`a03df2d`). follow-up: (1) `apps/api/src/worksheet_api/models/syntax_annotation.py` docstring 의 "ADR-0003 미확정/placeholder" 표기 정리 (2) `packages/editor/src/serialization/annotationSerializer.ts` arrow null 가드 (silent drop → console.warn or drop) (3) P1-5 착수 전 Docker 환경에서 `pytest -m integration` 1회 검증 (4) `charOffsetToPmPos` 다중 단락 정책 follow-up 명시 수정.
 
 #### P1-4 — Annotation 충돌 시각 처리 정책
 
