@@ -19,6 +19,7 @@ import {
   type AnnotationChip,
   type LabelEntryKind,
 } from "../components/AnalysisTable";
+import { LabelEntryModal, type LabelEntryModalKind } from "../components/LabelEntryModal";
 import "./EditorPoc.css";
 
 /**
@@ -160,6 +161,13 @@ export function EditorPoc() {
   const [serializedJson, setSerializedJson] = useState<string | null>(null);
   const [chips, setChips] = useState<AnnotationChip[]>([]);
 
+  // 모달 상태
+  const [modalState, setModalState] = useState<{
+    open: boolean;
+    entry: LabelEntryKind | null;
+    pendingSelection: { from: number; to: number } | null;
+  }>({ open: false, entry: null, pendingSelection: null });
+
   const editor = useEditor({
     extensions: EXTENSIONS,
     content: INITIAL_CONTENT,
@@ -278,7 +286,8 @@ export function EditorPoc() {
    *
    * onMouseDown 에서 preventDefault 로 ProseMirror selection 을 보존한 뒤
    * onClick 에서 이 콜백이 호출된다.
-   * editor.chain().focus() 가 selection 을 복원해 mark 를 올바른 범위에 적용한다.
+   * selection 을 modalState.pendingSelection 에 저장하고 모달을 연다.
+   * 실제 mark 적용은 modal onSubmit 에서 수행.
    */
   const handleLabelEntry = useCallback(
     (entry: LabelEntryKind) => {
@@ -291,65 +300,67 @@ export function EditorPoc() {
         return;
       }
 
-      const text = prompt(
-        entry.markKind === "bottom_label"
-          ? "성분 라벨을 입력하세요 (예: S, V, O, OC, SC, M):"
-          : entry.category === "phrase"
-            ? "구 라벨을 입력하세요 (예: 명사구, 전치사구, to부정사구):"
-            : "절 라벨을 입력하세요 (예: 부사절, 관계절, 명사절):"
-      );
-      if (!text) return;
+      // selection 저장 후 모달 open
+      setModalState({ open: true, entry, pendingSelection: { from, to } });
+    },
+    [editor]
+  );
 
+  /**
+   * handleModalSubmit — 모달 확인 시 mark 적용.
+   *
+   * pendingSelection 으로 setTextSelection 후 mark 를 적용한다.
+   * bracketStyle 이 있으면 동일 span 에 bracket mark 도 동시 적용.
+   */
+  const handleModalSubmit = useCallback(
+    (params: { text: string; bracketStyle: "()" | "{}" | "[]" | null }) => {
+      if (!editor || !modalState.entry || !modalState.pendingSelection) return;
+
+      const { from, to } = modalState.pendingSelection;
+      const entry = modalState.entry;
       const annotationId = crypto.randomUUID();
 
       if (entry.markKind === "bottom_label") {
         editor
           .chain()
           .focus()
+          .setTextSelection({ from, to })
           .setBottomLabel({
-            text,
+            text: params.text,
             colorIndex: selectedColorIndex,
             category: entry.category,
             annotationId,
           })
           .run();
-        return;
-      }
-
-      // top_label (구/절) — 괄호 옵션은 본문 annotation 자체를 감싸는 별 bracket mark
-      const bracketChoice = prompt(
-        "괄호 모양 선택 — 숫자 입력 (본문 annotation 을 감쌈):\n0: 없음\n1: []\n2: {}\n3: ()\n4: ⌜⌟\n5: <>",
-        "0"
-      );
-      const bracketStyleMap: Record<string, "[]" | "{}" | "()"> = {
-        "1": "[]",
-        "2": "{}",
-        "3": "()",
-      };
-      // bracket mark spec 은 () / {} / [] 3종만 — ⌜⌟ / <> 는 PR #16 schema 변경 필요해 드래프트 보류
-      const bracketStyle = bracketChoice ? bracketStyleMap[bracketChoice] : undefined;
-
-      let chain = editor.chain().focus().setTopLabel({
-        text,
-        colorIndex: selectedColorIndex,
-        category: entry.category,
-        annotationId,
-      });
-
-      // 괄호 옵션 선택 시 bracket mark 도 같은 span 에 별 annotation 으로 동시 적용
-      // 단 ⌜⌟ / <> 는 schema 미지원이라 본 PR 에서 보류 (top_label 만 적용)
-      if (bracketStyle) {
-        chain = chain.setBracket({
-          bracketStyle,
+      } else {
+        // top_label (구/절)
+        let chain = editor.chain().focus().setTextSelection({ from, to }).setTopLabel({
+          text: params.text,
           colorIndex: selectedColorIndex,
           category: entry.category,
-          annotationId: crypto.randomUUID(),
+          annotationId,
         });
+
+        // 괄호 옵션 선택 시 bracket mark 도 같은 span 에 별 annotation 으로 동시 적용
+        if (params.bracketStyle) {
+          chain = chain.setBracket({
+            bracketStyle: params.bracketStyle,
+            colorIndex: selectedColorIndex,
+            category: entry.category,
+            annotationId: crypto.randomUUID(),
+          });
+        }
+        chain.run();
       }
-      chain.run();
+
+      setModalState({ open: false, entry: null, pendingSelection: null });
     },
-    [editor, selectedColorIndex]
+    [editor, modalState, selectedColorIndex]
   );
+
+  const handleModalClose = useCallback(() => {
+    setModalState({ open: false, entry: null, pendingSelection: null });
+  }, []);
 
   // ---------------------------------------------------------------------------
   // 핸들러 — 분석표 칩 x (annotationId 통째 삭제)
@@ -409,160 +420,174 @@ export function EditorPoc() {
   // 렌더
   // ---------------------------------------------------------------------------
 
+  // entryKind 도출 — entry.category 가 LabelEntryModalKind 와 1:1
+  const modalKind: LabelEntryModalKind =
+    modalState.entry?.markKind === "bottom_label"
+      ? "sentence_role"
+      : ((modalState.entry?.category as LabelEntryModalKind | undefined) ?? "phrase");
+
   return (
-    <main className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-4xl mx-auto space-y-6">
-        {/* 헤더 */}
-        <div className="flex items-center gap-4">
-          <Link to="/" className="text-blue-600 hover:underline text-sm">
-            ← 홈으로
-          </Link>
-          <h1 className="text-xl font-bold text-gray-900">구문분석 에디터 드래프트 (P1-2c)</h1>
-          <span className="text-xs text-gray-400 bg-yellow-100 px-2 py-0.5 rounded">
-            드래프트 — PM 검수용
-          </span>
-        </div>
+    <>
+      <LabelEntryModal
+        open={modalState.open}
+        entryKind={modalKind}
+        onSubmit={handleModalSubmit}
+        onClose={handleModalClose}
+      />
+      <main className="min-h-screen bg-gray-50 p-8">
+        <div className="max-w-4xl mx-auto space-y-6">
+          {/* 헤더 */}
+          <div className="flex items-center gap-4">
+            <Link to="/" className="text-blue-600 hover:underline text-sm">
+              ← 홈으로
+            </Link>
+            <h1 className="text-xl font-bold text-gray-900">구문분석 에디터 드래프트 (P1-2c)</h1>
+            <span className="text-xs text-gray-400 bg-yellow-100 px-2 py-0.5 rounded">
+              드래프트 — PM 검수용
+            </span>
+          </div>
 
-        {/* 에디터 + 분석표 영역 */}
-        <div className="flex flex-col gap-4">
-          {/* 에디터 카드 */}
-          <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
-            {/* 툴바 그룹 1: annotation 적용 버튼 (5종 — 메모 카테고리 자동 매핑) */}
-            <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 space-y-2">
-              <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
-                Annotation (메모 자동 매핑)
-              </div>
-              <div className="flex flex-wrap items-center gap-1.5">
-                <AnnotationButton
-                  label="형광펜"
-                  active={isHighlightActive}
-                  disabled={!editor}
-                  onClick={handleHighlight}
-                />
-                <AnnotationButton
-                  label="밑줄"
-                  active={isUnderlineActive}
-                  disabled={!editor}
-                  onClick={handleUnderline}
-                />
-                <AnnotationButton
-                  label="괄호"
-                  active={isBracketActive}
-                  disabled={!editor}
-                  onClick={handleBracket}
-                  onUnset={handleUnsetBracket}
-                />
-                <AnnotationButton
-                  label="화살표"
-                  active={isArrowActive}
-                  disabled={!editor}
-                  onClick={handleArrow}
-                  onUnset={handleUnsetArrow}
-                />
-                <AnnotationButton
-                  label="노트"
-                  active={isInlineNoteActive}
-                  disabled={!editor}
-                  onClick={handleInlineNote}
-                  onUnset={handleUnsetInlineNote}
-                />
-              </div>
-            </div>
-
-            {/* 툴바 그룹 2: color_index picker (12색 swatch) */}
-            <div className="px-4 py-2 border-b border-gray-100 bg-gray-50 flex items-center gap-3">
-              <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                색상
-              </span>
-              <div className="flex flex-wrap gap-1">
-                {COLOR_PALETTE.map((c) => (
-                  <button
-                    key={c.index}
-                    type="button"
-                    title={`색 ${c.index} (${c.label})`}
-                    onClick={() => setSelectedColorIndex(c.index)}
-                    className={[
-                      "w-5 h-5 rounded-full border-2 transition-transform",
-                      selectedColorIndex === c.index
-                        ? "border-gray-700 scale-125"
-                        : "border-transparent hover:scale-110",
-                    ].join(" ")}
-                    style={{ backgroundColor: c.hex }}
+          {/* 에디터 + 분석표 영역 */}
+          <div className="flex flex-col gap-4">
+            {/* 에디터 카드 */}
+            <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+              {/* 툴바 그룹 1: annotation 적용 버튼 (5종 — 메모 카테고리 자동 매핑) */}
+              <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 space-y-2">
+                <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                  Annotation (메모 자동 매핑)
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <AnnotationButton
+                    label="형광펜"
+                    active={isHighlightActive}
+                    disabled={!editor}
+                    onClick={handleHighlight}
                   />
-                ))}
+                  <AnnotationButton
+                    label="밑줄"
+                    active={isUnderlineActive}
+                    disabled={!editor}
+                    onClick={handleUnderline}
+                  />
+                  <AnnotationButton
+                    label="괄호"
+                    active={isBracketActive}
+                    disabled={!editor}
+                    onClick={handleBracket}
+                    onUnset={handleUnsetBracket}
+                  />
+                  <AnnotationButton
+                    label="화살표"
+                    active={isArrowActive}
+                    disabled={!editor}
+                    onClick={handleArrow}
+                    onUnset={handleUnsetArrow}
+                  />
+                  <AnnotationButton
+                    label="노트"
+                    active={isInlineNoteActive}
+                    disabled={!editor}
+                    onClick={handleInlineNote}
+                    onUnset={handleUnsetInlineNote}
+                  />
+                </div>
               </div>
-              <span className="text-xs text-gray-400">선택: #{selectedColorIndex}</span>
-            </div>
 
-            {/* 툴바 제어: 직렬화 / 초기화 */}
-            <div className="px-4 py-2 border-b border-gray-100 bg-gray-50 flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleSerialize}
-                disabled={!editor}
-                className="px-3 py-1.5 text-sm font-medium rounded-lg bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 transition-colors disabled:opacity-50"
-              >
-                SyntaxAnnotation[] 보기
-              </button>
-              <button
-                type="button"
-                onClick={handleReset}
-                disabled={!editor}
-                className="px-3 py-1.5 text-sm font-medium rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
-              >
-                초기화
-              </button>
-              {serializedJson && (
+              {/* 툴바 그룹 2: color_index picker (12색 swatch) */}
+              <div className="px-4 py-2 border-b border-gray-100 bg-gray-50 flex items-center gap-3">
+                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">
+                  색상
+                </span>
+                <div className="flex flex-wrap gap-1">
+                  {COLOR_PALETTE.map((c) => (
+                    <button
+                      key={c.index}
+                      type="button"
+                      title={`색 ${c.index} (${c.label})`}
+                      onClick={() => setSelectedColorIndex(c.index)}
+                      className={[
+                        "w-5 h-5 rounded-full border-2 transition-transform",
+                        selectedColorIndex === c.index
+                          ? "border-gray-700 scale-125"
+                          : "border-transparent hover:scale-110",
+                      ].join(" ")}
+                      style={{ backgroundColor: c.hex }}
+                    />
+                  ))}
+                </div>
+                <span className="text-xs text-gray-400">선택: #{selectedColorIndex}</span>
+              </div>
+
+              {/* 툴바 제어: 직렬화 / 초기화 */}
+              <div className="px-4 py-2 border-b border-gray-100 bg-gray-50 flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={handleClearPanel}
-                  className="px-3 py-1.5 text-sm font-medium rounded-lg bg-white border border-gray-200 text-gray-400 hover:bg-gray-50 transition-colors"
+                  onClick={handleSerialize}
+                  disabled={!editor}
+                  className="px-3 py-1.5 text-sm font-medium rounded-lg bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 transition-colors disabled:opacity-50"
                 >
-                  패널 닫기
+                  SyntaxAnnotation[] 보기
                 </button>
-              )}
+                <button
+                  type="button"
+                  onClick={handleReset}
+                  disabled={!editor}
+                  className="px-3 py-1.5 text-sm font-medium rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                >
+                  초기화
+                </button>
+                {serializedJson && (
+                  <button
+                    type="button"
+                    onClick={handleClearPanel}
+                    className="px-3 py-1.5 text-sm font-medium rounded-lg bg-white border border-gray-200 text-gray-400 hover:bg-gray-50 transition-colors"
+                  >
+                    패널 닫기
+                  </button>
+                )}
+              </div>
+
+              {/* Tiptap 에디터 본문 */}
+              <EditorContent editor={editor} />
             </div>
 
-            {/* Tiptap 에디터 본문 */}
-            <EditorContent editor={editor} />
+            {/* 분석표 (본문 에디터 하단) */}
+            <AnalysisTable
+              chips={chips}
+              onRemove={handleRemoveAnnotation}
+              onLabelEntry={handleLabelEntry}
+            />
           </div>
 
-          {/* 분석표 (본문 에디터 하단) */}
-          <AnalysisTable
-            chips={chips}
-            onRemove={handleRemoveAnnotation}
-            onLabelEntry={handleLabelEntry}
-          />
+          {/* 사용 안내 */}
+          <p className="text-xs text-gray-400 leading-relaxed">
+            텍스트를 선택 후 annotation 버튼 (형광펜/밑줄/괄호/화살표/노트) 을 클릭하면 메모
+            카테고리로 자동 분류됩니다. 성분/구/절 라벨은 분석표 진입 버튼으로 추가하세요 (텍스트
+            선택 후 버튼 클릭). 칩의 ✕ 버튼으로 annotation 을 통째 삭제합니다.
+          </p>
+
+          {/* SerializedAnnotation[] 직렬화 결과 패널 */}
+          {serializedJson && (
+            <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+              <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+                <span className="text-sm font-medium text-gray-700">
+                  SerializedAnnotation[] (SyntaxAnnotation 호환)
+                </span>
+                <span className="text-xs text-gray-400">
+                  kind / span / color_index / category / annotation_id 필드 확인
+                </span>
+              </div>
+              <pre
+                data-testid="serialized-annotations"
+                className="p-4 text-xs text-gray-800 overflow-auto max-h-96 font-mono leading-relaxed"
+              >
+                {serializedJson}
+              </pre>
+            </div>
+          )}
         </div>
-
-        {/* 사용 안내 */}
-        <p className="text-xs text-gray-400 leading-relaxed">
-          텍스트를 선택 후 annotation 버튼 (형광펜/밑줄/괄호/화살표/노트) 을 클릭하면 메모
-          카테고리로 자동 분류됩니다. 성분/구/절 라벨은 분석표 진입 버튼으로 추가하세요 (텍스트 선택
-          후 버튼 클릭). 칩의 ✕ 버튼으로 annotation 을 통째 삭제합니다.
-        </p>
-
-        {/* SerializedAnnotation[] 직렬화 결과 패널 */}
-        {serializedJson && (
-          <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
-            <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
-              <span className="text-sm font-medium text-gray-700">
-                SerializedAnnotation[] (SyntaxAnnotation 호환)
-              </span>
-              <span className="text-xs text-gray-400">
-                kind / span / color_index / category / annotation_id 필드 확인
-              </span>
-            </div>
-            <pre
-              data-testid="serialized-annotations"
-              className="p-4 text-xs text-gray-800 overflow-auto max-h-96 font-mono leading-relaxed"
-            >
-              {serializedJson}
-            </pre>
-          </div>
-        )}
-      </div>
-    </main>
+      </main>
+    </>
   );
 }
 
