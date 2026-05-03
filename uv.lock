@@ -413,7 +413,7 @@ wheels = [
 [[package]]
 name = "hwpx-renderer"
 version = "0.1.0"
-source = { virtual = "packages/hwpx_renderer" }
+source = { editable = "packages/hwpx_renderer" }
 
 [[package]]
 name = "identify"

@@ -4,3 +4,10 @@ version = "0.1.0"
 description = "HWPX 출력 패키지 — hwpx-auto-parser-for-template 재활용"
 requires-python = ">=3.12"
 dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hwpx_renderer"]
