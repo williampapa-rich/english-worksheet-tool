@@ -1,23 +1,26 @@
 """
-P1-0b — HWPX 텍스트박스 align PoC 단위 테스트
+P1-0b — HWPX 텍스트박스 align PoC 단위 테스트 (fix 2차)
 
 검증 대상:
     1. build_poc_hwpx() 가 유효한 ZIP 을 반환하는지
     2. mimetype 파일이 ZIP 첫 번째 엔트리이고 STORED 압축인지
     3. 필수 파일이 모두 존재하는지
     4. section0.xml 에 핵심 XML 요소가 존재하는지
-       - hp:drawObj (라벨 텍스트박스)
-       - hp:textBox (라벨 내부)
+       - 3단 단락 구조: paraPrIDRef="1" (라벨 단락)
        - shadeColor="#FFFF00" (하이라이트)
        - "[over]" (괄호 run)
-       - label text "S" and "V"
-    5. header.xml 에 charPr 3개가 정의되는지
+       - label text "S" and "V" (별도 라벨 단락)
+    5. header.xml 에 charPr 3개 + paraPr 2개가 정의되는지
+
+fix 2차 변경사항:
+    - floating textBox (vertRelTo=PARA + vertOffset 음수/양수) 제거.
+      한컴에서 단락 라인 범위 안에 clamp 되어 취소선처럼 보이는 문제 확인 (PM 검증).
+    - 3단 단락 구조로 전환:
+        단락 1 (섹션 정의) / 단락 2 (상단 라벨 "S") / 단락 3 (본문) / 단락 4 (하단 라벨 "V")
+    - 라벨 단락 스타일 (paraPrIDRef=1): lineSpacing=100%, margin=0
 
 자동화 불가 범위 (단위 테스트 한계):
     - 단위 테스트는 zip 구조와 핵심 XML 요소만 검증한다.
-    - 한컴 스펙 적합성 (container.xml namespace, content.hpf 루트 요소, version.xml 포맷 등)
-      은 레퍼런스 HWPX diff 로만 검증 가능하며, 테스트 통과 = 한컴 오피스 오픈 가능을
-      보장하지 않는다.
     - 한컴 오피스 실제 오픈 여부 및 렌더링 결과는 PM 수동 확인 필수.
     - fixture 파일 경로: packages/hwpx_renderer/tests/fixtures/poc_align.hwpx
 """
@@ -114,19 +117,22 @@ def test_required_file_exists(hwpx_zip: zipfile.ZipFile, filename: str) -> None:
 # ── 4. section0.xml 핵심 요소 ────────────────────────────────────────────────
 
 
-def test_has_draw_obj(section0_xml: str) -> None:
-    """라벨 텍스트박스를 위한 hp:drawObj 가 존재해야 한다."""
-    assert "hp:drawObj" in section0_xml
+def test_no_draw_obj_textbox(section0_xml: str) -> None:
+    """fix 2차: floating textBox drawObj 제거 — drawObj + textBox 가 없어야 한다.
+
+    3단 단락 구조로 전환했으므로 hp:drawObj, hp:textBox 가 없어야 한다.
+    """
+    assert "hp:drawObj" not in section0_xml
+    assert "hp:textBox" not in section0_xml
 
 
-def test_has_textbox(section0_xml: str) -> None:
-    """hp:textBox 요소가 존재해야 한다 (drawObj 안)."""
-    assert "hp:textBox" in section0_xml
+def test_has_label_para_style(section0_xml: str) -> None:
+    """3단 구조: 라벨 단락이 paraPrIDRef="1" 으로 존재해야 한다."""
+    assert 'paraPrIDRef="1"' in section0_xml
 
 
 def test_has_highlight_shade_color(section0_xml: str) -> None:
     """하이라이트는 charPrIDRef=1 (shadeColor=#FFFF00) 으로 표현되어야 한다."""
-    # charPrIDRef="1" 이 section0 의 hp:run 에 등장
     assert 'charPrIDRef="1"' in section0_xml
 
 
@@ -136,12 +142,12 @@ def test_has_bracket_text(section0_xml: str) -> None:
 
 
 def test_has_label_s(section0_xml: str) -> None:
-    """상단 라벨 'S' 가 텍스트박스 내부에 존재해야 한다."""
+    """상단 라벨 'S' 가 라벨 단락 run 에 존재해야 한다."""
     assert ">S<" in section0_xml
 
 
 def test_has_label_v(section0_xml: str) -> None:
-    """하단 라벨 'V' 가 텍스트박스 내부에 존재해야 한다."""
+    """하단 라벨 'V' 가 라벨 단락 run 에 존재해야 한다."""
     assert ">V<" in section0_xml
 
 
@@ -152,28 +158,12 @@ def test_body_text_present(section0_xml: str) -> None:
     assert "jumps" in section0_xml
 
 
-def test_vertical_offset_label_s(section0_xml: str) -> None:
-    """상단 라벨 S 는 음수 vertOffset 을 가져야 한다 (단락 위)."""
-    # vertOffset="-900" 이 drawObj 안에 존재
-    assert 'vertOffset="-900"' in section0_xml
+def test_label_para_uses_charpr2(section0_xml: str) -> None:
+    """라벨 단락 run 이 charPrIDRef="2" (7pt bold) 를 사용해야 한다."""
+    assert 'charPrIDRef="2"' in section0_xml
 
 
-def test_vertical_offset_label_v(section0_xml: str) -> None:
-    """하단 라벨 V 는 양수 vertOffset 을 가져야 한다 (단락 아래)."""
-    assert 'vertOffset="1600"' in section0_xml
-
-
-def test_horz_rel_to_para(section0_xml: str) -> None:
-    """텍스트박스가 단락 기준 anchor 되어야 한다."""
-    assert 'horzRelTo="PARA"' in section0_xml
-
-
-def test_vert_rel_to_para(section0_xml: str) -> None:
-    """텍스트박스 수직 anchor 가 단락 기준이어야 한다."""
-    assert 'vertRelTo="PARA"' in section0_xml
-
-
-# ── 5. header.xml charPr 정의 ─────────────────────────────────────────────────
+# ── 5. header.xml charPr + paraPr 정의 ───────────────────────────────────────
 
 
 def test_header_has_three_charpr(header_xml: str) -> None:
@@ -191,6 +181,19 @@ def test_header_highlight_shade_color(header_xml: str) -> None:
 def test_header_body_no_shade(header_xml: str) -> None:
     """charPr id=0 은 shadeColor 가 none 이어야 한다."""
     assert 'shadeColor="none"' in header_xml
+
+
+def test_header_has_two_parapr(header_xml: str) -> None:
+    """header.xml 에 paraPr 0 (본문) 과 1 (라벨) 이 정의되어야 한다."""
+    assert 'hh:paraPr id="0"' in header_xml
+    assert 'hh:paraPr id="1"' in header_xml
+
+
+def test_header_label_parapr_line_spacing(header_xml: str) -> None:
+    """라벨 단락(paraPr id=1) 은 lineSpacing value=100 이어야 한다."""
+    # paraPr id=1 블록 안에 lineSpacing value="100" 이 있어야 함
+    # 단순 문자열 검색으로 근사 검증
+    assert 'value="100"' in header_xml
 
 
 # ── 6. fixture 파일 출력 확인 ─────────────────────────────────────────────────

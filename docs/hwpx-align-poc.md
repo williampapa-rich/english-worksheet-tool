@@ -13,40 +13,64 @@
 
 | 항목 | 결론 |
 |---|---|
-| 라벨 (상단/하단 텍스트박스) | **부분 가능** — XML 구조는 올바르나 수평 align 정밀도 한계 있음 (아래 상세) |
+| 라벨 (상단/하단) | **가능 (3단 단락 구조)** — 라벨 단락 / 본문 단락 / 라벨 단락으로 분리. 수직 분리 안정적. 수평 align 은 근사 (P1-7/P1-8 에서 보정) |
 | 하이라이트 | **가능** — `charPr.shadeColor` 로 구현, 한글 오피스 완전 지원 |
 | 괄호 | **가능 (PoC 수준)** — Unicode bracket `[ ]` run. 실 구현에서 도형 방식 평가 필요 |
 | XML zip 구조 | **이상 없음** — 28 단위 테스트 모두 통과 |
 
-**PM 수동 확인 필요**: `packages/hwpx_renderer/tests/fixtures/poc_align.hwpx` 를 한글 오피스로 열어 라벨이 본문 위/아래에 align 되는지 확인. 결과를 아래 §"PM 검증 기록" 에 기입해 달라.
+**PM 수동 확인 필요**: `packages/hwpx_renderer/tests/fixtures/poc_align.hwpx` 를 한글 오피스로 열어 라벨이 본문 위/아래에 분리되어 보이는지 확인. 결과를 아래 §"PM 검증 기록" 에 기입해 달라.
 
 ---
 
 ## 1. 구현 접근
 
-### 1-1. 라벨 텍스트박스 (top_label / bottom_label)
+### 1-1. 라벨 표현: 3단 단락 구조 (fix 2차 채택)
 
-HWPX 의 `hp:drawObj` + `hp:textBox` 조합을 사용한다.
+**fix 1차 시도 및 실패 근거**:
+
+fix 1차에서 `hp:drawObj` + `hp:textBox` + `vertRelTo="PARA"` + `vertOffset` 음수/양수 조합을 사용했다.
+PM 검증 결과 (한컴 오피스 직접 확인, 2026-05-03):
+- 라벨 박스가 단락 위/아래로 올라가지 않고 본문 라인을 관통하는 취소선처럼 보임.
+- 원인: 한컴 HWPX에서 `vertRelTo="PARA"` + `treatAsChar="0"` + `textWrap="TOP_AND_BOTTOM"` 조합은
+  drawObj를 단락 라인 높이 범위 안에 clamp한다. 음수 vertOffset이 있어도 해당 단락에 공간이 없으면
+  단락 위로 올라가지 않는다. 레퍼런스 HWPX 2개(`template.hwpx`, `평가원_영어_양식.hwpx`) 분석 결과
+  `vertRelTo="PARA"` + 음수 offset 패턴 자체가 레퍼런스에 존재하지 않음을 확인.
+
+**fix 2차: 3단 단락 구조 채택**:
 
 ```xml
-<hp:drawObj id="0" zOrder="0" numberingType="FIGURE"
-            textWrap="TOP_AND_BOTTOM" textFlow="BOTH_SIDES" lock="0">
-  <hp:sz width="800" widthRelTo="ABSOLUTE" height="700" heightRelTo="ABSOLUTE"/>
-  <hp:pos treatAsChar="0" affectLSpacing="1" flowWithText="1"
-          allowOverlap="0" holdAnchorAndSO="0"
-          vertRelTo="PARA" horzRelTo="PARA"
-          vertAlign="TOP"  horzAlign="LEFT"
-          vertOffset="-900"   <!-- 음수 = 단락 위 -->
-          horzOffset="0"/>    <!-- 단락 왼쪽 시작 기준 수평 이동 -->
-  <hp:textBox ...>...</hp:textBox>
-  <hp:shapeComponent .../>
-</hp:drawObj>
+<!-- 단락 1: 섹션 정의 (빈 단락) -->
+<hp:p paraPrIDRef="0" styleIDRef="0">
+  <hp:run charPrIDRef="0"><hp:secPr ...></hp:p>
+
+<!-- 단락 2: 상단 라벨 -->
+<!-- paraPr id=1: lineSpacing=100%, margin prev/next=0 → 높이 ≈ 7pt = 700 HWP unit -->
+<hp:p paraPrIDRef="1" styleIDRef="1">
+  <hp:run charPrIDRef="2"><hp:t>S</hp:t></hp:run>
+</hp:p>
+
+<!-- 단락 3: 본문 -->
+<hp:p paraPrIDRef="0" styleIDRef="0">
+  <hp:run charPrIDRef="0"><hp:t>The quick brown fox</hp:t></hp:run>
+  <hp:run charPrIDRef="1"><hp:t> jumps </hp:t></hp:run>  <!-- 하이라이트 -->
+  <hp:run charPrIDRef="0"><hp:t>[over]</hp:t></hp:run>
+  <hp:run charPrIDRef="0"><hp:t> the lazy dog.</hp:t></hp:run>
+</hp:p>
+
+<!-- 단락 4: 하단 라벨 -->
+<hp:p paraPrIDRef="1" styleIDRef="1">
+  <hp:run charPrIDRef="2"><hp:t>V</hp:t></hp:run>
+</hp:p>
 ```
 
-**anchor 방식**:
-- `horzRelTo="PARA"` `vertRelTo="PARA"` — 단락 기준 상대 좌표. 단락이 이동해도 라벨이 따라감.
-- `flowWithText="1"` — 본문이 페이지에 걸쳐 이동해도 drawObj 가 같은 단락에 붙어 이동.
-- `treatAsChar="0"` — floating 객체. 텍스트박스가 본문 흐름을 밀어내지 않음(단 affectLSpacing=1 로 줄간격에는 영향).
+**장점**:
+- 레퍼런스 HWPX의 실제 패턴과 일치 → 한컴에서 안정적 렌더링.
+- 라벨이 본문 라인과 겹치지 않고 물리적으로 분리된 단락.
+
+**단점**:
+- 수평 align이 본문 단어 위치와 독립적이다. 라벨 단락의 텍스트 위치는 `paraPr.margin.indent` 또는
+  리딩 스페이스로 근사해야 한다 (P1-7/P1-8에서 보정 예정).
+- 단어 수준 align 정밀도는 3단 구조에서도 floating textBox 방식과 동일하게 font metric 필요.
 
 ### 1-2. 수평 offset 계산 한계 (가장 큰 제약)
 
@@ -133,6 +157,9 @@ f"[{text}]"  # charPrIDRef=0, 일반 본문 run
    - `affectLSpacing="0"` 으로 설정하면 라벨이 본문 텍스트와 겹칠 수 있음.
 3. `textWrap="TOP_AND_BOTTOM"` — drawObj 좌우에는 텍스트가 흐르지 않음. 라벨 전후로만 본문이 흐름. 단락이 한 줄이면 영향 없음.
 4. HWPX 에서 drawObj 는 단락 내부의 run 들 사이에 XML 상으로 위치한다. 실제 렌더링 anchor 는 drawObj 가 속한 단락.
+5. **[fix 2차 발견]** `vertRelTo="PARA"` + `vertOffset` 음수 조합은 한컴에서 단락 위로 올라가지 않는다.
+   drawObj 의 수직 위치는 단락 라인 높이 범위 안에 clamp 된다. 레퍼런스 HWPX 2개 모두 이 패턴 없음.
+   단락 위/아래에 라벨을 배치하려면 **별도 단락(3단 구조)** 이 유일하게 검증된 방법이다.
 
 ---
 
@@ -154,8 +181,8 @@ CLAUDE.md §3.6 원칙 ("No Reinventing the Wheel") 에 따라 기존 컴포넌�
 
 | annotation kind | HWPX 표현 | 기술 리스크 | 비고 |
 |---|---|---|---|
-| `top_label` | `hp:drawObj` + `hp:textBox`, `vertRelTo="PARA"` `vertOffset` 음수 | 수평 정렬 근사 | horzOffset = 폰트 metric 으로 계산 필요 |
-| `bottom_label` | 동일, `vertOffset` 양수 | 동일 | |
+| `top_label` | 3단 단락 구조 — 별도 라벨 단락 (`paraPrIDRef=1`, lineSpacing=100%) | 수평 정렬 근사 | indent / tabstop 으로 근사 위치 지정, 폰트 metric 으로 보정 필요 |
+| `bottom_label` | 동일 (본문 단락 다음에 라벨 단락) | 동일 | |
 | `highlight` | `charPr.shadeColor` (노란색 = `#FFFF00`) | 없음 (표준 기능) | charPr 1개 추가만 필요 |
 | `bracket` | Unicode `[ ]` run (단순) 또는 `hp:rect` drawObj (정교) | 낮음~중간 | domain-expert + 와이프 피드백으로 방식 결정 |
 | `underline` | `charPr.underline` type/shape 설정 | 없음 | exam-generator CHAR_UNDERLINE=53 패턴 그대로 |
@@ -191,20 +218,30 @@ P1-0b 커밋(`9814faf`) 이후 PM 이 한글 오피스로 fixture 를 열었을 
 
 ## 7. PM 검증 기록
 
-(PM 이 한글 오피스에서 열어본 후 기입)
+### fix 1차 검증 결과 (2026-05-03)
+
+- [x] 파일을 한글 오피스에서 열었을 때 오류 없이 열리는가? — **YES**
+- [x] 본문 "The quick brown fox [over] the lazy dog." 가 보이는가? — **YES**
+- [x] " jumps " 부분에 노란색 하이라이트가 적용되어 있는가? — **YES**
+- [ ] 단락 위에 "S" 라벨 텍스트박스가 보이는가? — **NO** (취소선처럼 보이는 가로선 발생)
+- [ ] 단락 아래에 "V" 라벨 텍스트박스가 보이는가? — **NO** (동일 문제)
+
+원인 (backend-dev 분석): `vertRelTo="PARA"` + `vertOffset` 음수/양수 조합에서 한컴이 drawObj를
+단락 라인 높이 범위 안에 clamp. textBox가 본문 라인 내부에 overlay되어 border가 취소선처럼 보임.
+
+### fix 2차 확인 사항 (PM 확인 요청)
+
+fixture: `packages/hwpx_renderer/tests/fixtures/poc_align.hwpx`
 
 - [ ] 파일을 한글 오피스에서 열었을 때 오류 없이 열리는가?
 - [ ] 본문 "The quick brown fox [over] the lazy dog." 가 보이는가?
 - [ ] " jumps " 부분에 노란색 하이라이트가 적용되어 있는가?
-- [ ] 단락 위에 "S" 라벨 텍스트박스가 보이는가?
-- [ ] 단락 아래에 "V" 라벨 텍스트박스가 보이는가?
-- [ ] 라벨이 본문과 겹치지 않고 위/아래에 배치되는가?
-- [ ] 수평 align: 라벨 "S" 가 문장 시작("The") 위에 대략 위치하는가?
-- [ ] 수평 align: 라벨 "V" 가 "jumps" 근처 아래에 대략 위치하는가?
+- [ ] **본문 위에 "S" 텍스트가 별도 줄로 보이는가?** (별도 단락, 7pt bold)
+- [ ] **본문 아래에 "V" 텍스트가 별도 줄로 보이는가?** (별도 단락, 7pt bold)
+- [ ] 라벨이 본문 라인과 겹치지 않고 분리되어 보이는가?
 
 align 결론:
-- [ ] 정확히 align 가능 (pixel-level 정도)
-- [ ] 부분 align 가능 (단어 수준, ±1~2단어 오차 허용)
-- [x] **근사 align** — 수평 horzOffset 계산에 font metric 이 필요하여 PoC 단계에서는 근사값. 실 구현(P1-8)에서 pillow `ImageFont.getlength()` 로 보정 필요.
+- [x] **근사 align** — 3단 단락 구조에서 라벨의 수평 위치는 paraPr indent 근사. 수직 분리는 안정적.
+  수평 align 보정은 실 구현(P1-8)에서 pillow `ImageFont.getlength()` 또는 tabstop 으로 진행.
 
 스크린샷: (PM 이 추후 첨부)
