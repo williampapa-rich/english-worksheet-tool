@@ -93,7 +93,7 @@ export interface MarkAttrs {
  * character offset 은 트리 순회하며 텍스트 노드 길이 누적으로 복원 가능."
  *
  * 반환: { markName, attrs, charStart, charEnd }[]
- * charStart / charEnd 는 Passage.body_text 위 [start, end) 반열린 구간.
+ * charStart / charEnd 는 Passage.body_text (`paragraphs.join("\n")`) 위 [start, end) 반열린 구간.
  *
  * 구현 전략:
  *   ProseMirror doc JSON 의 노드는 content[] 로 중첩된다.
@@ -101,13 +101,8 @@ export interface MarkAttrs {
  *   charOffset 을 누적하며 순회 — text 노드를 만나면:
  *     - marks[] 가 있으면 각 mark 에 대해 [charOffset, charOffset + text.length) 기록
  *     - charOffset += text.length
- *   단락 / 제목 / 기타 블록 노드는 글자 없이 자식만 순회.
- *
- * 제약:
- *   - paragraph 노드 경계는 현재 char offset 계산에 포함하지 않는다.
- *     즉 여러 단락이 있으면 단락 경계(\n) 가 body_text 에 있는지 여부에 따라
- *     offset 이 달라질 수 있다. Phase 1 v0.1 에서는 단일 단락 지문 가정.
- *     복수 단락 케이스는 P1-3 에서 Passage.body_text 정규화 정책과 함께 처리.
+ *   단락 노드 경계: 두 번째 단락 이후 단락 진입 시 charOffset += 1 (\n 1글자).
+ *   → charStart / charEnd 가 body_text (`paragraphs.join("\n")`) 인덱스와 정확히 일치.
  */
 interface CollectedMark {
   markName: string;
@@ -119,9 +114,21 @@ interface CollectedMark {
 function collectMarksFromDoc(doc: JSONContent): CollectedMark[] {
   const collected: CollectedMark[] = [];
   let charOffset = 0;
+  let paragraphIndex = 0;
 
   function traverse(node: JSONContent): void {
-    if (node.type === "text") {
+    if (node.type === "paragraph") {
+      // 두 번째 단락 이후: 단락 경계 \n 1글자 누산
+      if (paragraphIndex > 0) {
+        charOffset += 1;
+      }
+      paragraphIndex += 1;
+      if (node.content) {
+        for (const child of node.content) {
+          traverse(child);
+        }
+      }
+    } else if (node.type === "text") {
       const text = node.text ?? "";
       const len = text.length;
       if (node.marks && node.marks.length > 0) {
@@ -156,27 +163,75 @@ function collectMarksFromDoc(doc: JSONContent): CollectedMark[] {
  * 텍스트 노드 내 글자 위치 = 노드 시작 position + 텍스트 내 index.
  * 단락 노드 자체가 position 1개를 차지하므로, 첫 단락 시작 = pos 1 + 1(단락 열기) = 2.
  *
- * 단순화 가정 (v0.1, 단일 단락):
- *   - doc (pos 0) → paragraph (pos 1) → 텍스트 시작 (pos 2)
- *   - charOffset k → pmPos = k + 2 (단락 1개 기준)
+ * 단일 단락 (paragraphLengths 없음 또는 길이 1):
+ *   - charOffset k → pmPos = k + 2
  *
- * 단일 단락 가정 v0.1. 다중 단락 정책은 P1-2 (인터랙션 UI) 또는 P1-5 (DB API) 진입 시
- * 별도 follow-up 으로 결정 — 본 함수 + ``pmPosToCharOffset`` + ``AnnotationSpanV1``
- * 생성 사이트 모두 동시 갱신 필요.
+ * 다중 단락 (paragraphLengths 전달):
+ *   body_text = paragraphs.join("\n") 기준.
+ *   단락 i (0-based) 의 첫 글자:
+ *     charOffset = sum(len[0..i-1]) + i  (앞 단락 글자 + 단락 사이 \n 수)
+ *     pmPos      = 2 + sum(len[0..i-1]) + 2*i
+ *   → 단락 내 local offset k 에 대해: pmPos = 2 + sum(len[0..i-1]) + 2*i + k
+ *
+ * paragraphLengths: optional — 없으면 단일 단락 가정 (기존 호출자 호환).
  */
-function charOffsetToPmPos(charOffset: number): number {
-  // 단락 열기 노드(pos 0=doc, pos 1=paragraph open) + 글자 위치
-  // 단일 단락 단순화: pmPos = charOffset + 2
-  return charOffset + 2;
+function charOffsetToPmPos(charOffset: number, paragraphLengths?: number[]): number {
+  if (!paragraphLengths || paragraphLengths.length <= 1) {
+    return charOffset + 2;
+  }
+
+  let acc = 0; // 누적 단락 글자 수
+  for (let i = 0; i < paragraphLengths.length; i++) {
+    const len = paragraphLengths[i] ?? 0;
+    // 단락 i 의 첫 charOffset (앞 단락 글자 수 + 단락 사이 \n 수)
+    const paragraphStartCharOffset = acc + i;
+    const paragraphEndCharOffset = paragraphStartCharOffset + len;
+
+    if (charOffset <= paragraphEndCharOffset) {
+      const localOffset = charOffset - paragraphStartCharOffset;
+      if (localOffset < 0) {
+        // charOffset 이 \n 위치인 경우 — 다음 단락 첫 글자로 fallback
+        return 2 + acc + 2 * (i + 1);
+      }
+      return 2 + acc + 2 * i + localOffset;
+    }
+    acc += len;
+  }
+
+  // 범위 밖 → 마지막 단락 끝
+  const lastLen = paragraphLengths[paragraphLengths.length - 1] ?? 0;
+  return 2 + acc + 2 * (paragraphLengths.length - 1) + lastLen;
 }
 
 /**
  * ProseMirror position → character offset 변환 (역방향).
  *
  * charOffsetToPmPos 의 역함수.
+ *
+ * paragraphLengths: optional — 없으면 단일 단락 가정 (기존 호출자 호환).
  */
-function pmPosToCharOffset(pmPos: number): number {
-  return pmPos - 2;
+function pmPosToCharOffset(pmPos: number, paragraphLengths?: number[]): number {
+  if (!paragraphLengths || paragraphLengths.length <= 1) {
+    return pmPos - 2;
+  }
+
+  let pmAcc = 2; // 현재 단락 첫 글자 pmPos
+  let charAcc = 0; // 현재 단락 첫 글자 charOffset
+  for (let i = 0; i < paragraphLengths.length; i++) {
+    const len = paragraphLengths[i] ?? 0;
+    const paragraphEndPmPos = pmAcc + len;
+
+    if (pmPos <= paragraphEndPmPos) {
+      const localPos = pmPos - pmAcc;
+      return charAcc + localPos;
+    }
+
+    pmAcc = paragraphEndPmPos + 2; // paragraph close(1) + 다음 paragraph open(1)
+    charAcc += len + 1; // 단락 글자 + \n
+  }
+
+  // 범위 밖
+  return charAcc;
 }
 
 // ---------------------------------------------------------------------------
@@ -299,12 +354,15 @@ export function docToAnnotations(doc: JSONContent): SerializedAnnotation[] {
  *
  * KIND_TO_MARK_NAME 에 없는 kind 는 무시한다 (미래 확장 대비).
  */
-export function annotationsToMarks(annotations: SerializedAnnotation[]): MarkAttrs[] {
+export function annotationsToMarks(
+  annotations: SerializedAnnotation[],
+  paragraphLengths?: number[]
+): MarkAttrs[] {
   const result: MarkAttrs[] = [];
 
   for (const ann of annotations) {
-    const from = charOffsetToPmPos(ann.span.start);
-    const to = charOffsetToPmPos(ann.span.end);
+    const from = charOffsetToPmPos(ann.span.start, paragraphLengths);
+    const to = charOffsetToPmPos(ann.span.end, paragraphLengths);
 
     const attrs: Record<string, unknown> = {};
 
