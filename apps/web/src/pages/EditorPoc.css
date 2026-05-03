@@ -103,7 +103,8 @@
 [data-annotation-kind="top_label"]::before {
   content: attr(data-top-label-text);
   position: absolute;
-  top: calc(-0.78em - 0.3px); /* 라벨 — 60% 축소 */
+  /* 라벨 박스 전체가 border 위쪽으로 빠지도록 — 라벨 0.65em * line-height 1.4 ≈ 0.91em + border 2px 여유 */
+  top: calc(-1.0em - 2px);
   left: 0; /* 구/절 = 좌측 정렬 (PM) */
   font-size: 0.65em;
   font-weight: 600;
@@ -182,7 +183,8 @@
 [data-annotation-kind="bottom_label"]::after {
   content: attr(data-bottom-label-text);
   position: absolute;
-  bottom: calc(-0.78em - 0.3px); /* 라벨 — 60% 축소 (PM 폴리싱 2차) */
+  /* 라벨 박스 전체가 border 아래쪽으로 빠지도록 — 라벨 0.65em * line-height 1.4 ≈ 0.91em + border 2px 여유 */
+  bottom: calc(-1.0em - 2px);
   left: 50%;
   transform: translateX(-50%);
   font-size: 0.65em;
