@@ -46,8 +46,8 @@ from hwpx_renderer._xml_builders import (
     UNDERLINE_DEFAULT_COLOR,
     build_hwpx_zip,
     charpr_xml,
-    plain_run_xml,
     secpr_run_xml,
+    xe,
 )
 from shared.schemas.annotation import AnnotationKind, SyntaxAnnotation
 from shared.schemas.passage import Passage
@@ -206,36 +206,6 @@ def _build_header_xml() -> str:
     )
 
 
-# ── 단락 렌더 헬퍼 ────────────────────────────────────────────────────────────
-
-
-@dataclass
-class _RunSpec:
-    """단일 텍스트 run 의 렌더 명세."""
-
-    text: str
-    char_pr_id: int
-
-
-def _build_body_para(run_specs: list[_RunSpec], with_secpr: bool = False) -> str:
-    """본문 단락 XML 생성.
-
-    Args:
-        run_specs: 이 단락에 포함될 run 목록 (순서 유지).
-        with_secpr: True 이면 첫 단락에 secPr run 을 앞에 추가.
-    """
-    runs_xml = ""
-    if with_secpr:
-        runs_xml += secpr_run_xml()
-    for rs in run_specs:
-        runs_xml += plain_run_xml(rs.text, rs.char_pr_id)
-
-    return (
-        '<hp:p id="0" paraPrIDRef="0" styleIDRef="0" '
-        'pageBreak="0" columnBreak="0" merged="0">' + runs_xml + "</hp:p>"
-    )
-
-
 # ── 텍스트 런 annotation 라우터 ──────────────────────────────────────────────
 
 
@@ -370,7 +340,7 @@ def _build_section_xml(
 
     # 단락 2: 본문 (run 분할 적용)
     run_xmls = "".join(
-        f'<hp:run charPrIDRef="{seg.char_pr_id}"><hp:t>{_xe_local(seg.text)}</hp:t></hp:run>'
+        f'<hp:run charPrIDRef="{seg.char_pr_id}"><hp:t>{xe(seg.text)}</hp:t></hp:run>'
         for seg in segments
         if seg.text  # 빈 세그먼트 건너뜀
     )
@@ -388,11 +358,6 @@ def _build_section_xml(
         + body_para
         + "</hs:sec>"
     )
-
-
-def _xe_local(s: str) -> str:
-    """XML escape (로컬 alias — import 최소화)."""
-    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
 
 
 # ── 공개 API ─────────────────────────────────────────────────────────────────

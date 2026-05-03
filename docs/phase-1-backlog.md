@@ -153,7 +153,7 @@
   - SQLAlchemy 모델 + Alembic revision (multi-tenant `tenant_id` 강제).
   - 단위 테스트 (cross-tenant 격리 1건 포함).
 - **PR 단위**: 1~2 PR (a: 모델 + 마이그레이션, b: 엔드포인트 + 테스트).
-- **머지**: PR #12 (`1570ae1`). API 설계 결정: replace-all + 결과 리스트 반환 (id 포함). Alembic revision 추가 없음 (P1-3 0003 에서 ORM 컬럼 확정). 단위 7건 + 라우터 3건 통과. follow-up: (1) Docker 환경에서 `pytest -m integration` 으로 5건 (정상/덮어쓰기/빈 리스트/cross-tenant/arrow JSONB round-trip) 검증 1회 — P1-3 follow-up "integration 검증" 도 함께 충족 (2) `routers/annotations.py` GET 엔드포인트에 `async with session.begin()` 명시 (선택, P0-7 일관성).
+- **머지**: PR #12 (`1570ae1`). API 설계 결정: replace-all + 결과 리스트 반환 (id 포함). Alembic revision 추가 없음 (P1-3 0003 에서 ORM 컬럼 확정). 단위 7건 + 라우터 3건 통과. follow-up: (1) [보류] Docker 환경에서 `pytest -m integration` 으로 5건 (정상/덮어쓰기/빈 리스트/cross-tenant/arrow JSONB round-trip) 검증 1회 — P1-3 follow-up "integration 검증" 도 함께 충족 (Docker 인프라 부재로 본 세션 미처리, 다음 인프라 확보 시) (2) [done] `routers/annotations.py` GET 엔드포인트에 `async with session.begin()` 명시 — `chore: P1 follow-up 묶음` PR 에서 처리.
 
 #### P1-6 — 에디터 ↔ API 통합
 
@@ -202,7 +202,7 @@
     PR 에 근거 기록.
 - **PR 단위**: 2~3 PR (kind 별로 묶음 — a: 텍스트 런 계열 (highlight, underline,
   inline_note), b: 라벨 계열 (top, bottom, bracket), c: 화살표).
-- **머지 (a)**: PR #14 (`aaa9885`) — fix 3라운드 후 머지. 한컴 호환성 fix: (1) `content.hpf opf:item id` 확장자 제거 (id="section0.xml" → "section0") (2) `<hh:underline type>` 값 교정 (SINGLE → BOTTOM, 한컴 스펙 외 값). 결정 기록: inline_note=inline run 후보 A / 12색 highlight 사전 정의 / underline #000000 고정 (P1-7 §6 #2/#3/#4 닫음). 69 단위 테스트 통과. follow-up: (1) `_RunSpec` / `_build_body_para` 데드 코드 정리 (P1-8b 진입 시 사용 / 미사용 결정) (2) `xe` / `_xe_local` 중복 제거 (3) `charpr_xml` bold/italic 파라미터가 항상 켜진 상태로 출력되는 버그 정리 (4) `inline_note` 의 `ann.text` 값 (예: "(=foster)") 미삽입 — Phase 1 baseline 충분한지 domain-expert 검토 후 결정 (5) `mcp__hwpx__open_document` 자동 회귀 테스트 추가 — 한컴 파서와 동등한 호환성 검증 가능 (6) `docs/hwpx-align-poc.md` §6 한컴 스펙 함정 추가 기록 (charPr id 비연속 / opf:item id 확장자 / underline type=SINGLE 등 P1-8a fix 라운드 발견 사항).
+- **머지 (a)**: PR #14 (`aaa9885`) — fix 3라운드 후 머지. 한컴 호환성 fix: (1) `content.hpf opf:item id` 확장자 제거 (id="section0.xml" → "section0") (2) `<hh:underline type>` 값 교정 (SINGLE → BOTTOM, 한컴 스펙 외 값). 결정 기록: inline_note=inline run 후보 A / 12색 highlight 사전 정의 / underline #000000 고정 (P1-7 §6 #2/#3/#4 닫음). 69 단위 테스트 통과. follow-up: (1) [done] `_RunSpec` / `_build_body_para` 데드 코드 정리 — `chore: P1 follow-up 묶음` PR (P1-8b 가 자체 3단 단락 구조를 빌드하므로 데드 코드 제거가 안전 — 잘못된 API 시그널 제거) (2) [done] `xe` / `_xe_local` 중복 제거 — 동일 PR (3) [done] `charpr_xml` bold/italic 파라미터가 항상 켜진 상태로 출력되는 버그 정리 — 동일 PR (조건부 emission 으로 변경) (4) [보류] `inline_note` 의 `ann.text` 값 (예: "(=foster)") 미삽입 — domain-expert 결정 필요, Phase 1 baseline 충분한지 별도 검토 (5) [보류] `mcp__hwpx__open_document` 자동 회귀 테스트 추가 — pytest 안에서 MCP 도구 호출 인프라 부재 (6) `docs/hwpx-align-poc.md` §6 한컴 스펙 함정 추가 기록 (charPr id 비연속 / opf:item id 확장자 / underline type=SINGLE 등 P1-8a fix 라운드 발견 사항).
 
 #### P1-9 — HWPX 출력 API + 와이프 검수 사이클
 
