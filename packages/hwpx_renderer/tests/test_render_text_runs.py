@@ -1,5 +1,6 @@
 """
 P1-8a — HWPX 렌더러 텍스트 런 계열 단위 테스트
+(fix: charPr id 연속 배치 + itemCnt 일치 — 한컴 파일 손상 거부 회귀)
 
 검증 대상:
     1. ZIP 구조 + 한컴 스펙 핵심 값 (P1-0b 검증 케이스 흡수)
@@ -26,6 +27,7 @@ PM 한글 오피스 검증 항목:
 from __future__ import annotations
 
 import io
+import re
 import zipfile
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -263,19 +265,19 @@ def test_body_text_present_in_section(section0_xml: str) -> None:
 
 
 def test_highlight_charpr_in_section(section0_xml: str) -> None:
-    """highlight charPr (id=10, color_index=1) 가 section0 run 에 참조되어야 한다."""
-    # color_index=1 → charPr id=10 (_highlight_charpr_id(1) = 10 + 1 - 1 = 10)
-    assert 'charPrIDRef="10"' in section0_xml
+    """highlight charPr (id=4, color_index=1) 가 section0 run 에 참조되어야 한다."""
+    # color_index=1 → charPr id=4 (_highlight_charpr_id(1) = 4 + 1 - 1 = 4)
+    assert 'charPrIDRef="4"' in section0_xml
 
 
 def test_underline_charpr_in_section(section0_xml: str) -> None:
-    """underline charPr (id=30) 가 section0 run 에 참조되어야 한다."""
-    assert 'charPrIDRef="30"' in section0_xml
+    """underline charPr (id=2) 가 section0 run 에 참조되어야 한다."""
+    assert 'charPrIDRef="2"' in section0_xml
 
 
 def test_inline_note_charpr_in_section(section0_xml: str) -> None:
-    """inline_note charPr (id=50) 가 section0 run 에 참조되어야 한다."""
-    assert 'charPrIDRef="50"' in section0_xml
+    """inline_note charPr (id=3) 가 section0 run 에 참조되어야 한다."""
+    assert 'charPrIDRef="3"' in section0_xml
 
 
 def test_body_charpr_in_section(section0_xml: str) -> None:
@@ -343,3 +345,38 @@ def test_fixture_file_written(hwpx_bytes: bytes) -> None:
     """fixtures/p1_8a_text_runs.hwpx 파일이 디스크에 기록되어야 한다."""
     assert _FIXTURE_PATH.exists()
     assert _FIXTURE_PATH.stat().st_size > 0
+
+
+# ── 9. charPr id 연속성 + itemCnt 일치 회귀 테스트 (한컴 파일 손상 방지) ─────
+# 배경: 비연속 id (0,1,10,30,50) + itemCnt=16 조합이 한컴 파서 OOB → 손상 거부.
+# 이 테스트가 통과하면 해당 패턴이 재발하지 않음을 보장한다.
+
+
+def test_header_charprs_have_consecutive_ids(header_xml: str) -> None:
+    """charPr id 가 0 부터 (itemCnt-1) 까지 빠짐없이 연속해야 한다.
+
+    한컴 HWPX 스펙: itemCnt 는 실제 항목 수이며, id 는 0~(itemCnt-1) 연속.
+    비연속 id 는 한컴 파서가 OOB 처리 → 파일 손상 팝업 발생.
+    """
+    # itemCnt 추출
+    item_cnt_match = re.search(r'<hh:charProperties itemCnt="(\d+)">', header_xml)
+    assert item_cnt_match, "charProperties itemCnt 를 header.xml 에서 찾을 수 없음"
+    item_cnt = int(item_cnt_match.group(1))
+
+    # 실제 charPr id 목록 추출
+    ids = [int(m) for m in re.findall(r'<hh:charPr id="(\d+)"', header_xml)]
+
+    assert len(ids) == item_cnt, f"charPr 실제 개수({len(ids)}) 와 itemCnt({item_cnt}) 불일치"
+    assert sorted(ids) == list(range(item_cnt)), (
+        f"charPr id 가 0~{item_cnt - 1} 연속이 아님: 실제 ids={sorted(ids)}"
+    )
+
+
+def test_header_charpr_item_cnt_equals_charpr_count(header_xml: str) -> None:
+    """itemCnt 속성값이 실제 <hh:charPr> 요소 개수와 정확히 일치해야 한다."""
+    item_cnt_match = re.search(r'<hh:charProperties itemCnt="(\d+)">', header_xml)
+    assert item_cnt_match, "charProperties itemCnt 를 header.xml 에서 찾을 수 없음"
+    item_cnt = int(item_cnt_match.group(1))
+
+    actual_count = len(re.findall(r"<hh:charPr ", header_xml))
+    assert actual_count == item_cnt, f"itemCnt={item_cnt} 이지만 실제 charPr 요소 수={actual_count}"

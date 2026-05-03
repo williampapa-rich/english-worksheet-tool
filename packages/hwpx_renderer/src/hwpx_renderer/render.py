@@ -21,14 +21,17 @@ inline_note 결정 (P1-7 §6 미해결 #2):
     - 색상 변경 시 dict 한 곳만 수정.
 
 charPr id 배치 (header.xml 안):
-    id 0  : 본문 body (plain)
-    id 1  : 라벨 (7pt bold) — top/bottom label, P1-8b 에서 사용
-    id 10 ~ 21 : highlight color_index 1~12
-    id 30 ~ 41 : underline color_index 1~12 (underline 은 color 고정 #000000, 자리만)
-                 단, 본 PR 에서 underline 은 id 30 단일 (SINGLE 밑줄, 흑색)
-    id 50       : inline_note (7pt, 회색)
+    id 0       : 본문 body (plain 10pt)
+    id 1       : 라벨 (7pt bold) — top/bottom label, P1-8b 에서 사용
+    id 2       : underline SINGLE 흑색
+    id 3       : inline_note (7pt, 회색)
+    id 4 ~ 15  : highlight color_index 1~12
 
-    ※ id 배치 설계 원칙: 10 단위로 구분해 P1-8b/c 에서 추가 충돌 없이 확장 가능.
+    itemCnt = 16, max id = 15 → 0~15 연속 배치.
+    한컴 HWPX 스펙: itemCnt 는 실제 항목 수여야 하며, id 는 0 부터 (itemCnt-1) 까지
+    연속이어야 한다. 비연속 id (예: 0,1,10,30,50) + itemCnt=16 조합은 한컴 파서가
+    OOB(Out-of-Bounds) 로 처리해 파일 손상 팝업을 발생시킨다.
+    (P1-8a fix: PM 한글 오피스 검증에서 손상 팝업 발생 → 연속 id 로 재설계)
 """
 
 from __future__ import annotations
@@ -51,17 +54,18 @@ from shared.schemas.passage import Passage
 
 logger = logging.getLogger(__name__)
 
-# charPr id 범위 상수
-_CHARPR_BODY = 0  # 본문 plain
-_CHARPR_LABEL_BASE = 1  # 라벨 7pt bold (P1-8b 에서 사용)
-_CHARPR_HIGHLIGHT_BASE = 10  # color_index 1 → id 10
-_CHARPR_UNDERLINE = 30  # underline 단일 (흑색 SINGLE)
-_CHARPR_INLINE_NOTE = 50  # inline_note
+# charPr id 상수 — 0부터 연속 배치 (itemCnt = max_id + 1 필수)
+# 한컴 스펙: id 가 비연속이면 파서가 OOB 처리 → 파일 손상 거부.
+_CHARPR_BODY = 0  # 본문 plain 10pt
+_CHARPR_LABEL_BASE = 1  # 라벨 7pt bold (P1-8b 예약)
+_CHARPR_UNDERLINE = 2  # underline SINGLE 흑색
+_CHARPR_INLINE_NOTE = 3  # inline_note 7pt 회색
+_CHARPR_HIGHLIGHT_BASE = 4  # color_index 1 → id 4, ..., color_index 12 → id 15
 
 
 def _highlight_charpr_id(color_index: int) -> int:
-    """color_index (1~12) → charPr id."""
-    return _CHARPR_HIGHLIGHT_BASE + color_index - 1  # 10~21
+    """color_index (1~12) → charPr id (4~15)."""
+    return _CHARPR_HIGHLIGHT_BASE + color_index - 1  # 4~15
 
 
 # ── header.xml 빌더 ──────────────────────────────────────────────────────────
@@ -100,7 +104,7 @@ def _build_header_xml() -> str:
         "</hh:borderFills>"
     )
 
-    # charPr 목록 구성
+    # charPr 목록 구성 — id 0부터 연속으로 등록 (itemCnt = len = max_id + 1)
     charpr_list: list[str] = []
 
     # id 0: 본문 plain 10pt
@@ -109,13 +113,7 @@ def _build_header_xml() -> str:
     # id 1: 라벨 7pt bold (P1-8b 예약 — 본 PR 에서도 정의해 둠)
     charpr_list.append(charpr_xml(_CHARPR_LABEL_BASE, height=700, bold=True))
 
-    # id 10~21: highlight color_index 1~12
-    for idx in range(1, 13):
-        cid = _highlight_charpr_id(idx)
-        color = HIGHLIGHT_PALETTE[idx]
-        charpr_list.append(charpr_xml(cid, shade_color=color))
-
-    # id 30: underline SINGLE 흑색
+    # id 2: underline SINGLE 흑색
     charpr_list.append(
         charpr_xml(
             _CHARPR_UNDERLINE,
@@ -124,7 +122,7 @@ def _build_header_xml() -> str:
         )
     )
 
-    # id 50: inline_note 7pt 회색
+    # id 3: inline_note 7pt 회색
     charpr_list.append(
         charpr_xml(
             _CHARPR_INLINE_NOTE,
@@ -132,6 +130,12 @@ def _build_header_xml() -> str:
             text_color=INLINE_NOTE_TEXT_COLOR,
         )
     )
+
+    # id 4~15: highlight color_index 1~12
+    for idx in range(1, 13):
+        cid = _highlight_charpr_id(idx)
+        color = HIGHLIGHT_PALETTE[idx]
+        charpr_list.append(charpr_xml(cid, shade_color=color))
 
     total_charpr = len(charpr_list)
     charpr_block = (
