@@ -149,7 +149,7 @@ HWPX                →
 - **하이라이트 / 밑줄 / inline_note**: HWPX 텍스트 런 속성 (`hh:charPr` + `charPrIDRef` 교체). P1-8a (PR #14) 머지로 구현 완료. `inline_note` 표현은 후보 A (inline run, 작은 폰트 charPr) 채택 — domain-expert 검토 follow-up 잔존. 12색 highlight 사전 정의 dict, underline `#000000` 고정. 상세는 `docs/annotation-hwpx-mapping.md` §2-1/§2-2/§2-3.
 - **라벨 (top_label / bottom_label)**: HWPX **3단 단락 구조** (라벨 단락 / 본문 단락 / 라벨 단락). P1-0b PoC 에서 textBox + `vertOffset` 으로는 본문 위/아래 띄우기 불가 — 한컴이 floating textBox 를 단락 라인 높이로 clamp 해 본문 위/아래로 올라가지 않음. 3단 단락 구조 채택 (PoC fix 3차 검증).
   - **수평 align 한계**: 라벨 수평 위치는 단락 indent 근사 — pillow `ImageFont.getlength()` 폰트 metric 보정은 P1-8b 에서. pixel-level align 은 한계 (Phase 1 baseline 필요 조건 아님).
-- **괄호 (bracket)**: 표현 방식 **결정 미정**. Unicode `[ ]` (단순) / `hp:rect` drawObj (실선 외곽선) / `hp:tbl` 단일 셀 borderFill (exam-generator 패턴 재활용) 중 P1-8b 진입 전 PM + domain-expert + 와이프 시각 피드백으로 결정. 상세는 `docs/annotation-hwpx-mapping.md` §1, §2-5, §6.
+- **괄호 (bracket)**: 표현 방식 **PM 결정 대기**. Unicode `[ ]` (단순) / `hp:rect` drawObj (실선 외곽선) / `hp:tbl` 단일 셀 borderFill (exam-generator 패턴 재활용) 중 P1-8b 진입 전 PM 결정 필요. ADR 초안 = `docs/adr/0007-bracket-hwpx-representation.md` (architect 추천 A — Unicode). 상세는 `docs/annotation-hwpx-mapping.md` §1, §2-5, §6.
 - **화살표 / 곡선**: HWPX 도형 (`hp:line` / `hp:polyLine`) 우선, 복잡할 때만 SVG → 이미지 fallback. 좌표계 / anchor 정책 PoC 는 P1-8c 에서 별도 진행 — `docs/annotation-hwpx-mapping.md` §2-6 참조.
 
 ### 3.6 No Reinventing the Wheel — 검증된 솔루션 우선
