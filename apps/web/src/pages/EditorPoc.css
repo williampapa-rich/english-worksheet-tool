@@ -90,7 +90,7 @@
 [data-annotation-kind="top_label"] {
   position: relative;
   display: inline-block;
-  margin-top: 1.4em; /* 위 라벨 공간 확보 */
+  margin-top: calc(1.4em - 1.5px); /* 위 라벨 공간 — 본문에 1.5px 더 가깝게 (PM 폴리싱) */
   border-top: 2px solid var(--current-anno-color, var(--anno-color-0));
   --current-anno-color: var(--anno-color-0);
 }
@@ -98,7 +98,7 @@
 [data-annotation-kind="top_label"]::before {
   content: attr(data-top-label-text);
   position: absolute;
-  top: -1.3em;
+  top: calc(-1.3em - 0.5px); /* 라벨 — border 에서 0.5px 더 멀게 (PM 폴리싱) */
   left: 0;
   font-size: 0.65em;
   font-weight: 600;
@@ -164,7 +164,7 @@
 [data-annotation-kind="bottom_label"] {
   position: relative;
   display: inline-block;
-  margin-bottom: 1.4em; /* 아래 라벨 공간 확보 */
+  margin-bottom: calc(1.4em - 1.5px); /* 아래 라벨 공간 — 본문에 1.5px 더 가깝게 (PM 폴리싱) */
   border-bottom: 2px solid var(--current-anno-color, var(--anno-color-0));
   --current-anno-color: var(--anno-color-0);
 }
@@ -172,7 +172,7 @@
 [data-annotation-kind="bottom_label"]::after {
   content: attr(data-bottom-label-text);
   position: absolute;
-  bottom: -1.3em;
+  bottom: calc(-1.3em - 0.5px); /* 라벨 — border 에서 0.5px 더 멀게 (PM 폴리싱) */
   left: 0;
   font-size: 0.65em;
   font-weight: 600;
