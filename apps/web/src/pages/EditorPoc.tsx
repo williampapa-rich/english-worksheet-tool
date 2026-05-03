@@ -44,13 +44,18 @@ import "./EditorPoc.css";
 // 상수
 // ---------------------------------------------------------------------------
 
+// EXTENSIONS — mark 등록 순서가 ProseMirror DOM nesting 결정.
+// 앞에 있는 mark = outer, 뒤에 있는 = inner.
+// BracketMark 를 TopLabelMark 보다 앞에 두어 bracket 이 outer 가 되도록.
+// → top_label 의 border-top 은 inner span 폭 (본문 텍스트만) 만 둘러쌈.
+// → bracket 의 inline 괄호 글자는 outer span 안에서 layout 점유, 양옆 침범 없음.
 const EXTENSIONS = [
   StarterKit,
   HighlightMark,
   UnderlineMark,
+  BracketMark,
   TopLabelMark,
   BottomLabelMark,
-  BracketMark,
   InlineNoteMark,
   ArrowMark,
   WordSnapExtension,
@@ -451,11 +456,28 @@ export function EditorPoc() {
       const ranges = collectMarkRangesByAnnotationId(editor.state.doc, params.annotationId);
       if (ranges.length === 0) return;
 
+      // 기존 mark 의 category 를 보존하기 위해 attrs 사전 수집
+      // (chain unset → set 사이에서 category 정보 유지 — 누락되면 분석표에서 행 매칭 실패)
+      const categoryByMark = new Map<string, string | null>();
+      const doc = editor.state.doc;
+      doc.descendants((node) => {
+        if (!node.isText) return;
+        for (const mark of node.marks) {
+          const annId = (mark.attrs.annotationId as string | null | undefined) ?? null;
+          if (annId !== params.annotationId) continue;
+          const cat = (mark.attrs.category as string | null | undefined) ?? null;
+          if (!categoryByMark.has(mark.type.name)) {
+            categoryByMark.set(mark.type.name, cat);
+          }
+        }
+      });
+
       let chain = editor.chain();
 
       for (const r of ranges) {
         // 기존 mark attrs 를 유지하면서 새 값으로 교체
         const markName = r.markName;
+        const preservedCategory = categoryByMark.get(markName) ?? null;
 
         if (markName === "bracket") {
           if (params.bracketStyle === null) {
@@ -469,6 +491,7 @@ export function EditorPoc() {
               .setBracket({
                 bracketStyle: params.bracketStyle,
                 colorIndex: params.colorIndex ?? 1,
+                category: preservedCategory,
                 annotationId: params.annotationId,
               });
           }
@@ -479,6 +502,7 @@ export function EditorPoc() {
             .setTopLabel({
               text: params.text ?? "",
               colorIndex: params.colorIndex ?? undefined,
+              category: preservedCategory,
               annotationId: params.annotationId,
             });
         } else if (markName === "bottomLabel") {
@@ -488,6 +512,7 @@ export function EditorPoc() {
             .setBottomLabel({
               text: params.text ?? "",
               colorIndex: params.colorIndex ?? undefined,
+              category: preservedCategory,
               annotationId: params.annotationId,
             });
         } else if (markName === "inlineNote") {
@@ -497,6 +522,7 @@ export function EditorPoc() {
             .setInlineNote({
               text: params.text ?? "",
               colorIndex: params.colorIndex ?? undefined,
+              category: preservedCategory,
               annotationId: params.annotationId,
             });
         } else if (markName === "highlight") {
@@ -509,11 +535,20 @@ export function EditorPoc() {
             .unsetMark(markName)
             .setMark("highlight", {
               color: hex,
+              colorIndex: params.colorIndex,
               annotationId: params.annotationId,
-              category: "note",
+              category: preservedCategory ?? "note",
+            });
+        } else if (markName === "underline") {
+          chain = chain
+            .setTextSelection({ from: r.from, to: r.to })
+            .unsetMark(markName)
+            .setMark("underline", {
+              colorIndex: params.colorIndex,
+              annotationId: params.annotationId,
+              category: preservedCategory ?? "note",
             });
         }
-        // underline: 색 미지원 — attrs 변경 없음
       }
 
       chain.run();
