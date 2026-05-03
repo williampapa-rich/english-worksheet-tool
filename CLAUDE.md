@@ -3,8 +3,8 @@
 > 이 문서는 Claude Code CLI가 프로젝트 컨텍스트를 이해하기 위한 헌장(charter)이자, subagent들의 협업 규칙서다.
 > 변경 시 PR로 관리한다. 모든 핵심 의사결정은 여기 반영된다.
 
-**버전**: v0.4
-**최종 갱신**: 2026-05-02
+**버전**: v0.6
+**최종 갱신**: 2026-05-03
 **상태**: Phase 0 종료 — Phase 1 진입 전 (P0-9 smoke test + runbook 머지 완료)
 
 ---
@@ -146,9 +146,11 @@ HWPX                →
 ### 3.5 구문분석 에디터: Tiptap 기반
 
 - ProseMirror의 mark 시스템이 다중 레이어 annotation 겹침을 정확히 처리
-- 하이라이트 / 밑줄: HWPX 텍스트 런 속성 (이미지 아님)
-- 라벨: HWPX 텍스트박스 도형
-- 화살표 / 곡선: HWPX 도형 우선, 복잡할 때만 SVG → 이미지 fallback
+- **하이라이트 / 밑줄 / inline_note (잠정)**: HWPX 텍스트 런 속성 (`hh:charPr` + `charPrIDRef` 교체). `inline_note` 의 표현(inline run vs 별 단락 라벨)은 P1-8a 착수 전 domain-expert 확인 후 결정 — `docs/annotation-hwpx-mapping.md` §2-3 참조.
+- **라벨 (top_label / bottom_label)**: HWPX **3단 단락 구조** (라벨 단락 / 본문 단락 / 라벨 단락). P1-0b PoC 에서 textBox + `vertOffset` 으로는 본문 위/아래 띄우기 불가 — 한컴이 floating textBox 를 단락 라인 높이로 clamp 해 본문 위/아래로 올라가지 않음. 3단 단락 구조 채택 (PoC fix 3차 검증).
+  - **수평 align 한계**: 라벨 수평 위치는 단락 indent 근사 — pillow `ImageFont.getlength()` 폰트 metric 보정은 P1-8b 에서. pixel-level align 은 한계 (Phase 1 baseline 필요 조건 아님).
+- **괄호 (bracket)**: 표현 방식 **결정 미정**. Unicode `[ ]` (단순) / `hp:rect` drawObj (실선 외곽선) / `hp:tbl` 단일 셀 borderFill (exam-generator 패턴 재활용) 중 P1-8b 진입 전 PM + domain-expert + 와이프 시각 피드백으로 결정. 상세는 `docs/annotation-hwpx-mapping.md` §1, §2-5, §6.
+- **화살표 / 곡선**: HWPX 도형 (`hp:line` / `hp:polyLine`) 우선, 복잡할 때만 SVG → 이미지 fallback. 좌표계 / anchor 정책 PoC 는 P1-8c 에서 별도 진행 — `docs/annotation-hwpx-mapping.md` §2-6 참조.
 
 ### 3.6 No Reinventing the Wheel — 검증된 솔루션 우선
 
@@ -457,3 +459,4 @@ Phase 0를 시작할 수 있는 기반을 깔고, architect + domain-expert의 a
 | v0.3 | 2026-05-02 | (1) §6.2 변형 유형 전제 정정 — 변형 유형은 별 카테고리가 아니라 기존 24개 유형의 sub-form/파생. exam-generator type enum 흡수가 1차 source. (2) §11 Open Questions 갱신 — schema audit 완료 표기, audit이 던진 미해결 ADR 항목 추가, 레퍼런스 영상 분석 항목 추가. |
 | v0.4 | 2026-05-02 | §2.2 현재 위치 갱신 — Phase 0 종료, Phase 0 DoD 5개 충족 확인, Phase 1 진입 전 차단 ADR 명시. |
 | v0.5 | 2026-05-02 | §11 Open Questions 갱신 — Phase 1 진입 차단 ADR 2개 해소 표기 (ADR-0004 Annotation span 식별 방식, ADR-0006 마커 처리 정책). |
+| v0.6 | 2026-05-03 | §3.5 라벨 결정 갱신 (P1-0b PoC 반영) + bracket 표현 결정 미정 명시 + inline_note 잠정 표기. P1-7 매핑 카탈로그 (`docs/annotation-hwpx-mapping.md`) 반영. |
