@@ -214,6 +214,29 @@ P1-0b 커밋(`9814faf`) 이후 PM 이 한글 오피스로 fixture 를 열었을 
 2. 한컴 오피스에서 직접 열기 (PM 수동 확인)
 3. 단위 테스트는 구조 회귀 방지용이며, 스펙 적합성 검증 수단이 아님
 
+**P1-8a fix (2026-05-03) — charPr id 비연속 + itemCnt 불일치 → 한컴 파일 손상 거부**:
+
+P1-8a PR 첫 커밋에서 charPr id 를 10 단위로 구분 (`0, 1, 10~21, 30, 50`) 하면서
+`itemCnt="16"` 으로 설정했다. 단위 테스트 33건은 모두 통과했으나 PM 한글 오피스 검증에서
+"파일 손상" 팝업이 발생해 파일이 열리지 않았다.
+
+원인: 한컴 HWPX 파서는 `itemCnt` 를 실제 항목 수가 아니라 **id 범위의 크기**로 해석한다.
+`itemCnt="16"` 이면 id 0~15 가 존재해야 하는데, 실제로는 max id=50 이었으므로 파서가
+id 16~50 에 해당하는 참조를 OOB(Out-of-Bounds) 처리 → 파일 거부.
+
+수정 방법: id 를 0 부터 연속 배치하고 `itemCnt = max_id + 1` 을 항상 만족시킨다.
+레퍼런스 `template.hwpx` 검증 결과: `itemCnt="115"` + id `0~114` 완전 연속으로 확인.
+
+P1-8a 수정 후 배치:
+- id 0 = body (plain 10pt)
+- id 1 = label (7pt bold, P1-8b 예약)
+- id 2 = underline SINGLE 흑색
+- id 3 = inline_note 7pt 회색
+- id 4~15 = highlight color_index 1~12
+- `itemCnt=16`, max id=15 → 0~15 연속
+
+회귀 방지: `test_header_charprs_have_consecutive_ids` + `test_header_charpr_item_cnt_equals_charpr_count` 2건 추가.
+
 ---
 
 ## 7. PM 검증 기록

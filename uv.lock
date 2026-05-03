@@ -414,6 +414,12 @@ wheels = [
 name = "hwpx-renderer"
 version = "0.1.0"
 source = { editable = "packages/hwpx_renderer" }
+dependencies = [
+    { name = "shared" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "shared", editable = "shared" }]
 
 [[package]]
 name = "identify"

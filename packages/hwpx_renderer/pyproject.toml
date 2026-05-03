@@ -3,7 +3,12 @@ name = "hwpx-renderer"
 version = "0.1.0"
 description = "HWPX 출력 패키지 — hwpx-auto-parser-for-template 재활용"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+  "shared",
+]
+
+[tool.uv.sources]
+shared = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]
