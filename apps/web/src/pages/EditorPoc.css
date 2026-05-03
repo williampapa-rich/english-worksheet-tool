@@ -1,0 +1,418 @@
+/*
+ * EditorPoc.css — 7종 annotation mark 시각 스타일
+ *
+ * HWPX 출력 표현과 픽셀 일치 목표 아님.
+ * 에디터 안에서 각 kind 를 식별 가능한 수준만 보장.
+ *
+ * CSS selector: data-annotation-kind 속성 기반.
+ * color_index 는 --anno-color-N 변수를 통해 간접 참조.
+ */
+
+/* ---------------------------------------------------------------------------
+ * 12색 팔레트 변수
+ * TODO: PM 결정 — color palette §3.3
+ * 현재 Tailwind palette 에서 임의 선택. 레퍼런스 영상 §3.3 분석 후 교체 예정.
+ * color_index 별 의미 (sentence_role 매핑 등) 도 미결정 — 드래프트는 순수 색 팔레트.
+ * --------------------------------------------------------------------------- */
+:root {
+  --anno-color-0: #9ca3af; /* gray-400 — 디폴트 (미설정) */
+  --anno-color-1: #fef08a; /* yellow-200 */
+  --anno-color-2: #86efac; /* green-300 */
+  --anno-color-3: #93c5fd; /* blue-300 */
+  --anno-color-4: #f9a8d4; /* pink-300 */
+  --anno-color-5: #fdba74; /* orange-300 */
+  --anno-color-6: #c4b5fd; /* violet-300 */
+  --anno-color-7: #6ee7b7; /* emerald-300 */
+  --anno-color-8: #fca5a5; /* red-300 */
+  --anno-color-9: #67e8f9; /* cyan-300 */
+  --anno-color-10: #d9f99d; /* lime-200 */
+  --anno-color-11: #fde68a; /* amber-200 */
+  --anno-color-12: #e9d5ff; /* purple-200 */
+}
+
+/* ---------------------------------------------------------------------------
+ * color_index → CSS 변수 매핑
+ * data-color-index 속성 값으로 분기.
+ * --------------------------------------------------------------------------- */
+[data-color-index="1"] {
+  --current-anno-color: var(--anno-color-1);
+}
+[data-color-index="2"] {
+  --current-anno-color: var(--anno-color-2);
+}
+[data-color-index="3"] {
+  --current-anno-color: var(--anno-color-3);
+}
+[data-color-index="4"] {
+  --current-anno-color: var(--anno-color-4);
+}
+[data-color-index="5"] {
+  --current-anno-color: var(--anno-color-5);
+}
+[data-color-index="6"] {
+  --current-anno-color: var(--anno-color-6);
+}
+[data-color-index="7"] {
+  --current-anno-color: var(--anno-color-7);
+}
+[data-color-index="8"] {
+  --current-anno-color: var(--anno-color-8);
+}
+[data-color-index="9"] {
+  --current-anno-color: var(--anno-color-9);
+}
+[data-color-index="10"] {
+  --current-anno-color: var(--anno-color-10);
+}
+[data-color-index="11"] {
+  --current-anno-color: var(--anno-color-11);
+}
+[data-color-index="12"] {
+  --current-anno-color: var(--anno-color-12);
+}
+
+/* ---------------------------------------------------------------------------
+ * highlight — 배경색
+ * @tiptap/extension-highlight 가 style="background-color:..." 를 직접 주입하므로
+ * color_index 기반 스타일은 data-top-label-color 등 별도 attr 에서 처리.
+ * --------------------------------------------------------------------------- */
+/* highlight 는 Tiptap 공식 extension 이 background-color inline style 을 주입함 — 별도 CSS 불필요. */
+
+/* ---------------------------------------------------------------------------
+ * underline — 밑줄
+ * @tiptap/extension-underline 이 <u> 태그로 렌더링.
+ * --------------------------------------------------------------------------- */
+/* underline 은 Tiptap 공식 extension 이 <u> 태그로 렌더링 — 브라우저 기본 스타일 사용. */
+
+/* ---------------------------------------------------------------------------
+ * top_label — 위 첨자 라벨 (::before pseudo-element)
+ * --------------------------------------------------------------------------- */
+[data-annotation-kind="top_label"] {
+  position: relative;
+  display: inline-block;
+  margin-top: 1.4em; /* 위 라벨 공간 확보 */
+  --current-anno-color: var(--anno-color-0);
+}
+
+[data-annotation-kind="top_label"]::before {
+  content: attr(data-top-label-text);
+  position: absolute;
+  top: -1.3em;
+  left: 0;
+  font-size: 0.65em;
+  font-weight: 600;
+  color: #1e3a5f;
+  background-color: var(--current-anno-color);
+  padding: 0 3px;
+  border-radius: 2px;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+
+/* top_label color_index 분기 */
+[data-annotation-kind="top_label"][data-top-label-color="1"] {
+  --current-anno-color: var(--anno-color-1);
+}
+[data-annotation-kind="top_label"][data-top-label-color="2"] {
+  --current-anno-color: var(--anno-color-2);
+}
+[data-annotation-kind="top_label"][data-top-label-color="3"] {
+  --current-anno-color: var(--anno-color-3);
+}
+[data-annotation-kind="top_label"][data-top-label-color="4"] {
+  --current-anno-color: var(--anno-color-4);
+}
+[data-annotation-kind="top_label"][data-top-label-color="5"] {
+  --current-anno-color: var(--anno-color-5);
+}
+[data-annotation-kind="top_label"][data-top-label-color="6"] {
+  --current-anno-color: var(--anno-color-6);
+}
+[data-annotation-kind="top_label"][data-top-label-color="7"] {
+  --current-anno-color: var(--anno-color-7);
+}
+[data-annotation-kind="top_label"][data-top-label-color="8"] {
+  --current-anno-color: var(--anno-color-8);
+}
+[data-annotation-kind="top_label"][data-top-label-color="9"] {
+  --current-anno-color: var(--anno-color-9);
+}
+[data-annotation-kind="top_label"][data-top-label-color="10"] {
+  --current-anno-color: var(--anno-color-10);
+}
+[data-annotation-kind="top_label"][data-top-label-color="11"] {
+  --current-anno-color: var(--anno-color-11);
+}
+[data-annotation-kind="top_label"][data-top-label-color="12"] {
+  --current-anno-color: var(--anno-color-12);
+}
+
+/* ---------------------------------------------------------------------------
+ * bottom_label — 아래 첨자 라벨 (::after pseudo-element)
+ * --------------------------------------------------------------------------- */
+[data-annotation-kind="bottom_label"] {
+  position: relative;
+  display: inline-block;
+  margin-bottom: 1.4em; /* 아래 라벨 공간 확보 */
+  --current-anno-color: var(--anno-color-0);
+}
+
+[data-annotation-kind="bottom_label"]::after {
+  content: attr(data-bottom-label-text);
+  position: absolute;
+  bottom: -1.3em;
+  left: 0;
+  font-size: 0.65em;
+  font-weight: 600;
+  color: #1e3a5f;
+  background-color: var(--current-anno-color);
+  padding: 0 3px;
+  border-radius: 2px;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+
+/* bottom_label color_index 분기 */
+[data-annotation-kind="bottom_label"][data-bottom-label-color="1"] {
+  --current-anno-color: var(--anno-color-1);
+}
+[data-annotation-kind="bottom_label"][data-bottom-label-color="2"] {
+  --current-anno-color: var(--anno-color-2);
+}
+[data-annotation-kind="bottom_label"][data-bottom-label-color="3"] {
+  --current-anno-color: var(--anno-color-3);
+}
+[data-annotation-kind="bottom_label"][data-bottom-label-color="4"] {
+  --current-anno-color: var(--anno-color-4);
+}
+[data-annotation-kind="bottom_label"][data-bottom-label-color="5"] {
+  --current-anno-color: var(--anno-color-5);
+}
+[data-annotation-kind="bottom_label"][data-bottom-label-color="6"] {
+  --current-anno-color: var(--anno-color-6);
+}
+[data-annotation-kind="bottom_label"][data-bottom-label-color="7"] {
+  --current-anno-color: var(--anno-color-7);
+}
+[data-annotation-kind="bottom_label"][data-bottom-label-color="8"] {
+  --current-anno-color: var(--anno-color-8);
+}
+[data-annotation-kind="bottom_label"][data-bottom-label-color="9"] {
+  --current-anno-color: var(--anno-color-9);
+}
+[data-annotation-kind="bottom_label"][data-bottom-label-color="10"] {
+  --current-anno-color: var(--anno-color-10);
+}
+[data-annotation-kind="bottom_label"][data-bottom-label-color="11"] {
+  --current-anno-color: var(--anno-color-11);
+}
+[data-annotation-kind="bottom_label"][data-bottom-label-color="12"] {
+  --current-anno-color: var(--anno-color-12);
+}
+
+/* ---------------------------------------------------------------------------
+ * bracket — 괄호 (::before + ::after pseudo-element)
+ * bracketStyle: "()" | "{}" | "[]"
+ * --------------------------------------------------------------------------- */
+[data-annotation-kind="bracket"] {
+  --current-anno-color: var(--anno-color-0);
+}
+
+[data-annotation-kind="bracket"][data-bracket-color="1"] {
+  --current-anno-color: var(--anno-color-1);
+}
+[data-annotation-kind="bracket"][data-bracket-color="2"] {
+  --current-anno-color: var(--anno-color-2);
+}
+[data-annotation-kind="bracket"][data-bracket-color="3"] {
+  --current-anno-color: var(--anno-color-3);
+}
+[data-annotation-kind="bracket"][data-bracket-color="4"] {
+  --current-anno-color: var(--anno-color-4);
+}
+[data-annotation-kind="bracket"][data-bracket-color="5"] {
+  --current-anno-color: var(--anno-color-5);
+}
+[data-annotation-kind="bracket"][data-bracket-color="6"] {
+  --current-anno-color: var(--anno-color-6);
+}
+[data-annotation-kind="bracket"][data-bracket-color="7"] {
+  --current-anno-color: var(--anno-color-7);
+}
+[data-annotation-kind="bracket"][data-bracket-color="8"] {
+  --current-anno-color: var(--anno-color-8);
+}
+[data-annotation-kind="bracket"][data-bracket-color="9"] {
+  --current-anno-color: var(--anno-color-9);
+}
+[data-annotation-kind="bracket"][data-bracket-color="10"] {
+  --current-anno-color: var(--anno-color-10);
+}
+[data-annotation-kind="bracket"][data-bracket-color="11"] {
+  --current-anno-color: var(--anno-color-11);
+}
+[data-annotation-kind="bracket"][data-bracket-color="12"] {
+  --current-anno-color: var(--anno-color-12);
+}
+
+/* bracketStyle 별 괄호 문자 */
+[data-annotation-kind="bracket"][data-bracket-style="()"]::before {
+  content: "(";
+  color: var(--current-anno-color);
+  font-weight: 700;
+}
+[data-annotation-kind="bracket"][data-bracket-style="()"]::after {
+  content: ")";
+  color: var(--current-anno-color);
+  font-weight: 700;
+}
+[data-annotation-kind="bracket"][data-bracket-style="{}"]::before {
+  content: "{";
+  color: var(--current-anno-color);
+  font-weight: 700;
+}
+[data-annotation-kind="bracket"][data-bracket-style="{}"]::after {
+  content: "}";
+  color: var(--current-anno-color);
+  font-weight: 700;
+}
+[data-annotation-kind="bracket"][data-bracket-style="[]"]::before {
+  content: "[";
+  color: var(--current-anno-color);
+  font-weight: 700;
+}
+[data-annotation-kind="bracket"][data-bracket-style="[]"]::after {
+  content: "]";
+  color: var(--current-anno-color);
+  font-weight: 700;
+}
+
+/* ---------------------------------------------------------------------------
+ * arrow — 점선 밑줄 + 끝점 표시
+ * 실제 SVG 화살표는 P1-8c 영역. 드래프트는 점선 underline 으로 대체.
+ * --------------------------------------------------------------------------- */
+[data-annotation-kind="arrow"] {
+  border-bottom: 2px dashed var(--current-anno-color, var(--anno-color-0));
+  padding-bottom: 1px;
+  cursor: default;
+  --current-anno-color: var(--anno-color-0);
+}
+
+[data-annotation-kind="arrow"][data-arrow-color="1"] {
+  --current-anno-color: var(--anno-color-1);
+  border-bottom-color: var(--anno-color-1);
+}
+[data-annotation-kind="arrow"][data-arrow-color="2"] {
+  --current-anno-color: var(--anno-color-2);
+  border-bottom-color: var(--anno-color-2);
+}
+[data-annotation-kind="arrow"][data-arrow-color="3"] {
+  --current-anno-color: var(--anno-color-3);
+  border-bottom-color: var(--anno-color-3);
+}
+[data-annotation-kind="arrow"][data-arrow-color="4"] {
+  --current-anno-color: var(--anno-color-4);
+  border-bottom-color: var(--anno-color-4);
+}
+[data-annotation-kind="arrow"][data-arrow-color="5"] {
+  --current-anno-color: var(--anno-color-5);
+  border-bottom-color: var(--anno-color-5);
+}
+[data-annotation-kind="arrow"][data-arrow-color="6"] {
+  --current-anno-color: var(--anno-color-6);
+  border-bottom-color: var(--anno-color-6);
+}
+[data-annotation-kind="arrow"][data-arrow-color="7"] {
+  --current-anno-color: var(--anno-color-7);
+  border-bottom-color: var(--anno-color-7);
+}
+[data-annotation-kind="arrow"][data-arrow-color="8"] {
+  --current-anno-color: var(--anno-color-8);
+  border-bottom-color: var(--anno-color-8);
+}
+[data-annotation-kind="arrow"][data-arrow-color="9"] {
+  --current-anno-color: var(--anno-color-9);
+  border-bottom-color: var(--anno-color-9);
+}
+[data-annotation-kind="arrow"][data-arrow-color="10"] {
+  --current-anno-color: var(--anno-color-10);
+  border-bottom-color: var(--anno-color-10);
+}
+[data-annotation-kind="arrow"][data-arrow-color="11"] {
+  --current-anno-color: var(--anno-color-11);
+  border-bottom-color: var(--anno-color-11);
+}
+[data-annotation-kind="arrow"][data-arrow-color="12"] {
+  --current-anno-color: var(--anno-color-12);
+  border-bottom-color: var(--anno-color-12);
+}
+
+[data-annotation-kind="arrow"]::after {
+  content: " →";
+  font-size: 0.75em;
+  opacity: 0.7;
+}
+
+/* ---------------------------------------------------------------------------
+ * inline_note — 인라인 동의어/노트 (::after pseudo-element)
+ * TODO: PM 결정 — inline_note 위치 / 분리 단락 여부 (P1-7 §6 #2 미결정)
+ * 드래프트는 inline 으로 표시.
+ * --------------------------------------------------------------------------- */
+[data-annotation-kind="inline_note"] {
+  --current-anno-color: var(--anno-color-0);
+}
+
+[data-annotation-kind="inline_note"][data-inline-note-color="1"] {
+  --current-anno-color: var(--anno-color-1);
+}
+[data-annotation-kind="inline_note"][data-inline-note-color="2"] {
+  --current-anno-color: var(--anno-color-2);
+}
+[data-annotation-kind="inline_note"][data-inline-note-color="3"] {
+  --current-anno-color: var(--anno-color-3);
+}
+[data-annotation-kind="inline_note"][data-inline-note-color="4"] {
+  --current-anno-color: var(--anno-color-4);
+}
+[data-annotation-kind="inline_note"][data-inline-note-color="5"] {
+  --current-anno-color: var(--anno-color-5);
+}
+[data-annotation-kind="inline_note"][data-inline-note-color="6"] {
+  --current-anno-color: var(--anno-color-6);
+}
+[data-annotation-kind="inline_note"][data-inline-note-color="7"] {
+  --current-anno-color: var(--anno-color-7);
+}
+[data-annotation-kind="inline_note"][data-inline-note-color="8"] {
+  --current-anno-color: var(--anno-color-8);
+}
+[data-annotation-kind="inline_note"][data-inline-note-color="9"] {
+  --current-anno-color: var(--anno-color-9);
+}
+[data-annotation-kind="inline_note"][data-inline-note-color="10"] {
+  --current-anno-color: var(--anno-color-10);
+}
+[data-annotation-kind="inline_note"][data-inline-note-color="11"] {
+  --current-anno-color: var(--anno-color-11);
+}
+[data-annotation-kind="inline_note"][data-inline-note-color="12"] {
+  --current-anno-color: var(--anno-color-12);
+}
+
+[data-annotation-kind="inline_note"]::after {
+  content: " (=" attr(data-inline-note-text) ")";
+  font-size: 0.75em;
+  color: #4b5563;
+  background-color: var(--current-anno-color);
+  border-radius: 2px;
+  padding: 0 2px;
+  margin-left: 1px;
+}
+
+/* ---------------------------------------------------------------------------
+ * 에디터 전체 레이아웃 — 라벨 공간 확보
+ * --------------------------------------------------------------------------- */
+.ProseMirror p {
+  line-height: 2.4;
+  padding: 0.5em 0;
+}

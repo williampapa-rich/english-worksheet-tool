@@ -24,7 +24,11 @@ declare module "@tiptap/core" {
       /**
        * 선택 범위에 상단 라벨을 설정한다.
        */
-      setTopLabel: (attrs: { text: string; colorIndex?: number }) => ReturnType;
+      setTopLabel: (attrs: {
+        text: string;
+        colorIndex?: number;
+        category?: string | null;
+      }) => ReturnType;
       /**
        * 선택 범위의 상단 라벨을 해제한다.
        */
@@ -62,7 +66,16 @@ export const TopLabelMark = Mark.create<TopLabelOptions>({
           if (attributes.colorIndex == null) return {};
           return {
             "data-top-label-color": String(attributes.colorIndex as number),
+            "data-color-index": String(attributes.colorIndex as number),
           };
+        },
+      },
+      category: {
+        default: null,
+        parseHTML: (element) => element.getAttribute("data-category") ?? null,
+        renderHTML: (attributes) => {
+          if (!attributes.category) return {};
+          return { "data-category": attributes.category as string };
         },
       },
     };

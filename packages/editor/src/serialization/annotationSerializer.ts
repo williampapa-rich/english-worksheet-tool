@@ -256,6 +256,13 @@ export function docToAnnotations(doc: JSONContent): SerializedAnnotation[] {
       }
     }
 
+    // category — 선택적 분류 필드. 모든 kind 에 공통. mark spec 에 category attrs 가
+    // 있는 경우에만 추출 (highlight/underline 공식 extension 은 category 미지원).
+    const category = raw.attrs.category as string | null | undefined;
+    if (category != null) {
+      annotation.category = category;
+    }
+
     result.push(annotation);
   }
 
@@ -303,6 +310,9 @@ export function annotationsToMarks(annotations: SerializedAnnotation[]): MarkAtt
     if (ann.arrow_target_span != null) {
       attrs.arrowTargetStart = ann.arrow_target_span.start;
       attrs.arrowTargetEnd = ann.arrow_target_span.end;
+    }
+    if (ann.category != null) {
+      attrs.category = ann.category;
     }
 
     result.push({
