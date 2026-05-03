@@ -10,7 +10,7 @@ P1-8a — HWPX 렌더러 텍스트 런 계열 단위 테스트
        - META-INF/container.rdf 존재
        - mimetype 첫 번째 STORED 엔트리
     2. highlight charPr — shadeColor 가 HIGHLIGHT_PALETTE 에 맞게 렌더됨
-    3. underline charPr — underline type=SINGLE color=#000000
+    3. underline charPr — underline type=BOTTOM color=#000000
     4. inline_note charPr — 작은 폰트 (height=INLINE_NOTE_FONT_SIZE) + 회색 텍스트색
     5. fixture 파일 packages/hwpx_renderer/tests/fixtures/p1_8a_text_runs.hwpx 생성
 
@@ -230,9 +230,13 @@ def test_header_has_highlight_shade_colors(header_xml: str) -> None:
         assert color in header_xml, f"HIGHLIGHT_PALETTE[{idx}]={color} not found in header.xml"
 
 
-def test_header_has_underline_single(header_xml: str) -> None:
-    """header.xml 에 underline type=SINGLE 이 정의되어야 한다."""
-    assert 'type="SINGLE"' in header_xml
+def test_header_has_underline_bottom(header_xml: str) -> None:
+    """header.xml 에 underline type=BOTTOM 이 정의되어야 한다.
+
+    한컴 스펙: type="BOTTOM" = 하단 단일 밑줄.
+    type="SINGLE" 은 한컴 오피스에서 무시됨 (레퍼런스 template.hwpx 검증).
+    """
+    assert 'type="BOTTOM"' in header_xml
 
 
 def test_header_has_inline_note_charpr(header_xml: str) -> None:

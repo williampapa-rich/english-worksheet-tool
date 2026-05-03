@@ -23,7 +23,7 @@ inline_note 결정 (P1-7 §6 미해결 #2):
 charPr id 배치 (header.xml 안):
     id 0       : 본문 body (plain 10pt)
     id 1       : 라벨 (7pt bold) — top/bottom label, P1-8b 에서 사용
-    id 2       : underline SINGLE 흑색
+    id 2       : underline BOTTOM 흑색
     id 3       : inline_note (7pt, 회색)
     id 4 ~ 15  : highlight color_index 1~12
 
@@ -58,7 +58,7 @@ logger = logging.getLogger(__name__)
 # 한컴 스펙: id 가 비연속이면 파서가 OOB 처리 → 파일 손상 거부.
 _CHARPR_BODY = 0  # 본문 plain 10pt
 _CHARPR_LABEL_BASE = 1  # 라벨 7pt bold (P1-8b 예약)
-_CHARPR_UNDERLINE = 2  # underline SINGLE 흑색
+_CHARPR_UNDERLINE = 2  # underline BOTTOM 흑색
 _CHARPR_INLINE_NOTE = 3  # inline_note 7pt 회색
 _CHARPR_HIGHLIGHT_BASE = 4  # color_index 1 → id 4, ..., color_index 12 → id 15
 
@@ -113,11 +113,11 @@ def _build_header_xml() -> str:
     # id 1: 라벨 7pt bold (P1-8b 예약 — 본 PR 에서도 정의해 둠)
     charpr_list.append(charpr_xml(_CHARPR_LABEL_BASE, height=700, bold=True))
 
-    # id 2: underline SINGLE 흑색
+    # id 2: underline BOTTOM 흑색 (type="BOTTOM" = 하단 단일 밑줄 — 한컴 스펙)
     charpr_list.append(
         charpr_xml(
             _CHARPR_UNDERLINE,
-            underline_type="SINGLE",
+            underline_type="BOTTOM",
             underline_color=UNDERLINE_DEFAULT_COLOR,
         )
     )

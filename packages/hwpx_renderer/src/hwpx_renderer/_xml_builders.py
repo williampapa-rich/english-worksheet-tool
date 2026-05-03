@@ -91,7 +91,7 @@ def charpr_xml(
         height: 글자 크기 (HWP unit, 10pt=1000).
         text_color: 텍스트 색상 HEX.
         shade_color: 배경 하이라이트 색 HEX, 없으면 "none".
-        underline_type: "NONE" | "SINGLE" | "DOUBLE" | "DOTTED" 등.
+        underline_type: "NONE" | "BOTTOM" (하단 밑줄) | "CENTER" (취소선) | "TOP" (위) 등.
         underline_color: 밑줄 색 HEX.
         bold: bold 활성화 여부.
         italic: italic 활성화 여부.
