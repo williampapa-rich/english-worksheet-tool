@@ -86,7 +86,8 @@ def _make_syntax_annotation(**kwargs: object) -> SyntaxAnnotationORM:
         workspace_id=WORKSPACE_ID,
         passage_id=PASSAGE_ID,
         kind="highlight",
-        span={"span_format": "character_offset_v1", "data": {"start": 0, "end": 3}},
+        # P1-3: AnnotationSpan v0.2 — start/end 1급 필드 (data dict placeholder 폐기).
+        span={"span_format": "character_offset_v1", "start": 0, "end": 3},
     )
     defaults.update(kwargs)
     return SyntaxAnnotationORM(**defaults)
