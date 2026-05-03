@@ -6,6 +6,7 @@ import {
   InlineNoteMark,
   TopLabelMark,
   UnderlineMark,
+  WordSnapExtension,
   docToAnnotations,
 } from "@english-worksheet-tool/editor";
 import { EditorContent, useEditor } from "@tiptap/react";
@@ -52,6 +53,7 @@ const EXTENSIONS = [
   BracketMark,
   InlineNoteMark,
   ArrowMark,
+  WordSnapExtension,
 ];
 
 /**

@@ -91,6 +91,7 @@
   position: relative;
   display: inline-block;
   margin-top: 1.4em; /* 위 라벨 공간 확보 */
+  border-top: 2px solid var(--current-anno-color, var(--anno-color-0));
   --current-anno-color: var(--anno-color-0);
 }
 
@@ -102,49 +103,59 @@
   font-size: 0.65em;
   font-weight: 600;
   color: #1e3a5f;
-  background-color: var(--current-anno-color);
   padding: 0 3px;
-  border-radius: 2px;
   white-space: nowrap;
   line-height: 1.4;
 }
 
-/* top_label color_index 분기 */
+/* top_label color_index 분기 — border-top 색도 함께 업데이트 */
 [data-annotation-kind="top_label"][data-top-label-color="1"] {
   --current-anno-color: var(--anno-color-1);
+  border-top-color: var(--anno-color-1);
 }
 [data-annotation-kind="top_label"][data-top-label-color="2"] {
   --current-anno-color: var(--anno-color-2);
+  border-top-color: var(--anno-color-2);
 }
 [data-annotation-kind="top_label"][data-top-label-color="3"] {
   --current-anno-color: var(--anno-color-3);
+  border-top-color: var(--anno-color-3);
 }
 [data-annotation-kind="top_label"][data-top-label-color="4"] {
   --current-anno-color: var(--anno-color-4);
+  border-top-color: var(--anno-color-4);
 }
 [data-annotation-kind="top_label"][data-top-label-color="5"] {
   --current-anno-color: var(--anno-color-5);
+  border-top-color: var(--anno-color-5);
 }
 [data-annotation-kind="top_label"][data-top-label-color="6"] {
   --current-anno-color: var(--anno-color-6);
+  border-top-color: var(--anno-color-6);
 }
 [data-annotation-kind="top_label"][data-top-label-color="7"] {
   --current-anno-color: var(--anno-color-7);
+  border-top-color: var(--anno-color-7);
 }
 [data-annotation-kind="top_label"][data-top-label-color="8"] {
   --current-anno-color: var(--anno-color-8);
+  border-top-color: var(--anno-color-8);
 }
 [data-annotation-kind="top_label"][data-top-label-color="9"] {
   --current-anno-color: var(--anno-color-9);
+  border-top-color: var(--anno-color-9);
 }
 [data-annotation-kind="top_label"][data-top-label-color="10"] {
   --current-anno-color: var(--anno-color-10);
+  border-top-color: var(--anno-color-10);
 }
 [data-annotation-kind="top_label"][data-top-label-color="11"] {
   --current-anno-color: var(--anno-color-11);
+  border-top-color: var(--anno-color-11);
 }
 [data-annotation-kind="top_label"][data-top-label-color="12"] {
   --current-anno-color: var(--anno-color-12);
+  border-top-color: var(--anno-color-12);
 }
 
 /* ---------------------------------------------------------------------------
@@ -154,6 +165,7 @@
   position: relative;
   display: inline-block;
   margin-bottom: 1.4em; /* 아래 라벨 공간 확보 */
+  border-bottom: 2px solid var(--current-anno-color, var(--anno-color-0));
   --current-anno-color: var(--anno-color-0);
 }
 
@@ -165,49 +177,59 @@
   font-size: 0.65em;
   font-weight: 600;
   color: #1e3a5f;
-  background-color: var(--current-anno-color);
   padding: 0 3px;
-  border-radius: 2px;
   white-space: nowrap;
   line-height: 1.4;
 }
 
-/* bottom_label color_index 분기 */
+/* bottom_label color_index 분기 — border-bottom 색도 함께 업데이트 */
 [data-annotation-kind="bottom_label"][data-bottom-label-color="1"] {
   --current-anno-color: var(--anno-color-1);
+  border-bottom-color: var(--anno-color-1);
 }
 [data-annotation-kind="bottom_label"][data-bottom-label-color="2"] {
   --current-anno-color: var(--anno-color-2);
+  border-bottom-color: var(--anno-color-2);
 }
 [data-annotation-kind="bottom_label"][data-bottom-label-color="3"] {
   --current-anno-color: var(--anno-color-3);
+  border-bottom-color: var(--anno-color-3);
 }
 [data-annotation-kind="bottom_label"][data-bottom-label-color="4"] {
   --current-anno-color: var(--anno-color-4);
+  border-bottom-color: var(--anno-color-4);
 }
 [data-annotation-kind="bottom_label"][data-bottom-label-color="5"] {
   --current-anno-color: var(--anno-color-5);
+  border-bottom-color: var(--anno-color-5);
 }
 [data-annotation-kind="bottom_label"][data-bottom-label-color="6"] {
   --current-anno-color: var(--anno-color-6);
+  border-bottom-color: var(--anno-color-6);
 }
 [data-annotation-kind="bottom_label"][data-bottom-label-color="7"] {
   --current-anno-color: var(--anno-color-7);
+  border-bottom-color: var(--anno-color-7);
 }
 [data-annotation-kind="bottom_label"][data-bottom-label-color="8"] {
   --current-anno-color: var(--anno-color-8);
+  border-bottom-color: var(--anno-color-8);
 }
 [data-annotation-kind="bottom_label"][data-bottom-label-color="9"] {
   --current-anno-color: var(--anno-color-9);
+  border-bottom-color: var(--anno-color-9);
 }
 [data-annotation-kind="bottom_label"][data-bottom-label-color="10"] {
   --current-anno-color: var(--anno-color-10);
+  border-bottom-color: var(--anno-color-10);
 }
 [data-annotation-kind="bottom_label"][data-bottom-label-color="11"] {
   --current-anno-color: var(--anno-color-11);
+  border-bottom-color: var(--anno-color-11);
 }
 [data-annotation-kind="bottom_label"][data-bottom-label-color="12"] {
   --current-anno-color: var(--anno-color-12);
+  border-bottom-color: var(--anno-color-12);
 }
 
 /* ---------------------------------------------------------------------------
@@ -403,9 +425,6 @@
   content: " (=" attr(data-inline-note-text) ")";
   font-size: 0.75em;
   color: #4b5563;
-  background-color: var(--current-anno-color);
-  border-radius: 2px;
-  padding: 0 2px;
   margin-left: 1px;
 }
 
