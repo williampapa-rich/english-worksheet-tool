@@ -21,6 +21,7 @@ import type { JSONContent } from "@tiptap/core";
 import {
   ANNOTATION_KIND,
   type AnnotationKind,
+  KIND_TO_MARK_NAME,
   MARK_NAME_TO_KIND,
 } from "../extensions/annotationKind";
 
@@ -290,20 +291,7 @@ export function annotationsToMarks(annotations: SerializedAnnotation[]): MarkAtt
 
     result.push({
       kind: ann.kind,
-      markName:
-        ann.kind === ANNOTATION_KIND.HIGHLIGHT
-          ? "highlight"
-          : ann.kind === ANNOTATION_KIND.UNDERLINE
-            ? "underline"
-            : ann.kind === ANNOTATION_KIND.TOP_LABEL
-              ? "topLabel"
-              : ann.kind === ANNOTATION_KIND.BOTTOM_LABEL
-                ? "bottomLabel"
-                : ann.kind === ANNOTATION_KIND.BRACKET
-                  ? "bracket"
-                  : ann.kind === ANNOTATION_KIND.INLINE_NOTE
-                    ? "inlineNote"
-                    : "arrow",
+      markName: KIND_TO_MARK_NAME[ann.kind] ?? ann.kind,
       from,
       to,
       attrs,

@@ -31,8 +31,11 @@ export type { ArrowOptions } from "./extensions/arrow";
 export {
   docToAnnotations,
   annotationsToMarks,
+  charOffsetToPmPos,
+  pmPosToCharOffset,
 } from "./serialization/annotationSerializer";
 export type {
   SerializedAnnotation,
   MarkAttrs,
+  AnnotationSpanV1,
 } from "./serialization/annotationSerializer";
