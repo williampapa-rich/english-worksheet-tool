@@ -90,16 +90,22 @@
 [data-annotation-kind="top_label"] {
   position: relative;
   display: inline-block;
-  margin-top: calc(1.4em - 1.5px); /* 위 라벨 공간 — 본문에 1.5px 더 가깝게 (PM 폴리싱) */
+  /* line-height 1 + padding-top 으로 border 가 텍스트 바로 위에 붙도록 보정 (PM 폴리싱 3차) */
+  line-height: 1;
+  padding-top: 1px;
+  margin-top: calc(0.84em - 0.9px); /* 위 라벨 공간 — 60% 축소 */
   border-top: 2px solid var(--current-anno-color, var(--anno-color-0));
   --current-anno-color: var(--anno-color-0);
+  /* outer underline 마크가 있을 때 inline-block 안의 텍스트에도 underline 전파 */
+  text-decoration: inherit;
 }
 
 [data-annotation-kind="top_label"]::before {
   content: attr(data-top-label-text);
   position: absolute;
-  top: calc(-1.3em - 0.5px); /* 라벨 — border 에서 0.5px 더 멀게 (PM 폴리싱) */
-  left: 0;
+  /* 라벨 박스 전체가 border 위쪽으로 완전히 빠지도록 — 폴리싱 4차 */
+  top: calc(-1.1em - 3px);
+  left: 0; /* 구/절 = 좌측 정렬 (PM) */
   font-size: 0.65em;
   font-weight: 600;
   color: #1e3a5f;
@@ -164,16 +170,23 @@
 [data-annotation-kind="bottom_label"] {
   position: relative;
   display: inline-block;
-  margin-bottom: calc(1.4em - 1.5px); /* 아래 라벨 공간 — 본문에 1.5px 더 가깝게 (PM 폴리싱) */
+  /* line-height 1 + padding-bottom 으로 border 가 텍스트 바로 아래에 붙도록 보정 (PM 폴리싱 3차) */
+  line-height: 1;
+  padding-bottom: 1px;
+  margin-bottom: calc(0.84em - 0.9px); /* 아래 라벨 공간 — 60% 축소 */
   border-bottom: 2px solid var(--current-anno-color, var(--anno-color-0));
   --current-anno-color: var(--anno-color-0);
+  /* outer underline 마크가 있을 때 inline-block 안의 텍스트에도 underline 전파 */
+  text-decoration: inherit;
 }
 
 [data-annotation-kind="bottom_label"]::after {
   content: attr(data-bottom-label-text);
   position: absolute;
-  bottom: calc(-1.3em - 0.5px); /* 라벨 — border 에서 0.5px 더 멀게 (PM 폴리싱) */
-  left: 0;
+  /* 라벨 박스 전체가 border 아래쪽으로 완전히 빠지도록 — 폴리싱 4차 */
+  bottom: calc(-1.1em - 3px);
+  left: 50%;
+  transform: translateX(-50%);
   font-size: 0.65em;
   font-weight: 600;
   color: #1e3a5f;
@@ -238,6 +251,9 @@
  * --------------------------------------------------------------------------- */
 [data-annotation-kind="bracket"] {
   --current-anno-color: var(--anno-color-0);
+  /* bracket 은 outer mark (EXTENSIONS 배열 등록 순서). inline 괄호 글자는
+     outer span 안에서 layout 점유 → 양옆 텍스트 침범 없음.
+     inner top_label 의 border 는 본문 텍스트 영역만 — 괄호 미포함. */
 }
 
 [data-annotation-kind="bracket"][data-bracket-color="1"] {

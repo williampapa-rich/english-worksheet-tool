@@ -53,6 +53,9 @@ export type AnnotationSpanV1 = CharacterOffsetV1Span;
  * 에디터 레이어에서 알 수 없으므로 optional — API 저장 시 채워진다.
  *
  * 이 타입은 "에디터 → 백엔드" 방향의 직렬화 출력이다.
+ *
+ * P1-2b: annotation_id 필드 추가 — 에디터 측 UUID. 클라이언트 칩 식별에 사용.
+ * optional (기존 데이터 / 테스트 호환 유지).
  */
 export interface SerializedAnnotation {
   kind: AnnotationKind;
@@ -62,6 +65,7 @@ export interface SerializedAnnotation {
   bracket_style?: "()" | "{}" | "[]" | null;
   arrow_target_span?: AnnotationSpanV1 | null;
   category?: string | null;
+  annotation_id?: string | null;
 }
 
 /**
@@ -263,6 +267,12 @@ export function docToAnnotations(doc: JSONContent): SerializedAnnotation[] {
       annotation.category = category;
     }
 
+    // annotation_id — P1-2b: 에디터 측 UUID. mark attrs 의 annotationId 를 그대로 직렬화.
+    const annotationId = raw.attrs.annotationId as string | null | undefined;
+    if (annotationId != null) {
+      annotation.annotation_id = annotationId;
+    }
+
     result.push(annotation);
   }
 
@@ -313,6 +323,9 @@ export function annotationsToMarks(annotations: SerializedAnnotation[]): MarkAtt
     }
     if (ann.category != null) {
       attrs.category = ann.category;
+    }
+    if (ann.annotation_id != null) {
+      attrs.annotationId = ann.annotation_id;
     }
 
     result.push({

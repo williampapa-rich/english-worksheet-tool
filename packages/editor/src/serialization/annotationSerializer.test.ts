@@ -417,6 +417,91 @@ describe("annotationsToMarks", () => {
 });
 
 // ---------------------------------------------------------------------------
+// annotationId 직렬화 / 역직렬화 테스트 (P1-2b)
+// ---------------------------------------------------------------------------
+
+describe("annotationId — docToAnnotations + annotationsToMarks", () => {
+  it("mark attrs 에 annotationId 가 있으면 annotation_id 로 직렬화한다", () => {
+    const id = "test-uuid-1234";
+    const doc = makeDoc([
+      {
+        segments: [
+          {
+            text: "student",
+            marks: [
+              {
+                type: "topLabel",
+                attrs: { text: "S", colorIndex: 1, annotationId: id },
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    const annotations = docToAnnotations(doc);
+    expect(annotations).toHaveLength(1);
+    expect(first(annotations).annotation_id).toBe(id);
+  });
+
+  it("mark attrs 에 annotationId 가 없으면 annotation_id 는 undefined 다", () => {
+    const doc = makeDoc([
+      {
+        segments: [
+          {
+            text: "student",
+            marks: [{ type: "highlight", attrs: { color: "#fef08a" } }],
+          },
+        ],
+      },
+    ]);
+
+    const annotations = docToAnnotations(doc);
+    expect(annotations).toHaveLength(1);
+    expect(first(annotations).annotation_id).toBeUndefined();
+  });
+
+  it("annotationsToMarks 에서 annotation_id → annotationId attr 로 역직렬화한다", () => {
+    const id = "round-trip-uuid";
+    const annotations = [
+      {
+        kind: ANNOTATION_KIND.TOP_LABEL,
+        span: { span_format: "character_offset_v1" as const, start: 0, end: 5 },
+        text: "V",
+        annotation_id: id,
+      },
+    ];
+
+    const marks = annotationsToMarks(annotations);
+    expect(marks).toHaveLength(1);
+    expect(first(marks).attrs.annotationId).toBe(id);
+  });
+
+  it("annotation_id round-trip: docToAnnotations → annotationsToMarks → attrs.annotationId 보존", () => {
+    const id = "full-round-trip-uuid";
+    const doc = makeDoc([
+      {
+        segments: [
+          {
+            text: "passed",
+            marks: [
+              {
+                type: "bracket",
+                attrs: { bracketStyle: "()", colorIndex: 2, annotationId: id },
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    const annotations = docToAnnotations(doc);
+    const marks = annotationsToMarks(annotations);
+    expect(first(marks).attrs.annotationId).toBe(id);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // 변환 헬퍼 테스트
 // ---------------------------------------------------------------------------
 
