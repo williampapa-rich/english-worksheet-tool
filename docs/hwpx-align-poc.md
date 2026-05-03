@@ -229,19 +229,26 @@ P1-0b 커밋(`9814faf`) 이후 PM 이 한글 오피스로 fixture 를 열었을 
 원인 (backend-dev 분석): `vertRelTo="PARA"` + `vertOffset` 음수/양수 조합에서 한컴이 drawObj를
 단락 라인 높이 범위 안에 clamp. textBox가 본문 라인 내부에 overlay되어 border가 취소선처럼 보임.
 
-### fix 2차 확인 사항 (PM 확인 요청)
+### fix 2차 검증 결과 (2026-05-03)
 
-fixture: `packages/hwpx_renderer/tests/fixtures/poc_align.hwpx`
+- [x] 파일 정상 열림
+- [x] 본문 텍스트 정상
+- [x] " jumps " 노란색 하이라이트
+- [x] 본문 위 "S" 별도 줄로 표시 — **YES** (단 모두 단락 좌측 정렬, "The"의 T 위에 위치)
+- [x] 본문 아래 "V" 별도 줄로 표시 — **YES** (동일 좌측 정렬)
+- [ ] 라벨/본문 분리 — **부분** (위치는 분리됐으나 라벨 줄과 본문 줄 모두에 취소선처럼 보이는 가로선 발생)
 
-- [ ] 파일을 한글 오피스에서 열었을 때 오류 없이 열리는가?
-- [ ] 본문 "The quick brown fox [over] the lazy dog." 가 보이는가?
-- [ ] " jumps " 부분에 노란색 하이라이트가 적용되어 있는가?
-- [ ] **본문 위에 "S" 텍스트가 별도 줄로 보이는가?** (별도 단락, 7pt bold)
-- [ ] **본문 아래에 "V" 텍스트가 별도 줄로 보이는가?** (별도 단락, 7pt bold)
-- [ ] 라벨이 본문 라인과 겹치지 않고 분리되어 보이는가?
+원인 (backend-dev 분석): `charPr.<hh:strikeout>` 속성을 잘못 작성. `type="NONE" shape="SOLID"` 사용했으나 HWPX 스펙상 `type` 속성 없음 + `shape="SOLID"` 가 실선 취소선 활성화. 모든 단락 공통 charPr 정의에 적용되어 라벨/본문 모두 가로선 발생.
 
-align 결론:
-- [x] **근사 align** — 3단 단락 구조에서 라벨의 수평 위치는 paraPr indent 근사. 수직 분리는 안정적.
-  수평 align 보정은 실 구현(P1-8)에서 pillow `ImageFont.getlength()` 또는 tabstop 으로 진행.
+### fix 3차 검증 결과 (2026-05-03)
+
+- [x] 1~5 회귀 없음 (정상 열림 / 본문 / 하이라이트 / 라벨 위·아래 별도 줄)
+- [x] **취소선 가로선 사라짐** — `<hh:strikeout shape="NONE" color="#000000"/>` 로 교정
+
+PoC 1차 align 검증 통과. 라벨/본문 사이 visual separator (구분선) 부재는 현 3단 구조의 의도된 동작이며 P1-7 매핑 카탈로그에서 도메인 관점으로 결정 (구분선 필요 / 불필요).
+
+### 최종 align 결론
+
+- [x] **근사 align (수직 분리 안정 / 수평 좌측 정렬)** — 3단 단락 구조 채택. 라벨이 본문 위·아래 별도 줄로 안정 표시. 수평 align 정밀도는 본 PoC 범위 외 — P1-8 에서 pillow `ImageFont.getlength()` 또는 tabstop 으로 보정 예정.
 
 스크린샷: (PM 이 추후 첨부)
