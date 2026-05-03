@@ -8,13 +8,10 @@
  * - 역직렬화 (annotationsToMarks): SerializedAnnotation[] → mark 적용 명령 목록
  *   - character offset → ProseMirror position 변환 (pmPosFromCharOffset)
  *
- * 이 모듈이 다루는 직렬화 계약:
- *   - span: { span_format: "character_offset_v1", data: { start, end } }
- *     (shared/schemas/annotation.py AnnotationSpan v0.1 placeholder 그대로 사용)
- *   - arrow_target_span: 동일 구조, kind == "arrow" 일 때만
- *
- * NOTE: shared/schemas/annotation.py 의 AnnotationSpan 이 v0.1 placeholder 에서
- * 정식 필드로 승격되면 (P1-3 예정) 이 모듈의 span 구조도 함께 업데이트 필요.
+ * 이 모듈이 다루는 직렬화 계약 (v0.2 — P1-3, ADR-0004 적용 후):
+ *   - span: { span_format: "character_offset_v1", start, end }  (평탄 구조)
+ *   - arrow_target_span: 동일 구조, kind == "arrow" 일 때만 (Python 측에서
+ *     model validator 로 강제 — kind == arrow ↔ arrow_target_span is not None).
  */
 
 import type { JSONContent } from "@tiptap/core";
@@ -30,15 +27,24 @@ import {
 // ---------------------------------------------------------------------------
 
 /**
- * AnnotationSpan — shared/schemas/annotation.py AnnotationSpan v0.1 placeholder 미러.
+ * CharacterOffsetV1Span — shared/schemas/annotation.py CharacterOffsetV1Span v0.2 미러.
  *
- * span_format: "character_offset_v1" + data: { start, end } 구조.
- * P1-3 에서 Python schema 가 start/end 정식 필드로 승격되면 이 타입도 교체.
+ * P1-3 (ADR-0004 적용): v0.1 placeholder 의 `data: {start, end}` 가
+ * `start, end` 1급 필드로 승격됐다.
  */
-export interface AnnotationSpanV1 {
+export interface CharacterOffsetV1Span {
   span_format: "character_offset_v1";
-  data: { start: number; end: number };
+  start: number;
+  end: number;
 }
+
+/**
+ * AnnotationSpan — Python AnnotationSpan discriminated union 미러.
+ *
+ * v0.2 는 단일 멤버 union (CharacterOffsetV1Span). 미래 확장 시 union 멤버
+ * 추가만으로 대응 가능 — span_format 디스크리미네이터로 분기.
+ */
+export type AnnotationSpanV1 = CharacterOffsetV1Span;
 
 /**
  * SerializedAnnotation — SyntaxAnnotation 의 TypeScript 직렬화 표현.
@@ -191,7 +197,8 @@ export function docToAnnotations(doc: JSONContent): SerializedAnnotation[] {
 
     const span: AnnotationSpanV1 = {
       span_format: "character_offset_v1",
-      data: { start: raw.charStart, end: raw.charEnd },
+      start: raw.charStart,
+      end: raw.charEnd,
     };
 
     const annotation: SerializedAnnotation = {
@@ -219,7 +226,8 @@ export function docToAnnotations(doc: JSONContent): SerializedAnnotation[] {
       if (targetStart != null && targetEnd != null) {
         annotation.arrow_target_span = {
           span_format: "character_offset_v1",
-          data: { start: targetStart, end: targetEnd },
+          start: targetStart,
+          end: targetEnd,
         };
       }
     }
@@ -269,9 +277,8 @@ export function annotationsToMarks(annotations: SerializedAnnotation[]): MarkAtt
   const result: MarkAttrs[] = [];
 
   for (const ann of annotations) {
-    const { start, end } = ann.span.data;
-    const from = charOffsetToPmPos(start);
-    const to = charOffsetToPmPos(end);
+    const from = charOffsetToPmPos(ann.span.start);
+    const to = charOffsetToPmPos(ann.span.end);
 
     const attrs: Record<string, unknown> = {};
 
@@ -285,8 +292,8 @@ export function annotationsToMarks(annotations: SerializedAnnotation[]): MarkAtt
       attrs.bracketStyle = ann.bracket_style;
     }
     if (ann.arrow_target_span != null) {
-      attrs.arrowTargetStart = ann.arrow_target_span.data.start;
-      attrs.arrowTargetEnd = ann.arrow_target_span.data.end;
+      attrs.arrowTargetStart = ann.arrow_target_span.start;
+      attrs.arrowTargetEnd = ann.arrow_target_span.end;
     }
 
     result.push({

@@ -102,8 +102,8 @@ describe("docToAnnotations", () => {
     const ann: SerializedAnnotation = first(annotations);
     expect(ann.kind).toBe(ANNOTATION_KIND.HIGHLIGHT);
     expect(ann.span.span_format).toBe("character_offset_v1");
-    expect(ann.span.data.start).toBe(4); // "The " = 4 chars
-    expect(ann.span.data.end).toBe(11); // 4 + 7 = 11
+    expect(ann.span.start).toBe(4); // "The " = 4 chars
+    expect(ann.span.end).toBe(11); // 4 + 7 = 11
   });
 
   // 테스트 2: underline 단일 mark
@@ -124,8 +124,8 @@ describe("docToAnnotations", () => {
     expect(annotations).toHaveLength(1);
     const ann: SerializedAnnotation = first(annotations);
     expect(ann.kind).toBe(ANNOTATION_KIND.UNDERLINE);
-    expect(ann.span.data.start).toBe(11);
-    expect(ann.span.data.end).toBe(15); // 11 + 4
+    expect(ann.span.start).toBe(11);
+    expect(ann.span.end).toBe(15); // 11 + 4
   });
 
   // 테스트 3: top_label mark + text 속성
@@ -155,8 +155,8 @@ describe("docToAnnotations", () => {
     expect(ann.kind).toBe(ANNOTATION_KIND.TOP_LABEL);
     expect(ann.text).toBe("S");
     expect(ann.color_index).toBe(1);
-    expect(ann.span.data.start).toBe(4);
-    expect(ann.span.data.end).toBe(28); // 4 + 24
+    expect(ann.span.start).toBe(4);
+    expect(ann.span.end).toBe(28); // 4 + 24
   });
 
   // 테스트 4: bracket mark + bracketStyle
@@ -185,8 +185,8 @@ describe("docToAnnotations", () => {
     expect(ann.kind).toBe(ANNOTATION_KIND.BRACKET);
     expect(ann.bracket_style).toBe("()");
     expect(ann.color_index).toBe(3);
-    expect(ann.span.data.start).toBe(0);
-    expect(ann.span.data.end).toBe(16);
+    expect(ann.span.start).toBe(0);
+    expect(ann.span.end).toBe(16);
   });
 
   // 테스트 5: arrow mark + arrowTargetSpan
@@ -215,12 +215,12 @@ describe("docToAnnotations", () => {
     expect(annotations).toHaveLength(1);
     const ann: SerializedAnnotation = first(annotations);
     expect(ann.kind).toBe(ANNOTATION_KIND.ARROW);
-    expect(ann.span.data.start).toBe(0);
-    expect(ann.span.data.end).toBe(2);
+    expect(ann.span.start).toBe(0);
+    expect(ann.span.end).toBe(2);
     expect(ann.arrow_target_span).not.toBeNull();
     expect(ann.arrow_target_span?.span_format).toBe("character_offset_v1");
-    expect(ann.arrow_target_span?.data.start).toBe(10);
-    expect(ann.arrow_target_span?.data.end).toBe(16);
+    expect(ann.arrow_target_span?.start).toBe(10);
+    expect(ann.arrow_target_span?.end).toBe(16);
   });
 
   // 테스트 6: inline_note mark + text
@@ -248,8 +248,8 @@ describe("docToAnnotations", () => {
     const ann: SerializedAnnotation = first(annotations);
     expect(ann.kind).toBe(ANNOTATION_KIND.INLINE_NOTE);
     expect(ann.text).toBe("=foster, encourage");
-    expect(ann.span.data.start).toBe(4);
-    expect(ann.span.data.end).toBe(11); // 4 + 7
+    expect(ann.span.start).toBe(4);
+    expect(ann.span.end).toBe(11); // 4 + 7
   });
 
   // 테스트 7: bottom_label mark + text
@@ -277,8 +277,8 @@ describe("docToAnnotations", () => {
     const ann: SerializedAnnotation = first(annotations);
     expect(ann.kind).toBe(ANNOTATION_KIND.BOTTOM_LABEL);
     expect(ann.text).toBe("S");
-    expect(ann.span.data.start).toBe(0);
-    expect(ann.span.data.end).toBe(10);
+    expect(ann.span.start).toBe(0);
+    expect(ann.span.end).toBe(10);
   });
 
   // 테스트 8: 다중 mark — highlight + topLabel 동일 span 겹침
@@ -307,8 +307,8 @@ describe("docToAnnotations", () => {
     expect(kinds).toContain(ANNOTATION_KIND.TOP_LABEL);
     // 두 annotation 의 span 이 동일해야 함
     for (const ann of annotations) {
-      expect(ann.span.data.start).toBe(4);
-      expect(ann.span.data.end).toBe(11);
+      expect(ann.span.start).toBe(4);
+      expect(ann.span.end).toBe(11);
     }
   });
 
@@ -366,7 +366,8 @@ describe("annotationsToMarks", () => {
         kind: ANNOTATION_KIND.TOP_LABEL,
         span: {
           span_format: "character_offset_v1" as const,
-          data: { start: 0, end: 8 },
+          start: 0,
+          end: 8,
         },
         text: "S",
         color_index: 2,
