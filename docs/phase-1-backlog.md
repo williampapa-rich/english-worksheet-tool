@@ -109,6 +109,7 @@
   - category 5종 (note / sentence_role / phrase / clause / other) 선택 UI.
   - `apps/web/src/pages/EditorPoc.tsx` 를 정식 `EditorPage.tsx` 로 승격 + 라우팅 등록.
   - 수동 QA 시나리오 5건 통과 (Playwright 도 좋고, 체크리스트 형태도 OK).
+  - ArrowMark / BracketMark 의 Decoration API 전환 검토 포함 (P1-1 에서 Mark 로 등록됐으나 시각 구현은 Decoration 또는 nodeView 가 자연스러울 수 있음).
 - **PR 단위**: 2~3 PR (a: 컨텍스트 메뉴 + 툴바, b: 색/카테고리 picker, c: 페이지
   승격 + QA 시나리오)
 
