@@ -326,12 +326,18 @@ preset 메뉴**가 있는지 영상으로는 불명확. 강사 사용 효율을 
 
 ### 7.4 단어 단위 선택 정책
 
-[관찰 + 미정 결정]. ProseMirror 디폴트는 글자 단위 selection. 영상은 단어 단위 (token snap). 두 가지 구현 옵션:
+**[결정 — 2026-05-03 PM]**: **하드 스냅** 채택. 토큰 정의 = **띄어쓰기로 구분된 한 단어**. 드래그로 다중 토큰 선택 가능.
 
-1. **소프트 스냅**: 글자 단위 selection 을 받고 저장 시 단어 경계로 확장.
-2. **하드 스냅**: drag 중 selection 을 단어 단위로 제한 (ProseMirror plugin 자작 또는 라이브러리 조사).
+ProseMirror 디폴트는 글자 단위 selection. 영상은 단어 단위 (token snap).
 
-[미정] PM + frontend-dev 결정. P1-2 드래프트 (PR #16) 는 ProseMirror 디폴트 (글자 단위) 로 진행됨 — 검수 후 정책 결정.
+| 옵션 | 설명 | 채택 여부 |
+|---|---|---|
+| 소프트 스냅 | 글자 단위 selection 을 받고 저장 시 단어 경계로 확장 | ❌ |
+| **하드 스냅** | drag 중 selection 을 단어 단위로 제한 (ProseMirror plugin 자작 또는 라이브러리) | ✅ **채택** |
+
+**구현 위치**: P1-2 후속 PR. ProseMirror plugin 으로 selection event 가로채서 양 끝점을 띄어쓰기 경계로 스냅.
+
+**P1-2 드래프트 (PR #16) 상태**: ProseMirror 디폴트 (글자 단위) — 미구현. 후속 PR 에서 구현.
 
 ### 7.5 분석표 자동 누적 동작
 
@@ -364,6 +370,6 @@ preset 메뉴**가 있는지 영상으로는 불명확. 강사 사용 효율을 
 
 **P1-2 정식 PR 진입 전 PM 결정 필요**:
 - §7.3 컨텍스트 메뉴 항목 채택 여부 / 항목 조정
-- §7.4 단어 단위 선택 hard / soft snap
+- ~~§7.4 단어 단위 선택 hard / soft snap~~ → **결정됨 (hard snap, 띄어쓰기 토큰)**
 - §7.2 단축키 표 미정 항목 (undo/redo, save, 색 빠른 선택)
 - §7.5 분석표 칩 표기 규칙
