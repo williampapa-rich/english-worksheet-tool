@@ -15,6 +15,11 @@
 
 ## 0. 요약
 
+> **진행 현황 (2026-05-03 갱신)**:
+> - **P1-8a 머지 완료** (PR #14 `aaa9885`) — `highlight` / `underline` / `inline_note` 텍스트 런 계열 구현. inline_note 는 후보 A (inline run) 채택, 12색 highlight 사전 정의 dict, underline #000000 고정으로 §6 #2/#3/#4 닫음. P1-8a fix 라운드 발견 한컴 스펙 함정 (charPr id 비연속 → OOB / opf:item id 확장자 / underline `type=BOTTOM` 만 인정) 은 `docs/hwpx-align-poc.md` §6 와 본 문서 §2 에 흡수.
+> - **P1-8b 차단** = §6 #1 (bracket 표현) 미결정. PM + domain-expert + 와이프 시각 피드백 필요. 결정 전 P1-8b 착수 불가.
+> - CLAUDE.md §3.5 갱신은 본 문서 §4 의 "갱신 권고" 가 별 PR 로 처리 중 (`docs/p1-7-and-p1-0a-followup` 브랜치).
+
 | # | 결론 |
 |---|---|
 | 1 | CLAUDE.md §3.5 의 "라벨 = 텍스트박스" 결정은 P1-0b PoC 결과 **번복**. 채택안은 **3단 단락 구조** (라벨 단락 / 본문 단락 / 라벨 단락). 사유 = 한컴이 `vertRelTo="PARA"` + `vertOffset` 음수/양수 조합의 floating textBox 를 단락 라인 높이 안에 clamp 하여 본문 위/아래로 올라가지 않음. → **CLAUDE.md §3.5 갱신 필요** (본 문서는 메모만, 갱신은 PM 이 별 PR 로). |
