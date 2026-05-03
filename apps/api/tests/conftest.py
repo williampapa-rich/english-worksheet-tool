@@ -28,6 +28,12 @@ _workspace_root = Path(__file__).parent.parent.parent.parent
 if str(_workspace_root) not in sys.path:
     sys.path.insert(0, str(_workspace_root))
 
+# packages/*/src 경로 추가 — extractor, llm 등 내부 패키지 import 가 worksheet_api.main 에서 필요
+# 각 패키지는 packages/<name>/src/<name>/ 구조 (uv workspace src-layout)
+for _pkg_src in (_workspace_root / "packages").glob("*/src"):
+    if str(_pkg_src) not in sys.path:
+        sys.path.insert(0, str(_pkg_src))
+
 # pydantic-settings가 로드되기 전에 환경변수를 설정해야 한다
 os.environ.setdefault(
     "DATABASE_URL",
