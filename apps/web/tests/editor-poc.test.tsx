@@ -4,7 +4,7 @@
  * 검증 항목:
  * 1. 컴포넌트 마운트 성공
  * 2. 초기 텍스트 렌더링 확인
- * 3. "JSON 보기" 버튼 클릭 → JSON 패널 출력
+ * 3. "SyntaxAnnotation[] 보기" 버튼 클릭 → JSON 패널 출력
  * 4. JSON 루트 구조 검증 (type: "doc", content 배열)
  *
  * 하이라이트 자동 검증:
@@ -33,55 +33,49 @@ function renderEditorPoc() {
 describe("EditorPoc", () => {
   it("컴포넌트가 정상적으로 마운트된다", () => {
     renderEditorPoc();
-    expect(screen.getByText("Tiptap 구문분석 에디터 PoC")).toBeInTheDocument();
+    expect(screen.getByText("구문분석 에디터 드래프트 (P1-2c)")).toBeInTheDocument();
   });
 
   it("초기 텍스트(예시 문장)가 에디터에 렌더링된다", async () => {
     renderEditorPoc();
     // Tiptap이 비동기로 초기화되므로 waitFor 사용
     await waitFor(() => {
-      expect(screen.getByText(/The student who studied hard/)).toBeInTheDocument();
+      expect(screen.getByText(/The student who had studied hard/)).toBeInTheDocument();
     });
   });
 
-  it('"JSON 보기" 버튼 클릭 시 JSON 패널이 표시된다', async () => {
+  it('"SyntaxAnnotation[] 보기" 버튼 클릭 시 JSON 패널이 표시된다', async () => {
     renderEditorPoc();
 
     // Tiptap 초기화 대기
     await waitFor(() => {
-      expect(screen.getByText(/The student who studied hard/)).toBeInTheDocument();
+      expect(screen.getByText(/The student who had studied hard/)).toBeInTheDocument();
     });
 
-    const jsonButton = screen.getByRole("button", { name: "JSON 보기" });
+    const jsonButton = screen.getByRole("button", { name: "SyntaxAnnotation[] 보기" });
     fireEvent.click(jsonButton);
 
     await waitFor(() => {
-      const preEl = screen.getByTestId("serialized-json");
+      const preEl = screen.getByTestId("serialized-annotations");
       expect(preEl).toBeInTheDocument();
     });
   });
 
-  it("직렬화된 JSON이 ProseMirror 문서 구조(type: doc, content 배열)를 포함한다", async () => {
+  it("직렬화된 JSON 이 SerializedAnnotation[] 배열 형식이다", async () => {
     renderEditorPoc();
 
     await waitFor(() => {
-      expect(screen.getByText(/The student who studied hard/)).toBeInTheDocument();
+      expect(screen.getByText(/The student who had studied hard/)).toBeInTheDocument();
     });
 
-    const jsonButton = screen.getByRole("button", { name: "JSON 보기" });
+    const jsonButton = screen.getByRole("button", { name: "SyntaxAnnotation[] 보기" });
     fireEvent.click(jsonButton);
 
     await waitFor(() => {
-      const preEl = screen.getByTestId("serialized-json");
-      type PmDoc = { type?: string; content?: unknown[] };
-      const parsed = JSON.parse(preEl.textContent ?? "{}") as PmDoc;
-
-      // ProseMirror 문서 루트는 type: "doc"
-      expect(parsed.type).toBe("doc");
-      // content 배열에 최소 1개 이상의 노드가 있어야 함
-      const content = parsed.content ?? [];
-      expect(Array.isArray(content)).toBe(true);
-      expect(content.length).toBeGreaterThan(0);
+      const preEl = screen.getByTestId("serialized-annotations");
+      const parsed = JSON.parse(preEl.textContent ?? "[]");
+      // P1-2b 이후 직렬화 결과는 SerializedAnnotation[] (annotation 없으면 빈 배열)
+      expect(Array.isArray(parsed)).toBe(true);
     });
   });
 
