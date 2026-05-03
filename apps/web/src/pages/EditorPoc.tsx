@@ -173,11 +173,14 @@ export function EditorPoc() {
         editor.commands.setContent(html, false);
 
         // annotation 역직렬화 — character offset → ProseMirror position
-        // known issue (단일 단락 가정): pmPos = charOffset + 2.
-        // 다중 단락 passage 에서 offset 이 정확하지 않을 수 있음.
-        // → P1-6 follow-up 에서 다중 단락 pmPos 계산 개선 필요.
+        // P1-6 follow-up: 다중 단락 paragraphLengths 전달 → 두번째 단락 이후
+        // mark 위치도 정확. paragraphs 가 없으면 단일 body_text 단락 1개로 처리.
         if (annotations.length > 0) {
-          const marks = annotationsToMarks(annotations);
+          const paragraphLengths =
+            passage.paragraphs && passage.paragraphs.length > 0
+              ? passage.paragraphs.map((p) => p.length)
+              : [passage.body_text.length];
+          const marks = annotationsToMarks(annotations, paragraphLengths);
           // race condition 방지 — 단일 setTimeout(0) 으로 setContent 완료 후 실행
           setTimeout(() => {
             let chain = editor.chain();
