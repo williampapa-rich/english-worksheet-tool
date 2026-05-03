@@ -40,6 +40,18 @@ export const HighlightMark = Highlight.extend({
           return { "data-category": attributes.category as string };
         },
       },
+      // P1-2c: colorIndex attrs 추가 — 분석표 칩 컬러
+      colorIndex: {
+        default: null,
+        parseHTML: (element: Element) => {
+          const v = element.getAttribute("data-color-index");
+          return v != null ? Number(v) : null;
+        },
+        renderHTML: (attributes: Record<string, unknown>) => {
+          if (attributes.colorIndex == null) return {};
+          return { "data-color-index": String(attributes.colorIndex) };
+        },
+      },
     };
   },
 }).configure({

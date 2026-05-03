@@ -251,6 +251,26 @@
  * --------------------------------------------------------------------------- */
 [data-annotation-kind="bracket"] {
   --current-anno-color: var(--anno-color-0);
+  /* 괄호 글자를 absolute 로 띄워서 bracket span 의 layout width 에 포함되지 않게.
+     → 같은 span 에 적용된 outer mark (top_label 등) 의 border 폭이 괄호까지 늘어나는 시각 버그 방지. */
+  position: relative;
+}
+
+[data-annotation-kind="bracket"]::before,
+[data-annotation-kind="bracket"]::after {
+  position: absolute;
+  top: 0;
+  pointer-events: none;
+}
+
+[data-annotation-kind="bracket"]::before {
+  right: 100%;
+  padding-right: 1px;
+}
+
+[data-annotation-kind="bracket"]::after {
+  left: 100%;
+  padding-left: 1px;
 }
 
 [data-annotation-kind="bracket"][data-bracket-color="1"] {

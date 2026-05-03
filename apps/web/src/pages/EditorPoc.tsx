@@ -181,12 +181,13 @@ export function EditorPoc() {
     if (!trimmed) return;
     const color = resolveHighlightHex();
     const annotationId = crypto.randomUUID();
+    const colorIndex = resolveColorIndex();
     // 툴바 5종 → category: "note" 자동 주입
     editor
       .chain()
       .focus()
       .setTextSelection(trimmed)
-      .setMark("highlight", { color, annotationId, category: "note" })
+      .setMark("highlight", { color, annotationId, category: "note", colorIndex })
       .run();
   };
 
@@ -195,11 +196,12 @@ export function EditorPoc() {
     const trimmed = trimSelection();
     if (!trimmed) return;
     const annotationId = crypto.randomUUID();
+    const colorIndex = resolveColorIndex();
     editor
       .chain()
       .focus()
       .setTextSelection(trimmed)
-      .setMark("underline", { annotationId, category: "note" })
+      .setMark("underline", { annotationId, category: "note", colorIndex })
       .run();
   };
 
