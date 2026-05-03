@@ -65,6 +65,7 @@
   - 결과 요약: "정확히 align 가능 / 부분 / 불가능 + 우회안" 1페이지 메모를
     `docs/hwpx-align-poc.md` 로 산출.
 - **PR 단위**: 1 PR. (CLAUDE.md §11 Open Question 해소)
+- **머지**: PR #2 (`c04e935`) — fix 3라운드 후 머지. follow-up: (1) `docs/hwpx-align-poc.md` §7 에 PM 한글 오피스 스크린샷 첨부 (2) P1-8 착수 전 `test_poc_align.py` 에 한컴 스펙 핵심 값 (container.xml media-type, content.hpf 루트 요소 등) 검증 케이스 추가 (3) `poc_align._label_para_xml` 의 미사용 `indent` 파라미터 정리.
 - **완료**: fixture `packages/hwpx_renderer/tests/fixtures/poc_align.hwpx` + 28 unit tests
   passed + `docs/hwpx-align-poc.md`. PM 수동 확인(한글 오피스 열기) 대기 중.
 
