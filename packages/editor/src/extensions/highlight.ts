@@ -31,6 +31,15 @@ export const HighlightMark = Highlight.extend({
           return { "data-annotation-id": attributes.annotationId as string };
         },
       },
+      // P1-2c: category attrs 추가 — 분석표 행 분류 (note/sentence_role/phrase/clause/other)
+      category: {
+        default: null,
+        parseHTML: (element: Element) => element.getAttribute("data-category") ?? null,
+        renderHTML: (attributes: Record<string, unknown>) => {
+          if (!attributes.category) return {};
+          return { "data-category": attributes.category as string };
+        },
+      },
     };
   },
 }).configure({

@@ -157,24 +157,56 @@ export function EditorPoc() {
     return selectedColorIndex ?? 1;
   }
 
+  /**
+   * trimSelection — 현재 selection 의 양 끝 공백을 제거한 from/to 반환.
+   * mark 가 양 끝 blank 까지 그어지는 시각 버그 해결 (PM 폴리싱).
+   * trim 후 길이가 0 이면 null (적용 무효).
+   */
+  function trimSelection(): { from: number; to: number } | null {
+    if (!editor) return null;
+    const { from, to } = editor.state.selection;
+    if (from === to) return null;
+    const text = editor.state.doc.textBetween(from, to);
+    const leftTrim = text.length - text.trimStart().length;
+    const rightTrim = text.length - text.trimEnd().length;
+    const newFrom = from + leftTrim;
+    const newTo = to - rightTrim;
+    if (newFrom >= newTo) return null;
+    return { from: newFrom, to: newTo };
+  }
+
   const handleHighlight = () => {
     if (!editor) return;
+    const trimmed = trimSelection();
+    if (!trimmed) return;
     const color = resolveHighlightHex();
     const annotationId = crypto.randomUUID();
     // 툴바 5종 → category: "note" 자동 주입
-    editor.chain().focus().setMark("highlight", { color, annotationId, category: "note" }).run();
+    editor
+      .chain()
+      .focus()
+      .setTextSelection(trimmed)
+      .setMark("highlight", { color, annotationId, category: "note" })
+      .run();
   };
 
   const handleUnderline = () => {
     if (!editor) return;
+    const trimmed = trimSelection();
+    if (!trimmed) return;
     const annotationId = crypto.randomUUID();
-    editor.chain().focus().setMark("underline", { annotationId, category: "note" }).run();
+    editor
+      .chain()
+      .focus()
+      .setTextSelection(trimmed)
+      .setMark("underline", { annotationId, category: "note" })
+      .run();
   };
 
   const handleBracket = () => {
     if (!editor) return;
-    const { from, to } = editor.state.selection;
-    if (from === to) {
+    const trimmed = trimSelection();
+    if (!trimmed) {
       alert("텍스트를 먼저 선택해주세요.");
       return;
     }
@@ -185,12 +217,19 @@ export function EditorPoc() {
   const handleBracketModalSubmit = useCallback(
     (style: BracketStyleOption) => {
       if (!editor) return;
+      const { from, to } = editor.state.selection;
+      const text = editor.state.doc.textBetween(from, to);
+      const leftTrim = text.length - text.trimStart().length;
+      const rightTrim = text.length - text.trimEnd().length;
+      const trimmedFrom = from + leftTrim;
+      const trimmedTo = to - rightTrim;
+      if (trimmedFrom >= trimmedTo) return;
       const annotationId = crypto.randomUUID();
-      // selectedColorIndex 직접 사용 — resolveColorIndex() 는 deps 에 포함 불가한 클로저
       const colorIdx = selectedColorIndex ?? 1;
       editor
         .chain()
         .focus()
+        .setTextSelection({ from: trimmedFrom, to: trimmedTo })
         .setBracket({
           bracketStyle: style,
           colorIndex: colorIdx,
@@ -204,6 +243,8 @@ export function EditorPoc() {
 
   const handleArrow = () => {
     if (!editor) return;
+    const trimmed = trimSelection();
+    if (!trimmed) return;
     const targetStartStr = prompt("화살표 도착점 시작 offset (숫자):");
     const targetEndStr = prompt("화살표 도착점 끝 offset (숫자):");
     const targetStart = Number(targetStartStr);
@@ -216,6 +257,7 @@ export function EditorPoc() {
     editor
       .chain()
       .focus()
+      .setTextSelection(trimmed)
       .setArrow({
         arrowTargetStart: targetStart,
         arrowTargetEnd: targetEnd,
@@ -228,12 +270,15 @@ export function EditorPoc() {
 
   const handleInlineNote = () => {
     if (!editor) return;
+    const trimmed = trimSelection();
+    if (!trimmed) return;
     const text = prompt("인라인 노트 텍스트를 입력하세요 (예: =foster, promote):");
     if (!text) return;
     const annotationId = crypto.randomUUID();
     editor
       .chain()
       .focus()
+      .setTextSelection(trimmed)
       .setInlineNote({
         text,
         colorIndex: resolveColorIndex(),
@@ -261,15 +306,28 @@ export function EditorPoc() {
     (entry: LabelEntryKind) => {
       if (!editor) return;
 
-      // selection 이 비어있으면 안내
+      // selection 양 끝 공백 trim 적용
       const { from, to } = editor.state.selection;
       if (from === to) {
         alert("텍스트를 먼저 선택해주세요.");
         return;
       }
+      const text = editor.state.doc.textBetween(from, to);
+      const leftTrim = text.length - text.trimStart().length;
+      const rightTrim = text.length - text.trimEnd().length;
+      const trimmedFrom = from + leftTrim;
+      const trimmedTo = to - rightTrim;
+      if (trimmedFrom >= trimmedTo) {
+        alert("선택 영역이 비어있습니다.");
+        return;
+      }
 
-      // selection 저장 후 모달 open
-      setModalState({ open: true, entry, pendingSelection: { from, to } });
+      // trim 된 selection 저장 후 모달 open
+      setModalState({
+        open: true,
+        entry,
+        pendingSelection: { from: trimmedFrom, to: trimmedTo },
+      });
     },
     [editor]
   );
