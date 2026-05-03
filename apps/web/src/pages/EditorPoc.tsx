@@ -20,7 +20,11 @@ import {
   type AnnotationChip,
   type LabelEntryKind,
 } from "../components/AnalysisTable";
+import { BracketEntryModal, type BracketStyleOption } from "../components/BracketEntryModal";
+import type { BracketEditStyle } from "../components/ChipEditModal";
+import { ChipEditModal } from "../components/ChipEditModal";
 import { LabelEntryModal, type LabelEntryModalKind } from "../components/LabelEntryModal";
+import { buildChips } from "./buildChips";
 import "./EditorPoc.css";
 
 /**
@@ -70,88 +74,7 @@ const COLOR_PALETTE: Array<{ index: number; hex: string; label: string }> = [
   { index: 12, hex: "#e9d5ff", label: "purple" },
 ];
 
-// ---------------------------------------------------------------------------
-// 헬퍼 — doc 에서 AnnotationChip[] 추출
-// ---------------------------------------------------------------------------
-
-/**
- * extractDocText — ProseMirror JSON 의 모든 text 노드를 순회해 본문을 단락 사이
- * "\n" 으로 잇는다. annotationSerializer 의 charOffset 계산 규칙과 동일해야
- * span.start / span.end 가 본문 인덱스로 일치한다.
- */
-function extractDocText(
-  doc: ReturnType<NonNullable<ReturnType<typeof useEditor>>["getJSON"]>
-): string {
-  if (!doc || !Array.isArray(doc.content)) return "";
-  const paragraphs: string[] = [];
-
-  type JsonNode = { type?: string; text?: string; content?: JsonNode[] };
-
-  function paragraphText(node: JsonNode): string {
-    if (!node.content) return "";
-    let s = "";
-    for (const child of node.content) {
-      if (child.type === "text") s += child.text ?? "";
-    }
-    return s;
-  }
-
-  for (const node of doc.content as JsonNode[]) {
-    if (node.type === "paragraph") paragraphs.push(paragraphText(node));
-  }
-  return paragraphs.join("\n");
-}
-
-/**
- * truncate — 30자 초과 시 양 끝 살리고 가운데 ... 처리.
- */
-function truncate(s: string, max = 30): string {
-  if (s.length <= max) return s;
-  const head = Math.ceil((max - 1) / 2);
-  const tail = Math.floor((max - 1) / 2);
-  return `${s.slice(0, head)}…${s.slice(s.length - tail)}`;
-}
-
-/**
- * buildChips — editor.getJSON() doc 을 docToAnnotations 로 파싱 후
- * annotationId 별로 dedup 해서 AnnotationChip[] 로 변환한다.
- *
- * 같은 annotationId 의 split 조각은 첫 조각만 칩으로 표기한다 (dedup).
- * spanText 는 본문에서 character offset 으로 slice 한 실제 텍스트 (30자 줄임).
- */
-function buildChips(
-  doc: ReturnType<NonNullable<ReturnType<typeof useEditor>>["getJSON"]>
-): AnnotationChip[] {
-  const annotations = docToAnnotations(doc);
-  const bodyText = extractDocText(doc);
-  const seen = new Map<string, AnnotationChip>();
-
-  for (const ann of annotations) {
-    // annotationId 없는 기존 annotation — uuid 없이 kind+span 으로 임시 키
-    const id = ann.annotation_id ?? `${ann.kind}:${ann.span.start}-${ann.span.end}`;
-
-    if (seen.has(id)) continue; // dedup
-
-    const labelText =
-      ann.kind === "top_label" || ann.kind === "bottom_label" || ann.kind === "inline_note"
-        ? (ann.text ?? "")
-        : "";
-
-    const rawSpan = bodyText.slice(ann.span.start, ann.span.end);
-    const spanText = truncate(rawSpan);
-
-    seen.set(id, {
-      annotationId: id,
-      kind: ann.kind,
-      category: ann.category ?? null,
-      colorIndex: ann.color_index ?? null,
-      labelText,
-      spanText,
-    });
-  }
-
-  return Array.from(seen.values());
-}
+// buildChips, extractDocText, truncate, KIND_PRIORITY — ./buildChips.ts 에서 import
 
 // ---------------------------------------------------------------------------
 // 컴포넌트
@@ -166,12 +89,21 @@ export function EditorPoc() {
   const [serializedJson, setSerializedJson] = useState<string | null>(null);
   const [chips, setChips] = useState<AnnotationChip[]>([]);
 
-  // 모달 상태
+  // 라벨 모달 상태 (성분/구/절 진입 버튼)
   const [modalState, setModalState] = useState<{
     open: boolean;
     entry: LabelEntryKind | null;
     pendingSelection: { from: number; to: number } | null;
   }>({ open: false, entry: null, pendingSelection: null });
+
+  // 괄호 모달 상태 (툴바 괄호 버튼)
+  const [bracketModalOpen, setBracketModalOpen] = useState(false);
+
+  // 칩 수정 모달 상태
+  const [chipEditState, setChipEditState] = useState<{
+    open: boolean;
+    chip: AnnotationChip | null;
+  }>({ open: false, chip: null });
 
   const editor = useEditor({
     extensions: EXTENSIONS,
@@ -241,20 +173,34 @@ export function EditorPoc() {
 
   const handleBracket = () => {
     if (!editor) return;
-    const style = prompt("괄호 스타일 선택: () / {} / []", "()");
-    if (!style || !["()", "{}", "[]"].includes(style)) return;
-    const annotationId = crypto.randomUUID();
-    editor
-      .chain()
-      .focus()
-      .setBracket({
-        bracketStyle: style as "()" | "{}" | "[]",
-        colorIndex: resolveColorIndex(),
-        category: "note",
-        annotationId,
-      })
-      .run();
+    const { from, to } = editor.state.selection;
+    if (from === to) {
+      alert("텍스트를 먼저 선택해주세요.");
+      return;
+    }
+    // 모달 열기 — 실제 mark 적용은 handleBracketModalSubmit 에서
+    setBracketModalOpen(true);
   };
+
+  const handleBracketModalSubmit = useCallback(
+    (style: BracketStyleOption) => {
+      if (!editor) return;
+      const annotationId = crypto.randomUUID();
+      // selectedColorIndex 직접 사용 — resolveColorIndex() 는 deps 에 포함 불가한 클로저
+      const colorIdx = selectedColorIndex ?? 1;
+      editor
+        .chain()
+        .focus()
+        .setBracket({
+          bracketStyle: style,
+          colorIndex: colorIdx,
+          category: "note",
+          annotationId,
+        })
+        .run();
+    },
+    [editor, selectedColorIndex]
+  );
 
   const handleArrow = () => {
     if (!editor) return;
@@ -365,13 +311,14 @@ export function EditorPoc() {
           annotationId,
         });
 
-        // 괄호 옵션 선택 시 bracket mark 도 같은 span 에 별 annotation 으로 동시 적용
+        // 괄호 옵션 선택 시 bracket mark 도 같은 span 에 동일 annotationId 로 적용
+        // → 분석표에서 칩 1개로 dedup (KIND_PRIORITY: top_label > bracket)
         if (params.bracketStyle) {
           chain = chain.setBracket({
             bracketStyle: params.bracketStyle,
             colorIndex: colorIdx,
             category: entry.category,
-            annotationId: crypto.randomUUID(),
+            annotationId,
           });
         }
         chain.run();
@@ -406,6 +353,109 @@ export function EditorPoc() {
       for (const r of ranges) {
         chain = chain.setTextSelection({ from: r.from, to: r.to }).unsetMark(r.markName);
       }
+      chain.run();
+    },
+    [editor]
+  );
+
+  // ---------------------------------------------------------------------------
+  // 핸들러 — 칩 클릭 (수정 모달 열기)
+  // ---------------------------------------------------------------------------
+
+  const handleChipClick = useCallback((chip: AnnotationChip) => {
+    // arrow 는 수정 불가 — AnnotationChipView 에서 이미 필터링되나 방어적으로도 체크
+    if (chip.kind === "arrow") return;
+    setChipEditState({ open: true, chip });
+  }, []);
+
+  /**
+   * handleChipEditSave — 칩 수정 모달 저장 시 mark attrs 갱신.
+   *
+   * 같은 annotationId 의 모든 mark range 를 수집 → 각 range 를 unset → set 으로
+   * attrs 를 새 값으로 교체한다.
+   * bracket mark (top_label 과 annotationId 공유) 처리:
+   *   - bracketStyle 이 null 로 변경 → bracket mark 범위 unset
+   *   - bracketStyle 이 값이 있을 때 bracket range 가 없으면 새로 set 불가
+   *     (selection 정보가 없으므로). 이 케이스는 현재 수정 불가 — 원래 괄호 없이
+   *     저장된 top_label 에 추후 괄호 추가는 별도 케이스.
+   */
+  const handleChipEditSave = useCallback(
+    (params: {
+      annotationId: string;
+      text?: string;
+      colorIndex: number | null;
+      bracketStyle: BracketEditStyle | null;
+    }) => {
+      if (!editor) return;
+
+      const ranges = collectMarkRangesByAnnotationId(editor.state.doc, params.annotationId);
+      if (ranges.length === 0) return;
+
+      let chain = editor.chain();
+
+      for (const r of ranges) {
+        // 기존 mark attrs 를 유지하면서 새 값으로 교체
+        const markName = r.markName;
+
+        if (markName === "bracket") {
+          if (params.bracketStyle === null) {
+            // bracketStyle 제거 → bracket mark unset
+            chain = chain.setTextSelection({ from: r.from, to: r.to }).unsetMark(markName);
+          } else {
+            // bracketStyle 갱신
+            chain = chain
+              .setTextSelection({ from: r.from, to: r.to })
+              .unsetMark(markName)
+              .setBracket({
+                bracketStyle: params.bracketStyle,
+                colorIndex: params.colorIndex ?? 1,
+                annotationId: params.annotationId,
+              });
+          }
+        } else if (markName === "topLabel") {
+          chain = chain
+            .setTextSelection({ from: r.from, to: r.to })
+            .unsetMark(markName)
+            .setTopLabel({
+              text: params.text ?? "",
+              colorIndex: params.colorIndex ?? undefined,
+              annotationId: params.annotationId,
+            });
+        } else if (markName === "bottomLabel") {
+          chain = chain
+            .setTextSelection({ from: r.from, to: r.to })
+            .unsetMark(markName)
+            .setBottomLabel({
+              text: params.text ?? "",
+              colorIndex: params.colorIndex ?? undefined,
+              annotationId: params.annotationId,
+            });
+        } else if (markName === "inlineNote") {
+          chain = chain
+            .setTextSelection({ from: r.from, to: r.to })
+            .unsetMark(markName)
+            .setInlineNote({
+              text: params.text ?? "",
+              colorIndex: params.colorIndex ?? undefined,
+              annotationId: params.annotationId,
+            });
+        } else if (markName === "highlight") {
+          const hex =
+            params.colorIndex != null
+              ? (COLOR_PALETTE.find((c) => c.index === params.colorIndex)?.hex ?? "#fef08a")
+              : "#fef08a";
+          chain = chain
+            .setTextSelection({ from: r.from, to: r.to })
+            .unsetMark(markName)
+            .setMark("highlight", {
+              color: hex,
+              annotationId: params.annotationId,
+              category: "note",
+            });
+        }
+        // underline: 색 미지원 — attrs 변경 없음
+      }
+
       chain.run();
     },
     [editor]
@@ -457,6 +507,19 @@ export function EditorPoc() {
         entryKind={modalKind}
         onSubmit={handleModalSubmit}
         onClose={handleModalClose}
+      />
+      <BracketEntryModal
+        open={bracketModalOpen}
+        onSubmit={handleBracketModalSubmit}
+        onClose={() => setBracketModalOpen(false)}
+      />
+      <ChipEditModal
+        open={chipEditState.open}
+        chip={chipEditState.chip}
+        bracketStyle={chipEditState.chip?.bracketStyle ?? null}
+        onSave={handleChipEditSave}
+        onRemove={handleRemoveAnnotation}
+        onClose={() => setChipEditState({ open: false, chip: null })}
       />
       <main className="min-h-screen bg-gray-50 p-8">
         <div className="max-w-4xl mx-auto space-y-6">
@@ -635,6 +698,7 @@ export function EditorPoc() {
               chips={chips}
               onRemove={handleRemoveAnnotation}
               onLabelEntry={handleLabelEntry}
+              onChipClick={handleChipClick}
             />
           </div>
 
@@ -642,7 +706,7 @@ export function EditorPoc() {
           <p className="text-xs text-gray-400 leading-relaxed">
             텍스트를 선택 후 annotation 버튼 (형광펜/밑줄/괄호/화살표/노트) 을 클릭하면 메모
             카테고리로 자동 분류됩니다. 성분/구/절 라벨은 분석표 진입 버튼으로 추가하세요 (텍스트
-            선택 후 버튼 클릭). 칩의 ✕ 버튼으로 annotation 을 통째 삭제합니다.
+            선택 후 버튼 클릭). 칩을 클릭하면 수정 모달이 열립니다. ✕ 버튼으로 즉시 삭제.
           </p>
 
           {/* SerializedAnnotation[] 직렬화 결과 패널 */}

@@ -31,6 +31,8 @@ export interface AnnotationChip {
   colorIndex: number | null;
   labelText: string; // top_label / bottom_label / inline_note 의 text (없으면 "")
   spanText: string; // 본문 span 텍스트 (30자 초과 시 줄임)
+  /** 같은 annotationId 에 bracket mark 가 있을 때 해당 스타일 (top_label 전용) */
+  bracketStyle?: "()" | "{}" | "[]" | null;
 }
 
 /**
@@ -46,6 +48,8 @@ interface AnalysisTableProps {
   onRemove: (annotationId: string) => void;
   /** 진입 버튼 클릭 — EditorPoc 에서 selection 확인 후 mark 적용 */
   onLabelEntry: (entry: LabelEntryKind) => void;
+  /** 칩 클릭 — 수정 모달 열기 (arrow 제외) */
+  onChipClick?: (chip: AnnotationChip) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -121,7 +125,7 @@ const KIND_ABBR: Record<string, string> = {
 // 컴포넌트
 // ---------------------------------------------------------------------------
 
-export function AnalysisTable({ chips, onRemove, onLabelEntry }: AnalysisTableProps) {
+export function AnalysisTable({ chips, onRemove, onLabelEntry, onChipClick }: AnalysisTableProps) {
   // 표시할 행: alwaysShow 이거나 chips 가 있는 행
   const visibleRows = CATEGORY_ROWS.filter(
     (row) => row.alwaysShow || chips.some((c) => c.category === row.key)
@@ -134,7 +138,7 @@ export function AnalysisTable({ chips, onRemove, onLabelEntry }: AnalysisTablePr
         const rowChips = chips.filter((c) => c.category === row.key);
         return (
           <div key={row.key} className="analysis-row">
-            {/* 좌측: 라벨 + 진입 버튼 or 힌트 */}
+            {/* 좌측: 라벨 + 진입 버튼 or 힌트 (힌트는 chips 없을 때만 표시) */}
             <div className="analysis-row__left">
               <span className="analysis-row__label">{row.label}</span>
               {row.entryButton && (
@@ -144,12 +148,19 @@ export function AnalysisTable({ chips, onRemove, onLabelEntry }: AnalysisTablePr
                   onLabelEntry={onLabelEntry}
                 />
               )}
-              {row.hint && <span className="analysis-row__hint">{row.hint}</span>}
+              {row.hint && rowChips.length === 0 && (
+                <span className="analysis-row__hint">{row.hint}</span>
+              )}
             </div>
             {/* 우측: 칩 목록 */}
             <div className="analysis-row__chips">
               {rowChips.map((chip) => (
-                <AnnotationChipView key={chip.annotationId} chip={chip} onRemove={onRemove} />
+                <AnnotationChipView
+                  key={chip.annotationId}
+                  chip={chip}
+                  onRemove={onRemove}
+                  onChipClick={onChipClick}
+                />
               ))}
             </div>
           </div>
@@ -195,9 +206,10 @@ function EntryButton({ label, entry, onLabelEntry }: EntryButtonProps) {
 interface AnnotationChipViewProps {
   chip: AnnotationChip;
   onRemove: (annotationId: string) => void;
+  onChipClick?: (chip: AnnotationChip) => void;
 }
 
-function AnnotationChipView({ chip, onRemove }: AnnotationChipViewProps) {
+function AnnotationChipView({ chip, onRemove, onChipClick }: AnnotationChipViewProps) {
   // 좌측 표기: top_label / bottom_label / inline_note 는 labelText, 그 외 kind 약어
   const hasLabel =
     (chip.kind === "top_label" || chip.kind === "bottom_label" || chip.kind === "inline_note") &&
@@ -209,10 +221,26 @@ function AnnotationChipView({ chip, onRemove }: AnnotationChipViewProps) {
 
   const colorVar = chip.colorIndex != null ? `var(--anno-color-${chip.colorIndex})` : undefined;
 
+  // arrow 는 수정 불가 — 칩 클릭 핸들러 없음
+  const isEditable = chip.kind !== "arrow";
+
   return (
     <span
-      className="anno-chip"
+      className={`anno-chip${isEditable ? " anno-chip--clickable" : ""}`}
       style={colorVar ? { backgroundColor: colorVar, borderColor: colorVar } : undefined}
+      onClick={isEditable && onChipClick ? () => onChipClick(chip) : undefined}
+      role={isEditable && onChipClick ? "button" : undefined}
+      tabIndex={isEditable && onChipClick ? 0 : undefined}
+      onKeyDown={
+        isEditable && onChipClick
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onChipClick(chip);
+              }
+            }
+          : undefined
+      }
     >
       <span className="anno-chip__kind">{leftLabel}</span>
       <span className="anno-chip__text">{chip.spanText}</span>
@@ -220,7 +248,11 @@ function AnnotationChipView({ chip, onRemove }: AnnotationChipViewProps) {
         type="button"
         className="anno-chip__remove"
         title="annotation 삭제"
-        onClick={() => onRemove(chip.annotationId)}
+        onClick={(e) => {
+          // x 클릭이 칩 클릭 이벤트(수정 모달)로 전파되지 않도록
+          e.stopPropagation();
+          onRemove(chip.annotationId);
+        }}
       >
         ✕
       </button>

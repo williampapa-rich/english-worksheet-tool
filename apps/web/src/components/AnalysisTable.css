@@ -151,3 +151,13 @@
 .anno-chip__remove:hover {
   color: #ef4444;
 }
+
+/* 클릭 가능한 칩 (arrow 제외) */
+.anno-chip--clickable {
+  cursor: pointer;
+  transition: filter 0.12s;
+}
+
+.anno-chip--clickable:hover {
+  filter: brightness(0.94);
+}
