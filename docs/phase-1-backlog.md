@@ -153,6 +153,7 @@
   - SQLAlchemy 모델 + Alembic revision (multi-tenant `tenant_id` 강제).
   - 단위 테스트 (cross-tenant 격리 1건 포함).
 - **PR 단위**: 1~2 PR (a: 모델 + 마이그레이션, b: 엔드포인트 + 테스트).
+- **머지**: PR #12 (`1570ae1`). API 설계 결정: replace-all + 결과 리스트 반환 (id 포함). Alembic revision 추가 없음 (P1-3 0003 에서 ORM 컬럼 확정). 단위 7건 + 라우터 3건 통과. follow-up: (1) Docker 환경에서 `pytest -m integration` 으로 5건 (정상/덮어쓰기/빈 리스트/cross-tenant/arrow JSONB round-trip) 검증 1회 — P1-3 follow-up "integration 검증" 도 함께 충족 (2) `routers/annotations.py` GET 엔드포인트에 `async with session.begin()` 명시 (선택, P0-7 일관성).
 
 #### P1-6 — 에디터 ↔ API 통합
 
