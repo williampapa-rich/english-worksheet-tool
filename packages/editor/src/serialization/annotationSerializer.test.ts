@@ -23,7 +23,7 @@
  */
 
 import type { JSONContent } from "@tiptap/core";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ANNOTATION_KIND } from "../extensions/annotationKind";
 import {
   type MarkAttrs,
@@ -310,6 +310,36 @@ describe("docToAnnotations", () => {
       expect(ann.span.start).toBe(4);
       expect(ann.span.end).toBe(11);
     }
+  });
+
+  // 테스트 9a: arrow mark — arrowTargetStart/End 중 하나가 null 이면 drop + console.warn
+  it("arrow mark 에 arrowTargetStart/End 가 없으면 annotation 을 drop 하고 console.warn 을 호출한다", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    // arrowTargetEnd 만 null
+    const doc = makeDoc([
+      {
+        segments: [
+          {
+            text: "it",
+            marks: [
+              {
+                type: "arrow",
+                attrs: { arrowTargetStart: 10, arrowTargetEnd: null },
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    const annotations = docToAnnotations(doc);
+
+    expect(annotations).toHaveLength(0);
+    expect(warnSpy).toHaveBeenCalledOnce();
+    expect(warnSpy.mock.calls[0]?.[0]).toContain("ARROW");
+
+    warnSpy.mockRestore();
   });
 
   // 테스트 9: StarterKit mark (bold) 는 무시됨

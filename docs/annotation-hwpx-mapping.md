@@ -51,6 +51,7 @@
 **P1-0b 가 검증한 것**:
 - `hh:charPr id="1"` 에 `shadeColor="#FFFF00"` 지정 → 본문 run 의 `charPrIDRef="1"` 로 노란색 형광펜 효과. 한글 오피스에서 정상 렌더 (PM fix 3차 검증 §7).
 - borderFillIDRef="0" (테두리 없음) 로 충분.
+- P1-0b follow-up (test_poc_align.py 한컴 스펙 검증 케이스 + indent 파라미터 정리) 은 PR #10 에서 머지 완료. P1-8a 코드 패턴 신뢰 가능.
 
 **검증 안 된 것**:
 - 12색 팔레트 (`color_index` 1~12) 와 charPr 매핑 — 매번 새 charPr 동적 생성 vs 12개 사전 정의 후 재사용.
@@ -237,15 +238,19 @@ CLAUDE.md §3.5 현재 내용:
 
 ---
 
-## 6. 미해결 사항 요약 (P1-8 진입 전 PM 결정 필요)
+## 6. 미해결 사항 요약
 
-| # | 항목 | 결정 주체 | 시점 |
-|---|---|---|---|
-| 1 | bracket 표현 (Unicode / drawObj / tbl) | domain-expert + 와이프 + PM | P1-8b 착수 전 |
-| 2 | inline_note 가 inline 인지 별 단락 라벨인지 | domain-expert | P1-8a 착수 전 |
-| 3 | 12색 팔레트 → charPr id 매핑 정책 (사전 정의 / 동적 생성) | architect + backend-dev | P1-8a 착수 전 |
-| 4 | underline 색상이 `color_index` 와 연동되는가 | domain-expert | P1-8a 착수 전 |
-| 5 | 폰트 번들링 (Times New Roman / 함초롬돋움) | PM (라이센스 확인) | P1-8b-2 착수 전 |
-| 6 | multi-line arrow Phase 1 제외 여부 | PM | P1-8c 착수 전 |
-| 7 | 다중 라벨 충돌 시각 처리 (P1-4) | frontend-dev + domain-expert | P1-8b-1 착수 전 |
-| 8 | CLAUDE.md §3.5 갱신 | PM | 본 PR 머지 후 별 PR |
+> **표 읽는 법 — 결정 주체 구분**:
+> - "PM 결정" = 비즈니스·우선순위 판단이 필요한 항목. PM 이 결정 전까지 착수 불가.
+> - "구현 레벨" = 팀 내 기술 협의로 결정 가능 (architect / backend-dev / domain-expert). PM 개입 불필요.
+
+| # | 항목 | 결정 주체 | 구분 | 시점 |
+|---|---|---|---|---|
+| 1 | bracket 표현 (Unicode / drawObj / tbl) | domain-expert + 와이프 + PM | PM 결정 | P1-8b 착수 전 |
+| 2 | inline_note 가 inline 인지 별 단락 라벨인지 | domain-expert | 구현 레벨 | P1-8a 착수 전 |
+| 3 | 12색 팔레트 → charPr id 매핑 정책 (사전 정의 / 동적 생성) | architect + backend-dev | 구현 레벨 | P1-8a 착수 전 |
+| 4 | underline 색상이 `color_index` 와 연동되는가 | domain-expert | 구현 레벨 | P1-8a 착수 전 |
+| 5 | 폰트 번들링 (Times New Roman / 함초롬돋움) | PM (라이센스 확인) | PM 결정 | P1-8b-2 착수 전 |
+| 6 | multi-line arrow Phase 1 제외 여부 | PM | PM 결정 | P1-8c 착수 전. c-1 PoC 결과에 따라 단일 줄 arrow 도 Phase 1 제외 가능 — PoC 후 PM 최종 결정. |
+| 7 | 다중 라벨 충돌 시각 처리 (P1-4) | frontend-dev + domain-expert | 구현 레벨 | P1-8b-1 착수 전 |
+| 8 | CLAUDE.md §3.5 갱신 | PM | PM 결정 | 본 PR 머지 후 별 PR |
