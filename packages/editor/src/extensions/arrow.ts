@@ -36,6 +36,7 @@ declare module "@tiptap/core" {
         arrowTargetStart: number;
         arrowTargetEnd: number;
         colorIndex?: number;
+        category?: string | null;
       }) => ReturnType;
       /**
        * 선택 범위의 화살표 마크를 해제한다.
@@ -92,7 +93,16 @@ export const ArrowMark = Mark.create<ArrowOptions>({
           if (attributes.colorIndex == null) return {};
           return {
             "data-arrow-color": String(attributes.colorIndex as number),
+            "data-color-index": String(attributes.colorIndex as number),
           };
+        },
+      },
+      category: {
+        default: null,
+        parseHTML: (element) => element.getAttribute("data-category") ?? null,
+        renderHTML: (attributes) => {
+          if (!attributes.category) return {};
+          return { "data-category": attributes.category as string };
         },
       },
     };

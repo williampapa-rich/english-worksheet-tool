@@ -27,6 +27,7 @@ declare module "@tiptap/core" {
       setBottomLabel: (attrs: {
         text: string;
         colorIndex?: number;
+        category?: string | null;
       }) => ReturnType;
       /**
        * 선택 범위의 하단 라벨을 해제한다.
@@ -65,7 +66,16 @@ export const BottomLabelMark = Mark.create<BottomLabelOptions>({
           if (attributes.colorIndex == null) return {};
           return {
             "data-bottom-label-color": String(attributes.colorIndex as number),
+            "data-color-index": String(attributes.colorIndex as number),
           };
+        },
+      },
+      category: {
+        default: null,
+        parseHTML: (element) => element.getAttribute("data-category") ?? null,
+        renderHTML: (attributes) => {
+          if (!attributes.category) return {};
+          return { "data-category": attributes.category as string };
         },
       },
     };

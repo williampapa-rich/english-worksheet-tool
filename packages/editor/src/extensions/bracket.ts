@@ -32,6 +32,7 @@ declare module "@tiptap/core" {
       setBracket: (attrs: {
         bracketStyle: BracketStyle;
         colorIndex?: number;
+        category?: string | null;
       }) => ReturnType;
       /**
        * 선택 범위의 괄호 마크를 해제한다.
@@ -71,7 +72,16 @@ export const BracketMark = Mark.create<BracketOptions>({
           if (attributes.colorIndex == null) return {};
           return {
             "data-bracket-color": String(attributes.colorIndex as number),
+            "data-color-index": String(attributes.colorIndex as number),
           };
+        },
+      },
+      category: {
+        default: null,
+        parseHTML: (element) => element.getAttribute("data-category") ?? null,
+        renderHTML: (attributes) => {
+          if (!attributes.category) return {};
+          return { "data-category": attributes.category as string };
         },
       },
     };
