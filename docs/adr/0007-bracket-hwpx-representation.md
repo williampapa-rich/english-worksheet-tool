@@ -1,8 +1,11 @@
 # ADR 0007 — bracket annotation HWPX 표현 (P1-8b 진입 차단 해제)
 
-- **상태(Status)**: Proposed (PM 결정 대기)
+- **상태(Status)**: Accepted
 - **작성일**: 2026-05-03
-- **작성자**: architect (초안). PM 결정 대상.
+- **결정일**: 2026-05-03
+- **작성자**: architect (초안)
+- **결정자**: PM (Dennis)
+- **채택안**: **A — Unicode `[ ]` `( )` `{ }`**
 - **유형**: Phase 1 진입 전 차단 ADR — P1-8b (라벨 / 괄호 계열 HWPX 렌더러) 착수 전
   필수.
 - **관련 문서**:
@@ -94,9 +97,9 @@ path 에서 차단 항목.
 
 ## 결정 (PM 채택안)
 
-> **상태**: PM 결정 대기. 아래는 architect 추천.
+> **상태**: Accepted (2026-05-03). PM 이 architect 추천 그대로 수용.
 
-### 추천: **A (Unicode 글자)**
+### 채택: **A (Unicode 글자)**
 
 **근거**:
 1. **영상 레퍼런스와 가장 일치** — 와이프가 보던 도구의 bracket 도 글자였을 가능성 높음.
@@ -161,3 +164,4 @@ path 에서 차단 항목.
 | 날짜 | 상태 | 결정자 | 비고 |
 |---|---|---|---|
 | 2026-05-03 | Proposed | architect (초안) | PM 결정 대기 |
+| 2026-05-03 | Accepted | PM (Dennis) | architect 추천 (A) 그대로 수용. P1-8b 진입 차단 해제. |

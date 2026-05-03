@@ -251,7 +251,7 @@ CLAUDE.md §3.5 현재 내용:
 
 | # | 항목 | 결정 주체 | 구분 | 시점 |
 |---|---|---|---|---|
-| 1 | bracket 표현 (Unicode / drawObj / tbl) | domain-expert + 와이프 + PM | PM 결정 | P1-8b 착수 전. **`docs/adr/0007-bracket-hwpx-representation.md` 초안 작성됨 — architect 추천 = A (Unicode), PM 결정 대기.** |
+| 1 | bracket 표현 (Unicode / drawObj / tbl) | domain-expert + 와이프 + PM | PM 결정 | **[done] 2026-05-03 — A (Unicode) 채택**. ADR-0007 (`docs/adr/0007-bracket-hwpx-representation.md`). P1-8b 진입 차단 해제. |
 | 2 | inline_note 가 inline 인지 별 단락 라벨인지 | domain-expert | 구현 레벨 | P1-8a 착수 전. **P1-8a PR 에서 후보 A (inline run, 작은 폰트 charPr) 채택.** 사유: `inline_note` 의 의도가 본문 흐름 안에서 짧은 부연이라면 inline 이 자연스러우며, 별 단락은 `top_label`/`bottom_label` 의 역할과 겹친다. domain-expert 검토 follow-up. |
 | 3 | 12색 팔레트 → charPr id 매핑 정책 (사전 정의 / 동적 생성) | architect + backend-dev | 구현 레벨 | P1-8a 착수 전 |
 | 4 | underline 색상이 `color_index` 와 연동되는가 | domain-expert | 구현 레벨 | P1-8a 착수 전 |
