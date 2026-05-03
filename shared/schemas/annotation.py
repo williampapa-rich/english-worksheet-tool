@@ -1,34 +1,34 @@
 """SyntaxAnnotation(구문분석 마크) 도메인 모델.
 
-본 모듈은 ``docs/reference-program-analysis.md`` §4.3 의 권고 모델을 v0.1 로 흡수한다.
+본 모듈은 ``docs/reference-program-analysis.md`` §4.3 의 권고 모델을 v0.2 로 흡수한다.
 영상 레퍼런스에서 식별된 7종 ``kind`` + 5종 ``category`` + 12색 ``color_index`` 팔레트
 구조를 채택한다.
 
-**Span 식별 방식 — 미해결 (ADR-0003 예정)**:
-  - audit §4-4 / audit-review-domain §3.4 / reference-program-analysis §4.1 의
-    3자 의견을 종합해 Phase 1 진입 전 ADR-0003 에서 확정한다.
-  - architect 1차 권고 = character offset, domain-expert 권고 = token id, 영상 레퍼런스
-    = 단어 단위 선택. 결정 후보:
-      a) character offset (단순, 텍스트 변경에 취약)
-      b) token id (직관적, 토큰화 정책 결정 필요)
-      c) ProseMirror position (Tiptap-native, 에디터 외부 해석 부담)
-  - **본 v0.1 은 placeholder** — ``span_format`` 디스크리미네이터 +
-    ``AnnotationSpan`` 의 모호한 dict 구조로 미래 확장을 보장한다. ADR-0003 에서
-    구체 schema 가 확정되면 ``AnnotationSpan`` 을 discriminated union 으로 교체.
+**v0.2 변경 (P1-3, ADR-0004 결정 적용)**:
+  - ``AnnotationSpan`` placeholder (``data: dict[str, Any]``) 폐기.
+  - ADR-0004 채택안 (D 하이브리드 — 영속화 character offset) 에 따라
+    ``CharacterOffsetV1Span(start: int, end: int)`` 1급 필드로 승격.
+  - 미래 확장 (예: ``prosemirror_pos_v1``) 을 위해 ``Annotated[Union[...],
+    Discriminator("span_format")]`` 구조를 유지 — 단일 멤버 union 이라도 디스크리미네이터
+    유지로 추가 시 무손실 확장 가능.
+  - ``arrow`` kind 의 양 끝점 표현 정식화: 출발점 = ``span``,
+    도착점 = ``arrow_target_span``. 두 필드 모두 동일 ``AnnotationSpan`` 타입.
+    이 비대칭은 ProseMirror mark 가 출발점을 자연스럽게 잡는 구조와 정합한다
+    (ADR-0004 §"후속 작업" 참조).
+  - ``kind == arrow ↔ arrow_target_span is not None`` model validator 강제.
 
-**Annotation 통합 vs 마커 분리 — 미해결 (ADR-0004 예정)**:
-  - audit-review-domain §3.5 권고: 출제용 마커 (``marker_circled`` / ``marker_blank``
-    등) 와 구문분석 마커 (``top_label`` / ``bracket`` 등) 가 데이터 모델은 통합
-    가능하되 개념적으로 별 카테고리. 현재 v0.1 은 **구문분석 마커만** 다룬다.
-  - 출제용 마커는 Phase 1 진입 전 ADR-0004 에서 이 모델에 흡수할지 결정.
+**Annotation 통합 vs 마커 분리** (ADR-0006):
+  - 출제용 마커 (``marker_circled`` / ``marker_blank`` 등) 는 ADR-0006 결정에 따라 본
+    ``SyntaxAnnotation`` 모델 외부 (Question.markers 또는 Passage 메타) 에서 다룬다.
+    본 모델은 **구문분석 마크 전용**.
 """
 
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Discriminator, Field, model_validator
 
 from shared.schemas.common import EntityId, WorkspaceScopedEntity
 
@@ -71,63 +71,73 @@ class AnnotationCategory(StrEnum):
 class SpanFormat(StrEnum):
     """``AnnotationSpan`` 의 식별 방식 디스크리미네이터.
 
-    Phase 1 진입 전 ADR-0003 에서 최종 식별 방식 확정. v0.1 은 placeholder 로
-    ``character_offset_v1`` 만 정의 — 후속 ADR 에서 ``token_id_v1`` /
-    ``prosemirror_pos_v1`` 등을 추가하고 discriminated union 으로 교체 가능.
+    ADR-0004 채택안에 따라 v0.2 의 정식 형태는 ``character_offset_v1`` 단일.
+    미래 확장 (예: ``prosemirror_pos_v1`` 메모리-side 표현 영속화 필요 시,
+    또는 token id 도입 시) 은 본 enum 에 값을 추가하고 ``AnnotationSpan`` union 에
+    멤버를 늘리는 방식. 디스크리미네이터 구조 자체는 미래 확장에 맞춰 유지된다.
     """
 
     CHARACTER_OFFSET_V1 = "character_offset_v1"
 
 
-class AnnotationSpan(BaseModel):
-    """Annotation 의 본문 내 위치 식별자 (placeholder).
+class CharacterOffsetV1Span(BaseModel):
+    """ADR-0004 채택안 — ``Passage.body_text`` 위 character offset.
 
-    **주의**: 본 모델은 v0.1 placeholder 다. 실제 식별 방식은 Phase 1 진입 전
-    ADR-0003 에서 확정되며, 그 결과에 따라 본 클래스가 discriminated union 으로
-    교체될 수 있다.
-
-    현재 ``span_format == "character_offset_v1"`` 일 때 ``data`` 는 다음 형태:
-        ``{"start": int, "end": int}``  ← ``Passage.body_text`` 위 [start, end) 반열린 구간
-
-    ``data`` 를 ``dict[str, Any]`` 로 둔 이유:
-      - ADR-0003 미확정 상태에서 다양한 실험(token id, ProseMirror pos)을 흡수.
-      - mypy strict 환경에서도 placeholder 로서 의미 명시.
-      - 후속 ADR 결정 시 ``AnnotationSpan`` 을 discriminated union 으로 교체하면
-        기존 데이터는 ``data`` 의 키 마이그레이션만 필요.
+    ``[start, end)`` 반열린 구간. body_text 는 ADR-0006 의 마커 처리 정책에 따라
+    출제용 마커가 분리된 정제 영어 본문 — annotation offset 은 그 정제 본문 기준.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    span_format: Literal["character_offset_v1"] = Field(
-        default="character_offset_v1",
-        description=(
-            "Span 식별 방식 디스크리미네이터. v0.1 은 ``character_offset_v1`` 단일 — "
-            "ADR-0003 에서 확장."
-        ),
+    span_format: Literal[SpanFormat.CHARACTER_OFFSET_V1] = Field(
+        default=SpanFormat.CHARACTER_OFFSET_V1,
+        description="Span 식별 방식 디스크리미네이터.",
     )
-    data: dict[str, Any] = Field(
+    start: int = Field(
         ...,
-        description=(
-            "``span_format`` 별 위치 데이터. ``character_offset_v1`` 일 때 "
-            "``{'start': int, 'end': int}``."
-        ),
+        ge=0,
+        description="본문 내 시작 글자 위치 (inclusive, 0-based).",
     )
+    end: int = Field(
+        ...,
+        gt=0,
+        description="본문 내 끝 글자 위치 (exclusive). ``end > start`` 강제.",
+    )
+
+    @model_validator(mode="after")
+    def _check_end_after_start(self) -> CharacterOffsetV1Span:
+        if self.end <= self.start:
+            raise ValueError(f"AnnotationSpan: end ({self.end}) must be > start ({self.start}).")
+        return self
+
+
+# Discriminated union — 미래 확장 (prosemirror_pos_v1 등) 시 멤버 추가만으로 무손실 확장.
+# 단일 멤버 union 이라도 Discriminator 유지로 직렬화 형태 (span_format key 포함) 안정.
+AnnotationSpan = Annotated[
+    CharacterOffsetV1Span,
+    Discriminator("span_format"),
+]
+"""Annotation 의 본문 내 위치 식별자 (discriminated union).
+
+ADR-0004 채택안 = ``CharacterOffsetV1Span`` 1단 union.
+미래 확장 — 본 union 에 멤버 추가 + ``SpanFormat`` enum 값 추가."""
 
 
 class SyntaxAnnotation(WorkspaceScopedEntity):
     """Passage 위 구문분석 마크 1개.
 
-    영상 레퍼런스 (`docs/reference-program-analysis.md`) §4.3 의 권고 모델을 그대로
-    흡수. ``span`` 의 식별 방식은 ADR-0003 에서 확정 예정 — v0.1 은
-    ``AnnotationSpan`` placeholder 로 모호화.
+    영상 레퍼런스 (`docs/reference-program-analysis.md`) §4.3 의 권고 모델 흡수.
+    ``span`` 은 ADR-0004 채택안 (character offset) 으로 정식화된다 (v0.2).
 
-    Annotation 의 의미 흐름:
+    필드 의미:
       - ``kind`` = 시각적 표현 종류 (top_label/highlight/bracket 등).
       - ``category`` = 하단 분석표 행 (note/sentence_role/phrase/clause/other).
       - ``color_index`` = 12색 팔레트 인덱스 (1~12).
       - ``text`` = top_label / inline_note / bottom_label 의 표시 텍스트.
       - ``bracket_style`` = 괄호 모양 (kind == bracket 일 때).
-      - ``arrow_target_span`` = 화살표 도착점 span (kind == arrow 일 때).
+      - ``span`` = 본문 내 위치 (모든 kind 의 출발점 — arrow 의 출발점 포함).
+      - ``arrow_target_span`` = 화살표 도착점 span (kind == arrow 일 때만).
+        모델 invariant: ``kind == arrow ↔ arrow_target_span is not None`` (validator 강제).
     """
 
     passage_id: EntityId = Field(
@@ -149,9 +159,7 @@ class SyntaxAnnotation(WorkspaceScopedEntity):
 
     span: AnnotationSpan = Field(
         ...,
-        description=(
-            "본문 내 위치 (시작점). 식별 방식은 ADR-0003 에서 확정 — v0.1 은 placeholder."
-        ),
+        description="본문 내 위치. arrow kind 일 땐 출발점.",
     )
 
     color_index: int | None = Field(
@@ -174,5 +182,20 @@ class SyntaxAnnotation(WorkspaceScopedEntity):
     )
     arrow_target_span: AnnotationSpan | None = Field(
         default=None,
-        description=("화살표 도착점 span (``kind == arrow`` 일 때). 출발점은 ``span``."),
+        description=(
+            "화살표 도착점 span (``kind == arrow`` 일 때 필수). 출발점은 ``span``. "
+            "ADR-0004 §후속작업 참조 — ProseMirror mark 가 출발점을 자연스럽게 잡는 "
+            "구조와의 정합으로 비대칭 표현 채택."
+        ),
     )
+
+    @model_validator(mode="after")
+    def _check_arrow_target(self) -> SyntaxAnnotation:
+        if self.kind == AnnotationKind.ARROW and self.arrow_target_span is None:
+            raise ValueError("SyntaxAnnotation: kind == 'arrow' requires arrow_target_span.")
+        if self.kind != AnnotationKind.ARROW and self.arrow_target_span is not None:
+            raise ValueError(
+                f"SyntaxAnnotation: arrow_target_span is only valid when "
+                f"kind == 'arrow' (got kind == {self.kind.value!r})."
+            )
+        return self

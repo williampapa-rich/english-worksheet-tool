@@ -27,12 +27,32 @@ class TestMigrationFileStructure:
         return Path(__file__).parent.parent / "alembic" / "versions"
 
     def test_migration_files_exist(self) -> None:
-        """Sprint 0 + P0-1 마이그레이션 파일이 존재한다."""
+        """Sprint 0 + P0-1 + P1-3 마이그레이션 파일이 존재한다."""
         versions = self._get_versions_dir()
         files = list(versions.glob("*.py"))
         names = [f.name for f in files]
         assert any("a1b2c3d4e5f6" in n for n in names), "Sprint 0 마이그레이션 (a1b2c3d4e5f6) 누락"
         assert any("b3c4d5e6f7a8" in n for n in names), "P0-1 마이그레이션 (b3c4d5e6f7a8) 누락"
+        assert any("c5d6e7f8a9b0" in n for n in names), "P1-3 마이그레이션 (c5d6e7f8a9b0) 누락"
+
+    def test_p1_3_migration_chain(self) -> None:
+        """P1-3 마이그레이션의 down_revision 이 P0-1 을 가리킨다."""
+        import importlib.util
+
+        versions = self._get_versions_dir()
+        p1_3_files = list(versions.glob("*c5d6e7f8a9b0*"))
+        assert p1_3_files, "P1-3 마이그레이션 파일을 찾을 수 없다"
+
+        spec = importlib.util.spec_from_file_location("migration_p1_3", p1_3_files[0])
+        assert spec is not None
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)  # type: ignore[attr-defined]
+
+        assert hasattr(module, "upgrade")
+        assert hasattr(module, "downgrade")
+        assert module.revision == "c5d6e7f8a9b0"
+        assert module.down_revision == "b3c4d5e6f7a8"
 
     def test_p0_1_down_revision(self) -> None:
         """P0-1 마이그레이션의 down_revision 이 Sprint 0 revision 을 가리킨다."""
@@ -141,7 +161,12 @@ class TestMigrationRoundTrip:
             engine.dispose()
 
     def test_downgrade_minus_one(self) -> None:
-        """alembic downgrade -1 이 P0-1 테이블을 깨끗하게 롤백한다."""
+        """alembic downgrade -1 이 P1-3 의 데이터 변환만 역변환하고 테이블은 보존한다.
+
+        P1-3 (c5d6e7f8a9b0) 은 data-only migration (JSONB payload 평탄화) — 테이블
+        스키마 변경 없음. 따라서 downgrade -1 후에도 P0-1 의 모든 테이블이 그대로
+        남아있어야 한다.
+        """
         from alembic import command
         from sqlalchemy import create_engine, inspect
 
@@ -152,13 +177,48 @@ class TestMigrationRoundTrip:
         try:
             # upgrade head 먼저
             command.upgrade(cfg, "head")
-            # downgrade -1
+            # downgrade -1 (head=P1-3 → P0-1)
             command.downgrade(cfg, "-1")
 
             inspector = inspect(engine)
             tables = set(inspector.get_table_names())
 
-            # P0-1 테이블이 사라졌는지 확인
+            # P0-1 테이블 모두 보존 (P1-3 는 data-only 라 테이블 영향 없음)
+            p0_1_tables = {
+                "passages",
+                "questions",
+                "vocabulary",
+                "translations",
+                "syntax_annotations",
+                "llm_usage_logs",
+            }
+            missing = p0_1_tables - tables
+            assert not missing, f"downgrade -1 (to P0-1) 후 테이블이 사라졌다: {missing}"
+
+            # Sprint 0 테이블 (tenants, workspaces) 은 남아있어야 함
+            assert "tenants" in tables
+            assert "workspaces" in tables
+
+        finally:
+            # 클린업: 다음 테스트를 위해 base 로 롤백
+            command.downgrade(cfg, "base")
+
+    def test_downgrade_minus_two_drops_p0_1(self) -> None:
+        """alembic downgrade -2 (head=P1-3 → Sprint 0) 가 P0-1 테이블을 깨끗하게 롤백한다."""
+        from alembic import command
+        from sqlalchemy import create_engine, inspect
+
+        cfg = self._get_alembic_cfg()
+        url = _get_test_db_url().replace("+asyncpg", "")
+        engine = create_engine(url)
+
+        try:
+            command.upgrade(cfg, "head")
+            command.downgrade(cfg, "-2")
+
+            inspector = inspect(engine)
+            tables = set(inspector.get_table_names())
+
             p0_1_tables = {
                 "passages",
                 "questions",
@@ -168,14 +228,12 @@ class TestMigrationRoundTrip:
                 "llm_usage_logs",
             }
             remaining = p0_1_tables & tables
-            assert not remaining, f"downgrade -1 후에도 P0-1 테이블이 남아있다: {remaining}"
+            assert not remaining, f"downgrade -2 후에도 P0-1 테이블이 남아있다: {remaining}"
 
-            # Sprint 0 테이블 (tenants, workspaces) 은 남아있어야 함
-            assert "tenants" in tables, "downgrade -1 이 tenants 테이블을 삭제했다 (금지)"
-            assert "workspaces" in tables, "downgrade -1 이 workspaces 테이블을 삭제했다 (금지)"
+            assert "tenants" in tables
+            assert "workspaces" in tables
 
         finally:
-            # 클린업: 다음 테스트를 위해 base 로 롤백
             command.downgrade(cfg, "base")
             engine.dispose()
 

@@ -278,6 +278,22 @@ ADR-0001 의 5경계 척추 원칙을 가장 단순하게 만족하면서, Tipta
 위 4개 항목은 Phase 1 에디터 PR 의 설계 단계 산출물로 요청. PoC 결과로 본 ADR 의
 가정이 깨지면 (예: round-trip 이 lossy) follow-up ADR 로 재검토.
 
+### P1-3 정식화 — `arrow` 양 끝점 표현 (2026-05-03 추가)
+
+본 ADR 의 char offset 결정을 적용한 P1-3 (`shared/schemas/annotation.py` v0.2) 에서
+`arrow` kind 의 양 끝점 표현을 다음과 같이 정식화한다.
+
+- **출발점 = `SyntaxAnnotation.span`** (모든 kind 가 공유하는 필드).
+- **도착점 = `SyntaxAnnotation.arrow_target_span`** (Optional, `kind == arrow` 일
+  때만 채워짐).
+- 두 필드 모두 동일 `AnnotationSpan` discriminated union 타입.
+- 모델 invariant: `kind == arrow ↔ arrow_target_span is not None` — Pydantic
+  `model_validator` 로 강제.
+
+**비대칭 채택 사유**: ProseMirror mark 가 자연스럽게 출발점 span 을 잡는 구조
+(P1-1 직렬화 결과 — `arrow_target_span` 1개만 attrs 로 들고 있음) 와 정합. 대칭
+표현 (`start_span`/`end_span`) 은 mark 모델을 인위적으로 비틀어야 하므로 기각.
+
 ### architect — schema 변경 (`shared/schemas/annotation.py`)
 
 본 ADR 의 결정에 따라 `AnnotationSpan` 을 다음과 같이 정정:
