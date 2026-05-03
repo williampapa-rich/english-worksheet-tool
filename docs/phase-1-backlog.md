@@ -185,6 +185,7 @@
   - CLAUDE.md §3.5 결정 (하이라이트·밑줄 = 텍스트 런 / 라벨 = 텍스트박스 / 화살표 =
     도형 우선) 을 표 형태로 구체화.
 - **PR 단위**: 1 PR (문서만).
+- **머지**: PR #7 (`1bdf1c2`). follow-up: (1) `docs/annotation-hwpx-mapping.md` §0/§2/§6 에 P1-0b follow-up 미완 (test_poc_align.py 한컴 스펙 검증 / `poc_align.py` indent 정리) 이 P1-8a 착수 차단임을 명시 (2) §6 미해결 #3, #4 결정 주체를 "구현 레벨 (PM 불필요)" 로 분리 (3) §6 #6 (multi-line arrow) 비고에 "c-1 PoC 결과 후 단일 줄 arrow Phase 1 포함 여부도 PM 재결정" 명시 (4) CLAUDE.md §3.5 갱신 별 PR (라벨 = 텍스트박스 → 3단 단락 구조 / bracket 표현 추가 / 라벨 수평 align 한계 명시).
 
 #### P1-8 — HWPX 렌더러 구현 (단일 지문 + annotation)
 
