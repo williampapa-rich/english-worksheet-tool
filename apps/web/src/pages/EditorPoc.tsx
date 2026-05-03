@@ -14,20 +14,22 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { AnalysisTable, type AnnotationChip } from "../components/AnalysisTable";
+import {
+  AnalysisTable,
+  type AnnotationChip,
+  type LabelEntryKind,
+} from "../components/AnalysisTable";
 import "./EditorPoc.css";
 
 /**
- * EditorPoc — P1-2b 분석표 + annotationId 에디터
+ * EditorPoc — P1-2c 분석표 카테고리 재구조 에디터
  *
- * 목표: annotationId 기반 칩 통째 삭제로 "부분 unset 잔여 마크 버그" 해결.
- * 분석표를 본문 에디터 하단에 배치. 칩 x = 같은 annotationId 의 모든 range unset.
- *
- * 변경 (vs P1-2a):
- *   - 7종 annotation 적용 버튼이 crypto.randomUUID() 로 annotationId 생성 후 주입
- *   - editor.on('update') 로 doc 변경 감지 → chips 상태 갱신
- *   - AnalysisTable + handleRemoveAnnotation 추가
- *   - 기존 JSON 패널 / 12색 picker / category select 그대로 유지
+ * 변경 (vs P1-2b):
+ *   - 툴바에서 top_label / bottom_label 버튼 제거 → 분석표 진입 버튼으로 이동
+ *   - 툴바 category select 완전 제거
+ *   - highlight / underline / bracket / arrow / inline_note → category: "note" 자동 주입
+ *   - 분석표 진입 버튼 (성분/구/절) → bottom_label(sentence_role) / top_label(phrase|clause)
+ *   - 진입 버튼 onMouseDown preventDefault 로 ProseMirror selection 보존
  *
  * 비DoD: API 통합, HWPX 다운로드, 컨텍스트 메뉴, 칩 클릭 강조.
  */
@@ -64,15 +66,6 @@ const COLOR_PALETTE: Array<{ index: number; hex: string; label: string }> = [
   { index: 10, hex: "#d9f99d", label: "lime" },
   { index: 11, hex: "#fde68a", label: "amber" },
   { index: 12, hex: "#e9d5ff", label: "purple" },
-];
-
-const CATEGORY_OPTIONS = [
-  { value: "", label: "category 없음" },
-  { value: "note", label: "note" },
-  { value: "sentence_role", label: "sentence_role" },
-  { value: "phrase", label: "phrase" },
-  { value: "clause", label: "clause" },
-  { value: "other", label: "other" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -164,7 +157,6 @@ function buildChips(
 
 export function EditorPoc() {
   const [selectedColorIndex, setSelectedColorIndex] = useState<number>(1);
-  const [selectedCategory, setSelectedCategory] = useState<string>("");
   const [serializedJson, setSerializedJson] = useState<string | null>(null);
   const [chips, setChips] = useState<AnnotationChip[]>([]);
 
@@ -201,47 +193,14 @@ export function EditorPoc() {
     const palette = COLOR_PALETTE.find((c) => c.index === selectedColorIndex);
     const color = palette?.hex ?? "#fef08a";
     const annotationId = crypto.randomUUID();
-    editor.chain().focus().setMark("highlight", { color, annotationId }).run();
+    // 툴바 5종 → category: "note" 자동 주입
+    editor.chain().focus().setMark("highlight", { color, annotationId, category: "note" }).run();
   };
 
   const handleUnderline = () => {
     if (!editor) return;
     const annotationId = crypto.randomUUID();
-    editor.chain().focus().setMark("underline", { annotationId }).run();
-  };
-
-  const handleTopLabel = () => {
-    if (!editor) return;
-    const text = prompt("상단 라벨 텍스트를 입력하세요 (예: S, V, 관계절):");
-    if (!text) return;
-    const annotationId = crypto.randomUUID();
-    editor
-      .chain()
-      .focus()
-      .setTopLabel({
-        text,
-        colorIndex: selectedColorIndex,
-        category: selectedCategory || null,
-        annotationId,
-      })
-      .run();
-  };
-
-  const handleBottomLabel = () => {
-    if (!editor) return;
-    const text = prompt("하단 라벨 텍스트를 입력하세요 (예: S, V, O):");
-    if (!text) return;
-    const annotationId = crypto.randomUUID();
-    editor
-      .chain()
-      .focus()
-      .setBottomLabel({
-        text,
-        colorIndex: selectedColorIndex,
-        category: selectedCategory || null,
-        annotationId,
-      })
-      .run();
+    editor.chain().focus().setMark("underline", { annotationId, category: "note" }).run();
   };
 
   const handleBracket = () => {
@@ -255,7 +214,7 @@ export function EditorPoc() {
       .setBracket({
         bracketStyle: style as "()" | "{}" | "[]",
         colorIndex: selectedColorIndex,
-        category: selectedCategory || null,
+        category: "note",
         annotationId,
       })
       .run();
@@ -279,7 +238,7 @@ export function EditorPoc() {
         arrowTargetStart: targetStart,
         arrowTargetEnd: targetEnd,
         colorIndex: selectedColorIndex,
-        category: selectedCategory || null,
+        category: "note",
         annotationId,
       })
       .run();
@@ -296,7 +255,7 @@ export function EditorPoc() {
       .setInlineNote({
         text,
         colorIndex: selectedColorIndex,
-        category: selectedCategory || null,
+        category: "note",
         annotationId,
       })
       .run();
@@ -306,11 +265,69 @@ export function EditorPoc() {
   // 핸들러 — unset (선택 영역 mark 해제)
   // ---------------------------------------------------------------------------
 
-  const handleUnsetTopLabel = () => editor?.chain().focus().unsetTopLabel().run();
-  const handleUnsetBottomLabel = () => editor?.chain().focus().unsetBottomLabel().run();
   const handleUnsetBracket = () => editor?.chain().focus().unsetBracket().run();
   const handleUnsetArrow = () => editor?.chain().focus().unsetArrow().run();
   const handleUnsetInlineNote = () => editor?.chain().focus().unsetInlineNote().run();
+
+  // ---------------------------------------------------------------------------
+  // 핸들러 — 분석표 진입 버튼 (성분/구/절)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * handleLabelEntry — AnalysisTable 진입 버튼 콜백.
+   *
+   * onMouseDown 에서 preventDefault 로 ProseMirror selection 을 보존한 뒤
+   * onClick 에서 이 콜백이 호출된다.
+   * editor.chain().focus() 가 selection 을 복원해 mark 를 올바른 범위에 적용한다.
+   */
+  const handleLabelEntry = useCallback(
+    (entry: LabelEntryKind) => {
+      if (!editor) return;
+
+      // selection 이 비어있으면 안내
+      const { from, to } = editor.state.selection;
+      if (from === to) {
+        alert("텍스트를 먼저 선택해주세요.");
+        return;
+      }
+
+      const text = prompt(
+        entry.markKind === "bottom_label"
+          ? "성분 라벨을 입력하세요 (예: S, V, O, OC, SC, M):"
+          : entry.category === "phrase"
+            ? "구 라벨을 입력하세요 (예: (명사구), (전치사구), (to부정사구)):"
+            : "절 라벨을 입력하세요 (예: (부사절), (관계절), (명사절)):"
+      );
+      if (!text) return;
+
+      const annotationId = crypto.randomUUID();
+
+      if (entry.markKind === "bottom_label") {
+        editor
+          .chain()
+          .focus()
+          .setBottomLabel({
+            text,
+            colorIndex: selectedColorIndex,
+            category: entry.category,
+            annotationId,
+          })
+          .run();
+      } else {
+        editor
+          .chain()
+          .focus()
+          .setTopLabel({
+            text,
+            colorIndex: selectedColorIndex,
+            category: entry.category,
+            annotationId,
+          })
+          .run();
+      }
+    },
+    [editor, selectedColorIndex]
+  );
 
   // ---------------------------------------------------------------------------
   // 핸들러 — 분석표 칩 x (annotationId 통째 삭제)
@@ -357,13 +374,11 @@ export function EditorPoc() {
   const handleClearPanel = () => setSerializedJson(null);
 
   // ---------------------------------------------------------------------------
-  // active 상태
+  // active 상태 (툴바 5종)
   // ---------------------------------------------------------------------------
 
   const isHighlightActive = editor?.isActive("highlight") ?? false;
   const isUnderlineActive = editor?.isActive("underline") ?? false;
-  const isTopLabelActive = editor?.isActive("topLabel") ?? false;
-  const isBottomLabelActive = editor?.isActive("bottomLabel") ?? false;
   const isBracketActive = editor?.isActive("bracket") ?? false;
   const isArrowActive = editor?.isActive("arrow") ?? false;
   const isInlineNoteActive = editor?.isActive("inlineNote") ?? false;
@@ -380,7 +395,7 @@ export function EditorPoc() {
           <Link to="/" className="text-blue-600 hover:underline text-sm">
             ← 홈으로
           </Link>
-          <h1 className="text-xl font-bold text-gray-900">구문분석 에디터 드래프트 (P1-2b)</h1>
+          <h1 className="text-xl font-bold text-gray-900">구문분석 에디터 드래프트 (P1-2c)</h1>
           <span className="text-xs text-gray-400 bg-yellow-100 px-2 py-0.5 rounded">
             드래프트 — PM 검수용
           </span>
@@ -390,10 +405,10 @@ export function EditorPoc() {
         <div className="flex flex-col gap-4">
           {/* 에디터 카드 */}
           <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
-            {/* 툴바 그룹 1: annotation 적용 버튼 (7종) */}
+            {/* 툴바 그룹 1: annotation 적용 버튼 (5종 — 메모 카테고리 자동 매핑) */}
             <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 space-y-2">
               <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
-                Annotation
+                Annotation (메모 자동 매핑)
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
                 <AnnotationButton
@@ -407,20 +422,6 @@ export function EditorPoc() {
                   active={isUnderlineActive}
                   disabled={!editor}
                   onClick={handleUnderline}
-                />
-                <AnnotationButton
-                  label="위 라벨"
-                  active={isTopLabelActive}
-                  disabled={!editor}
-                  onClick={handleTopLabel}
-                  onUnset={handleUnsetTopLabel}
-                />
-                <AnnotationButton
-                  label="아래 라벨"
-                  active={isBottomLabelActive}
-                  disabled={!editor}
-                  onClick={handleBottomLabel}
-                  onUnset={handleUnsetBottomLabel}
                 />
                 <AnnotationButton
                   label="괄호"
@@ -471,24 +472,6 @@ export function EditorPoc() {
               <span className="text-xs text-gray-400">선택: #{selectedColorIndex}</span>
             </div>
 
-            {/* 툴바 그룹 3: category select (5종) */}
-            <div className="px-4 py-2 border-b border-gray-100 bg-gray-50 flex items-center gap-3">
-              <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                카테고리
-              </span>
-              <select
-                value={selectedCategory}
-                onChange={(e) => setSelectedCategory(e.target.value)}
-                className="text-sm border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-300"
-              >
-                {CATEGORY_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
             {/* 툴바 제어: 직렬화 / 초기화 */}
             <div className="px-4 py-2 border-b border-gray-100 bg-gray-50 flex items-center gap-2">
               <button
@@ -523,14 +506,18 @@ export function EditorPoc() {
           </div>
 
           {/* 분석표 (본문 에디터 하단) */}
-          <AnalysisTable chips={chips} onRemove={handleRemoveAnnotation} />
+          <AnalysisTable
+            chips={chips}
+            onRemove={handleRemoveAnnotation}
+            onLabelEntry={handleLabelEntry}
+          />
         </div>
 
         {/* 사용 안내 */}
         <p className="text-xs text-gray-400 leading-relaxed">
-          텍스트를 선택 후 annotation 버튼을 클릭하세요. 라벨 / 노트 / 괄호 / 화살표는 prompt() 로
-          텍스트 또는 좌표를 입력합니다 (드래프트 임시). 분석표 칩의 ✕ 버튼으로 annotation 을 통째
-          삭제합니다. "SyntaxAnnotation[] 보기" 로 직렬화 결과를 확인하세요.
+          텍스트를 선택 후 annotation 버튼 (형광펜/밑줄/괄호/화살표/노트) 을 클릭하면 메모
+          카테고리로 자동 분류됩니다. 성분/구/절 라벨은 분석표 진입 버튼으로 추가하세요 (텍스트 선택
+          후 버튼 클릭). 칩의 ✕ 버튼으로 annotation 을 통째 삭제합니다.
         </p>
 
         {/* SerializedAnnotation[] 직렬화 결과 패널 */}
