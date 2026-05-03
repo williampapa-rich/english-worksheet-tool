@@ -295,10 +295,28 @@ export function EditorPoc() {
         entry.markKind === "bottom_label"
           ? "성분 라벨을 입력하세요 (예: S, V, O, OC, SC, M):"
           : entry.category === "phrase"
-            ? "구 라벨을 입력하세요 (예: (명사구), (전치사구), (to부정사구)):"
-            : "절 라벨을 입력하세요 (예: (부사절), (관계절), (명사절)):"
+            ? "구 라벨을 입력하세요 (예: 명사구, 전치사구, to부정사구):"
+            : "절 라벨을 입력하세요 (예: 부사절, 관계절, 명사절):"
       );
       if (!text) return;
+
+      // 구/절 입력 시 괄호 선택 — 라벨 감싸기 (drafts 단계는 prompt, 정식 모달은 후속)
+      let finalText = text;
+      if (entry.markKind === "top_label") {
+        const bracketChoice = prompt(
+          "괄호 모양 선택 — 숫자 입력:\n0: 없음\n1: []\n2: {}\n3: ()\n4: ⌜⌟\n5: <>",
+          "0"
+        );
+        const wraps: Record<string, [string, string]> = {
+          "1": ["[", "]"],
+          "2": ["{", "}"],
+          "3": ["(", ")"],
+          "4": ["⌜", "⌟"],
+          "5": ["<", ">"],
+        };
+        const wrap = bracketChoice ? wraps[bracketChoice] : undefined;
+        if (wrap) finalText = `${wrap[0]}${text}${wrap[1]}`;
+      }
 
       const annotationId = crypto.randomUUID();
 
@@ -307,7 +325,7 @@ export function EditorPoc() {
           .chain()
           .focus()
           .setBottomLabel({
-            text,
+            text: finalText,
             colorIndex: selectedColorIndex,
             category: entry.category,
             annotationId,
@@ -318,7 +336,7 @@ export function EditorPoc() {
           .chain()
           .focus()
           .setTopLabel({
-            text,
+            text: finalText,
             colorIndex: selectedColorIndex,
             category: entry.category,
             annotationId,
