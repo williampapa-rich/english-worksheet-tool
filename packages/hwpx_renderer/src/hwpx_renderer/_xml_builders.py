@@ -100,12 +100,9 @@ def charpr_xml(
     Returns:
         ``<hh:charPr ...>...</hh:charPr>`` XML 문자열.
     """
-    bold_val = "1" if bold else "0"
-    italic_val = "1" if italic else "0"
-    # bold/italic 은 hh:bold 요소가 없으면 기본 off — 요소 자체 존재 여부로 제어.
-    # PoC 패턴과의 일관성을 위해 요소는 항상 존재, 내용이 없는 경우 off 해석.
-    # (한컴 스펙: 요소 존재 = on, 없음 = off — PoC 에서 두 경우 모두 확인됨)
-    _ = bold_val, italic_val  # 미래 bold/italic 세부 제어 확장 시 사용
+    # 한컴 스펙: hh:bold / hh:italic 요소 존재 = on, 없음 = off.
+    bold_xml = "<hh:bold/>" if bold else ""
+    italic_xml = "<hh:italic/>" if italic else ""
 
     return (
         f'<hh:charPr id="{cid}" height="{height}" textColor="{text_color}"'
@@ -121,8 +118,8 @@ def charpr_xml(
         f' other="100" symbol="100" user="100"/>'
         f'<hh:offset hangul="0" latin="0" hanja="0" japanese="0"'
         f' other="0" symbol="0" user="0"/>'
-        f"<hh:bold/>"
-        f"<hh:italic/>"
+        f"{bold_xml}"
+        f"{italic_xml}"
         f'<hh:underline type="{underline_type}" shape="SOLID" color="{underline_color}"/>'
         f'<hh:strikeout shape="NONE" color="#000000"/>'
         f'<hh:outline type="NONE"/>'

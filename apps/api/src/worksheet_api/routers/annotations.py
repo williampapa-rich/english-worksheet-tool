@@ -172,16 +172,17 @@ async def get_annotations(
     Raises:
         HTTPException 404: Passage 가 존재하지 않거나 다른 tenant 소유.
     """
-    passage_repo = PassageRepository(session, tenant_ctx)
-    annotation_repo = SyntaxAnnotationRepository(session, tenant_ctx)
+    async with session.begin():
+        passage_repo = PassageRepository(session, tenant_ctx)
+        annotation_repo = SyntaxAnnotationRepository(session, tenant_ctx)
 
-    # passage 존재 + tenant 소유 확인
-    passage = await passage_repo.get(passage_id)
-    if passage is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Passage {passage_id} 를 찾을 수 없습니다.",
-        )
+        # passage 존재 + tenant 소유 확인
+        passage = await passage_repo.get(passage_id)
+        if passage is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Passage {passage_id} 를 찾을 수 없습니다.",
+            )
 
-    annotations = await annotation_repo.list_by_passage(passage_id)
+        annotations = await annotation_repo.list_by_passage(passage_id)
     return AnnotationListResponse(annotations=annotations)
