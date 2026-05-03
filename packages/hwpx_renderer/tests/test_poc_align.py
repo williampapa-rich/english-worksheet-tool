@@ -196,7 +196,70 @@ def test_header_label_parapr_line_spacing(header_xml: str) -> None:
     assert 'value="100"' in header_xml
 
 
-# ── 6. fixture 파일 출력 확인 ─────────────────────────────────────────────────
+# ── 6. 한컴 스펙 핵심 값 검증 ────────────────────────────────────────────────
+# PR #2 1차 commit 에서 container.xml media-type 오타, content.hpf 루트 요소 불일치 등
+# 스펙 위반이 있었는데도 기존 테스트가 통과한 적 있음 — 해당 회귀 방지용.
+
+
+@pytest.fixture(scope="module")
+def container_xml(hwpx_zip: zipfile.ZipFile) -> str:
+    return hwpx_zip.read("META-INF/container.xml").decode("utf-8")
+
+
+@pytest.fixture(scope="module")
+def content_hpf(hwpx_zip: zipfile.ZipFile) -> str:
+    return hwpx_zip.read("Contents/content.hpf").decode("utf-8")
+
+
+@pytest.fixture(scope="module")
+def version_xml(hwpx_zip: zipfile.ZipFile) -> str:
+    return hwpx_zip.read("version.xml").decode("utf-8")
+
+
+def test_container_xml_media_type(container_xml: str) -> None:
+    """container.xml rootfile 의 media-type 이 정확히 'application/hwpml-package+xml' 이어야 한다.
+
+    'application/oebps-package+xml' 등 오타 회귀 방지.
+    """
+    assert 'media-type="application/hwpml-package+xml"' in container_xml
+
+
+def test_container_xml_namespaces(container_xml: str) -> None:
+    """container.xml 에 ocf + hpf namespace 가 모두 선언되어야 한다.
+
+    한컴 스펙 요구: xmlns:ocf + xmlns:hpf 둘 다 필수.
+    """
+    assert 'xmlns:ocf="urn:oasis:names:tc:opendocument:xmlns:container"' in container_xml
+    assert 'xmlns:hpf="http://www.hancom.co.kr/schema/2011/hpf"' in container_xml
+
+
+def test_content_hpf_root_element(content_hpf: str) -> None:
+    """content.hpf 의 루트 요소가 'opf:package' 이어야 한다.
+
+    'hpf:rootfile' 등 구 스펙 잔재 회귀 방지 (손상 원인 #1).
+    """
+    assert "<opf:package" in content_hpf
+
+
+def test_container_rdf_exists(hwpx_zip: zipfile.ZipFile) -> None:
+    """META-INF/container.rdf 파일이 존재해야 한다.
+
+    레퍼런스 HWPX 분석에서 container.rdf 는 필수 엔트리로 확인됨.
+    """
+    assert "META-INF/container.rdf" in hwpx_zip.namelist()
+
+
+def test_version_xml_hcfversion_element(version_xml: str) -> None:
+    """version.xml 의 루트 요소가 'hv:HCFVersion' attribute-only 단일 요소여야 한다.
+
+    구 스펙(hv:version + 자식 요소 방식) 회귀 방지 (손상 원인 #3).
+    """
+    assert "<hv:HCFVersion" in version_xml
+    # 자식 요소 없이 self-closing 이어야 함 — 닫는 태그가 없어야 한다
+    assert "</hv:HCFVersion>" not in version_xml
+
+
+# ── 7. fixture 파일 출력 확인 ─────────────────────────────────────────────────
 
 
 def test_fixture_file_written(hwpx_bytes: bytes) -> None:

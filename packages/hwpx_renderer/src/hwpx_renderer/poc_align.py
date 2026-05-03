@@ -17,8 +17,8 @@ HWPX 텍스트박스 align PoC (P1-0b) — fix 2차
         단락 3 (하단 라벨 단락): "V" 텍스트만
       이 구조는 레퍼런스 HWPX 의 패턴과 일치하며 한컴에서 안정적으로 렌더링된다.
     - 수평 align: 3단 구조에서 라벨 단락의 align 은 본문 단락의 char offset 과
-      독립적이다. 현재 PoC 에서는 근사값(indent=0, 단락 시작 기준)을 사용.
-      실 구현(P1-7/P1-8)에서 indent 또는 tabstop 으로 보정 필요.
+      독립적이다. 현재 PoC 에서는 단락 왼쪽 시작(근사값)을 사용.
+      실 구현(P1-8b)에서 pillow ImageFont.getlength() + tabstop 으로 보정 필요.
 
     - exam-generator/app/renderer/template_injector.py 의 ZIP 재패키징 패턴 재활용
     - 자체 header.xml + section0.xml 을 raw OOXML 로 작성 (템플릿 의존 없음)
@@ -211,22 +211,21 @@ _HEADER_XML = """\
 # ── 라벨 단락 빌더 (3단 구조) ────────────────────────────────────────────────
 
 
-def _label_para_xml(label_text: str, *, indent: int = 0) -> str:
+def _label_para_xml(label_text: str) -> str:
     """
     라벨 전용 단락 XML.
 
     3단 단락 구조에서 상단/하단 라벨은 별도 단락으로 표현한다.
     - paraPrIDRef="1" (라벨 단락 스타일: lineSpacing=100%, margin prev/next=0)
     - charPrIDRef="2" (라벨 글자 스타일: 7pt bold)
-    - indent: 단락 들여쓰기 (HWP unit). 근사 수평 align 용.
 
     수직 분리:
         라벨 단락의 lineSpacing=100% + margin=0 이므로 단락 높이 ≈ 7pt = 700 HWP unit.
         본문 단락과 붙어있어 시각적으로 본문 위/아래에 라벨이 위치한다.
 
-    수평 align 한계 (PoC):
-        indent 값은 특정 단어까지의 문자 누적 너비 근사치.
-        실 구현(P1-7/P1-8)에서 pillow ImageFont.getlength() 또는 tabstop 으로 보정.
+    수평 align:
+        현재 PoC 에서는 단락 왼쪽 시작(근사).
+        P1-8b 에서 폰트 metric(pillow ImageFont.getlength()) + tabstop 으로 보정 예정.
     """
     return (
         f'<hp:p id="0" paraPrIDRef="1" styleIDRef="1" '
@@ -327,8 +326,7 @@ def _build_section0() -> str:
     )
 
     # 단락 2: 상단 라벨 "S"
-    # horzOffset 근사: "S" 는 단락 시작("The") 위 → indent=0
-    top_label_para = _label_para_xml("S", indent=0)
+    top_label_para = _label_para_xml("S")
 
     # 단락 3: 본문
     body_runs = (
@@ -343,10 +341,8 @@ def _build_section0() -> str:
     )
 
     # 단락 4: 하단 라벨 "V"
-    # horzOffset 근사: "V" 는 "jumps" 아래 → "The quick brown fox" ≈ 19자 × 600 unit
-    # 3단 구조에서 indent 로 근사 수평 위치 지정 (paraPr.margin.indent 아닌 leading spaces)
-    # PoC 에서는 indent=0 (단락 왼쪽 시작, 근사)
-    bottom_label_para = _label_para_xml("V", indent=0)
+    # PoC 에서는 단락 왼쪽 시작(근사). P1-8b 에서 폰트 metric 으로 보정.
+    bottom_label_para = _label_para_xml("V")
 
     return (
         "<?xml version='1.0' encoding='UTF-8'?>"
