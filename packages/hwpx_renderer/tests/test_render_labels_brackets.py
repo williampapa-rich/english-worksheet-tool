@@ -162,40 +162,69 @@ def test_top_label_para_uses_label_style(section0_xml: str) -> None:
     assert 'styleIDRef="1"' in section0_xml
 
 
-def test_label_run_uses_label_charpr_not_underline(section0_xml: str) -> None:
-    """라벨 단락의 run 은 charPrIDRef=1 (라벨 charPr) 이어야 한다.
+def test_label_charpr_has_bottom_underline(hwpx_zip: zipfile.ZipFile) -> None:
+    """라벨 charPr (id=1) 에 BOTTOM underline 이 정의되어야 한다 (라벨 표식).
+
+    PM 의도 = 라벨 글자 밑에 짧은 밑줄로 어떤 annotation 인지 표시 (border line 역할).
+    fix A-1: 헤더 charPr id=1 에 underline_type="BOTTOM" 활성화.
+    """
+    header = hwpx_zip.read("Contents/header.xml").decode("utf-8")
+    # charPr id="1" 블록 안에 underline type="BOTTOM" 이 있어야 함
+    m = re.search(r'<hh:charPr id="1"[^>]*>.*?</hh:charPr>', header, re.DOTALL)
+    assert m, "라벨 charPr id=1 블록을 찾을 수 없음"
+    label_block = m.group(0)
+    assert 'type="BOTTOM"' in label_block, (
+        "라벨 charPr 에 BOTTOM underline 이 없음 — 라벨 표식이 사라짐 (fix A-1 회귀)"
+    )
+
+
+def test_label_run_does_not_use_underline_charpr(section0_xml: str) -> None:
+    """라벨 단락의 run 이 charPrIDRef=2 (underline charPr) 를 참조하면 안 된다.
 
     회귀 방지: 이전 버그 — label_para_xml 헬퍼가 PoC 시절 매핑 (charPrIDRef=2) 을
     하드코딩해 라벨이 underline charPr 를 잘못 참조 → 라벨에 BOTTOM 밑줄이 그어졌음.
-    한컴 검증에서 'S V' / '동격' 양쪽 모두 밑줄로 보임. 본 테스트는 그 회귀를 차단.
+
+    fix A 이후 라벨 단락 구조: leading whitespace 는 charPrIDRef=0 (본문 charPr,
+    underline 없음) + 라벨 글자는 charPrIDRef=1 (라벨 charPr, BOTTOM underline 표식).
+    어떤 경우에도 charPrIDRef=2 는 라벨 단락에 나타나지 않아야 함.
     """
-    # 라벨 단락 (paraPrIDRef="1") 안의 run charPrIDRef 추출
     label_paras = re.findall(
         r'<hp:p[^>]*paraPrIDRef="1"[^>]*>(.*?)</hp:p>', section0_xml, re.DOTALL
     )
     assert label_paras, "라벨 단락을 찾을 수 없음"
     for para in label_paras:
         run_refs = re.findall(r'<hp:run\s+charPrIDRef="(\d+)"', para)
+        assert "2" not in run_refs, (
+            "라벨 단락의 run 에 charPrIDRef=2 (underline charPr) 가 있음 — "
+            "라벨에 underline BOTTOM 이 그어지는 회귀 (P1-8b fix 1)."
+        )
+        # 모든 run 이 BODY(0) 또는 LABEL(1) 이어야 함
         for ref in run_refs:
-            assert ref == "1", (
-                f"라벨 단락의 run charPrIDRef={ref} — 1 (라벨 charPr) 이어야 함. "
-                "id=2 는 underline charPr 로 라벨에 밑줄을 그음 (P1-8b fix 1 회귀)."
+            assert ref in ("0", "1"), (
+                f"라벨 단락 예상 외 charPrIDRef={ref} — 0(leading) 또는 1(라벨) 이어야 함"
             )
 
 
 def test_top_label_text_in_section(section0_xml: str) -> None:
-    """top_label 'S' 와 'V' 가 한 라벨 단락 안에 모두 존재해야 한다.
+    """top_label 'S' 와 'V' 가 한 라벨 단락 안에 (여러 run 으로 분리되어) 존재해야 한다.
 
-    P1-8b fix 2 이후: 라벨 사이 공백은 폰트 metric 으로 가변 — 'S' 와 'V' 사이에
-    여러 공백이 들어간다 (각 라벨이 자기 anchor 단어 위에 정렬되도록).
+    fix A 이후: 라벨 단락은 leading whitespace run (charPrIDRef=0, 본문 charPr) 와
+    라벨 글자 run (charPrIDRef=1, 라벨 charPr) 가 번갈아 나타난다.
+    leading 을 본문 charPr 로 출력하면 폰트 폭이 본문과 일치하고, 라벨 글자에만
+    BOTTOM underline 표식이 그어진다 (빈 공간에 줄 그어지지 않음).
     """
-    # top_label 단락의 hp:t 내부에 두 라벨이 모두 있어야 함
-    label_match = re.search(r'paraPrIDRef="1"[^>]*>.*?<hp:t>([^<]*)</hp:t>', section0_xml)
-    assert label_match, "top_label 단락을 찾을 수 없음"
-    label_text = label_match.group(1)
-    assert "S" in label_text and "V" in label_text
-    # S 가 V 보다 먼저 (anchor 위치순 정렬)
-    assert label_text.index("S") < label_text.index("V")
+    # 첫 번째 라벨 단락 추출 (paraPrIDRef="1")
+    para_match = re.search(r'<hp:p[^>]*paraPrIDRef="1"[^>]*>(.*?)</hp:p>', section0_xml, re.DOTALL)
+    assert para_match, "top_label 단락을 찾을 수 없음"
+    para = para_match.group(1)
+    # 라벨 charPr (id=1) run 의 텍스트만 모음
+    label_run_texts = re.findall(
+        r'<hp:run\s+charPrIDRef="1"[^>]*><hp:t>([^<]*)</hp:t></hp:run>', para
+    )
+    joined = "".join(label_run_texts)
+    assert "S" in joined and "V" in joined
+    # S 가 V 보다 먼저 (anchor 순)
+    assert joined.index("S") < joined.index("V")
 
 
 def test_bottom_label_text_in_section(section0_xml: str) -> None:

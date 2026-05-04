@@ -8,20 +8,24 @@ P1-8a 범위:
 P1-8b 범위 (본 PR):
     - ``top_label`` / ``bottom_label`` — 3단 단락 구조 (라벨 / 본문 / 라벨).
       본문 단락 앞/뒤에 별도 라벨 단락을 삽입한다. 같은 단락 안에 여러 라벨이
-      있으면 각 라벨 anchor (``span.start``) 위치까지 폰트 metric 기반 leading
-      whitespace 를 채워 본문 단어 위/아래에 정렬한다 (`_font_metrics.label_leading_spaces`).
+      있으면 각 라벨 anchor (``span.start``) 위치까지 글자 수 비례로 leading
+      whitespace 를 채워 본문 단어 위/아래에 근사 정렬한다.
+    - 라벨 단락의 leading whitespace 는 본문 charPr (id=0) 로, 라벨 글자만 라벨
+      charPr (id=1, BOTTOM underline 표식) 로 분리 출력. underline 이 빈 공간에
+      그어지지 않도록.
     - ``bracket`` — ADR-0007 채택안 = Unicode `[ ]` `( )` `{ }` 를 본문 inline run
-      으로 양 끝점에 삽입. 본문 텍스트 분할 시 bracket span 의 시작/끝을
-      분할점으로 추가하고 해당 위치에 여닫이 charPrIDRef=0 run 삽입.
-    - 본문 paraPr ``align="LEFT"`` 고정 — JUSTIFY 는 단어 사이 간격이 가변이라
-      폰트 metric 정렬과 호환되지 않음.
+      으로 양 끝점에 삽입.
+    - 본문 paraPr ``align="LEFT"`` 고정 — 단어 사이 간격을 한컴 spacing 룰로 고정.
 
 P1-8b fix 라운드 (PM 검수 후):
-    - 라벨 charPr id 버그 수정 — `_xml_builders.label_para_xml` 가 PoC 시절 매핑
-      (charPrIDRef=2 = underline charPr) 을 하드코딩해 라벨에 BOTTOM 밑줄이 그어졌음.
-      헬퍼에 `char_pr_id` 인자 추가, render.py 가 `_CHARPR_LABEL_BASE` (=1) 를 명시.
-    - 라벨 수평 align — pillow `ImageFont.getlength()` 로 본문 prefix 폭 측정
-      → 라벨 단락에 leading whitespace 삽입.
+    - 라벨 charPr id 버그 수정 — 헬퍼가 PoC 시절 매핑 (charPrIDRef=2 = underline
+      charPr) 을 하드코딩해 라벨에 의도치 않은 BOTTOM 밑줄이 그어졌음.
+    - 라벨 수평 정렬 = 글자 수 비례. pillow 폰트 metric 1차 안은 한컴이 본문
+      paraPr LEFT 임에도 spacing 을 페이지 폭에 맞춰 늘리는 동작과 어긋나 라벨이
+      실제 단어보다 훨씬 멀리 위치. 본문도 라벨 leading 도 같은 charPr 폰트 폭을
+      쓰면 한컴 spacing 룰 위에 비례 관계가 보존된다.
+    - 라벨 charPr 에 BOTTOM underline 표식 추가 — 라벨 글자 밑에 짧은 밑줄로
+      어떤 annotation 인지 시각적으로 표시 (PM 의도 = "border line 역할").
 
 P1-8c 범위 (이후 PR):
     - ``arrow`` 는 별도 PoC 필요 — 본 PR 에서 silent-skip 유지.
@@ -131,8 +135,18 @@ def _build_header_xml() -> str:
     # id 0: 본문 plain 10pt
     charpr_list.append(charpr_xml(_CHARPR_BODY, height=1000))
 
-    # id 1: 라벨 7pt bold (P1-8b 예약 — 본 PR 에서도 정의해 둠)
-    charpr_list.append(charpr_xml(_CHARPR_LABEL_BASE, height=700, bold=True))
+    # id 1: 라벨 7pt bold + BOTTOM underline (라벨 표식)
+    # 라벨 글자 밑에 짧은 밑줄을 그려 어떤 annotation 인지 시각적으로 표시.
+    # PM 검수 의도 = "border line 역할" — 라벨이 본문 단어와 시각적으로 묶임.
+    charpr_list.append(
+        charpr_xml(
+            _CHARPR_LABEL_BASE,
+            height=700,
+            bold=True,
+            underline_type="BOTTOM",
+            underline_color=UNDERLINE_DEFAULT_COLOR,
+        )
+    )
 
     # id 2: underline BOTTOM 흑색 (type="BOTTOM" = 하단 단일 밑줄 — 한컴 스펙)
     charpr_list.append(
@@ -338,23 +352,25 @@ def _bracket_runs_at_position(
 # ── 라벨 단락 빌더 ──────────────────────────────────────────────────────────
 
 
-def _build_label_text(
+def _build_label_runs_xml(
     annotations: list[SyntaxAnnotation],
     body_text: str,
 ) -> str | None:
-    """라벨 annotation 목록을 단일 라벨 단락의 텍스트로 합성 (폰트 metric 정렬 포함).
+    """라벨 annotation 목록을 라벨 단락 안의 ``<hp:run>`` 들로 조립.
 
-    각 라벨이 자기 anchor 단어 위/아래에 위치하도록 라벨 사이 공백 수를 폰트 metric
-    으로 산출 (`_font_metrics.label_leading_spaces`).
+    leading whitespace 와 라벨 글자를 별도 run 으로 분리:
+        - leading whitespace: ``charPrIDRef=_CHARPR_BODY`` (id=0, 본문 plain 10pt)
+          → 단어 사이 폭이 본문과 동일해 정렬 안정. underline 없음 → 빈 공간에 줄
+            그어지지 않음.
+        - 라벨 글자: ``charPrIDRef=_CHARPR_LABEL_BASE`` (id=1, 7pt bold + BOTTOM
+          underline) → 라벨 표식 underline 이 글자 밑에만 그어짐.
 
-    원리:
-        라벨 단락은 본문과 별도 단락이므로 라벨 자체의 char offset 외에는 위치 단서가
-        없다. 따라서 라벨 단락의 leading whitespace + 라벨 사이 공백을 실측해 본문
-        ``body_text[0:span.start]`` 의 폭 위치까지 채운다.
+    각 라벨 anchor (``span.start``) 위치까지 본문 prefix 글자 수에 비례한 공백을
+    채워 본문 단어 위/아래에 근사 정렬한다 (`_font_metrics.label_leading_spaces`).
 
-    span.start 가 같은 라벨이 여러 개면 공백 1개로만 join (중복 영역 누적 방지).
+    span.start 가 같은 라벨이 여러 개면 공백 1개로만 join.
 
-    빈 라벨 텍스트 (text=None) 만 있으면 None 반환 → 단락 생성 안 함.
+    None 반환 = 단락 생성 안 함 (빈 라벨 단락 방지).
     """
     if not annotations:
         return None
@@ -363,8 +379,8 @@ def _build_label_text(
     if not valid:
         return None
 
-    parts: list[str] = []
-    used_columns = 0  # 현재까지 라벨 단락에 차지한 라벨-폰트 좌표계 공백 글자 수
+    runs: list[str] = []
+    used_columns = 0  # 현재까지 라벨 단락에 채워진 본문 글자 좌표계 컬럼 수
     last_anchor = -1
     for ann in valid:
         anchor = ann.span.start
@@ -372,25 +388,28 @@ def _build_label_text(
         target_col = label_leading_spaces(prefix)
 
         if anchor == last_anchor:
-            # 같은 단어를 여러 라벨이 가리키는 경우 공백 1개로 join
-            parts.append(" ")
-            used_columns += 1
+            # 같은 위치를 여러 라벨이 가리키는 경우 공백 1개로 join
+            pad = 1
         else:
             pad = max(0, target_col - used_columns)
-            # 라벨 사이에 최소 공백 1개는 보장 (붙이지 않음). 첫 라벨은 pad 그대로.
-            if parts and pad == 0:
+            # 라벨 사이에 최소 공백 1개 보장
+            if runs and pad == 0:
                 pad = 1
-            parts.append(" " * pad)
+
+        if pad > 0:
+            runs.append(
+                f'<hp:run charPrIDRef="{_CHARPR_BODY}"><hp:t>{xe(" " * pad)}</hp:t></hp:run>'
+            )
             used_columns += pad
 
         text = ann.text or ""
-        parts.append(text)
-        # 라벨 텍스트 자체가 차지한 컬럼을 누적 (라벨 폰트 좌표계).
-        # 한글/한자 라벨은 _font_metrics 에서 1.0em 근사이므로 글자 수가 곧 컬럼 근사.
+        runs.append(f'<hp:run charPrIDRef="{_CHARPR_LABEL_BASE}"><hp:t>{xe(text)}</hp:t></hp:run>')
+        # 라벨 글자가 차지한 컬럼 누적 (글자 수 근사 — 정확한 폭은 라벨 폰트 metric
+        # 으로 측정 가능하지만 baseline 은 글자 수로 충분).
         used_columns += len(text)
         last_anchor = anchor
 
-    return "".join(parts)
+    return "".join(runs)
 
 
 # ── 섹션 XML 빌더 ────────────────────────────────────────────────────────────
@@ -510,10 +529,8 @@ def _build_section_xml(
     )
 
     # 단락 1: top_label (있을 때만)
-    top_label_text = _build_label_text(top_label_anns, body_text)
-    top_label_para = (
-        label_para_xml(top_label_text, char_pr_id=_CHARPR_LABEL_BASE) if top_label_text else ""
-    )
+    top_label_runs = _build_label_runs_xml(top_label_anns, body_text)
+    top_label_para = label_para_xml(top_label_runs) if top_label_runs else ""
 
     # 단락 2: 본문
     body_para = (
@@ -522,12 +539,8 @@ def _build_section_xml(
     )
 
     # 단락 3: bottom_label (있을 때만)
-    bottom_label_text = _build_label_text(bottom_label_anns, body_text)
-    bottom_label_para = (
-        label_para_xml(bottom_label_text, char_pr_id=_CHARPR_LABEL_BASE)
-        if bottom_label_text
-        else ""
-    )
+    bottom_label_runs = _build_label_runs_xml(bottom_label_anns, body_text)
+    bottom_label_para = label_para_xml(bottom_label_runs) if bottom_label_runs else ""
 
     return (
         "<?xml version='1.0' encoding='UTF-8'?>"

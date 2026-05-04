@@ -155,37 +155,17 @@ def inline_note_run_xml(text: str, char_pr_id: int) -> str:
     return f'<hp:run charPrIDRef="{char_pr_id}"><hp:t>{xe(text)}</hp:t></hp:run>'
 
 
-def label_para_xml(
-    label_text: str,
-    char_pr_id: int = 1,
-    leading_spaces: int = 0,
-) -> str:
-    """3단 단락 구조의 라벨 단락 XML.
+def label_para_xml(runs_xml: str) -> str:
+    """3단 단락 구조의 라벨 단락 wrapper.
 
-    paraPrIDRef="1" (라벨 단락 스타일: lineSpacing=100%, margin prev/next=0)
-    char_pr_id (라벨 글자 charPr id) — 호출자가 지정.
-
-    charPr id 는 호출자(render.py) 의 헤더 정의에 따라 다르다.
-    정식 render.py: id=1 (label charPr — height=700 bold).
-    PoC poc_align.py: id=2 (PoC 만의 별도 매핑).
-    헬퍼가 옛 값 2 를 하드코딩하던 버그(라벨에 BOTTOM underline 적용) 회피.
-
-    leading_spaces:
-        라벨 텍스트 앞에 채울 일반 공백(' ') 개수. 라벨이 본문 단어 위/아래에 정렬되도록
-        호출자(render.py)가 폰트 metric 기반으로 계산해 전달한다. 0 이면 좌측 정렬 baseline.
+    paraPrIDRef="1" / styleIDRef="1" (라벨 단락 스타일).
+    runs_xml: <hp:run> XML 들이 미리 조립된 문자열. 호출자(render.py)가 라벨 글자와
+    leading whitespace 를 각각 다른 charPr 로 분리해 조립한다 (라벨 글자에는 BOTTOM
+    underline 표식, whitespace 에는 밑줄이 그어지지 않도록).
     """
-    if leading_spaces > 0:
-        spaces = " " * leading_spaces
-        text = f"{spaces}{label_text}"
-    else:
-        text = label_text
     return (
         f'<hp:p id="0" paraPrIDRef="1" styleIDRef="1" '
-        f'pageBreak="0" columnBreak="0" merged="0">'
-        f'<hp:run charPrIDRef="{char_pr_id}">'
-        f"<hp:t>{xe(text)}</hp:t>"
-        f"</hp:run>"
-        f"</hp:p>"
+        f'pageBreak="0" columnBreak="0" merged="0">{runs_xml}</hp:p>'
     )
 
 
