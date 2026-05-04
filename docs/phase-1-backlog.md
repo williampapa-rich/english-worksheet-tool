@@ -172,6 +172,7 @@
     download) — 회귀 누적 방지용 최소 baseline. 자세한 시나리오는 후속 task 에서
     확장. (P1-9 의 HWPX 다운로드 버튼이 머지된 후 1케이스 골격 확정.)
 - **PR 단위**: 1~2 PR (a: 라운드트립, b: Playwright 골격 — P1-9 직후).
+- **머지 (b)**: Playwright E2E 골격 1케이스 — `apps/web/tests/e2e/editor-roundtrip.spec.ts`. mock 전략: `page.route()` 로 backend API 가로챔 (FastAPI 미기동). chromium 1개 프로젝트. `apps/web/playwright.config.ts` + `apps/web/tests/e2e/api-mock.ts` 신설. 후속: 7종 annotation 라운드트립 시나리오 확장 (P1-10 또는 별도 task), 다중 브라우저, CI 통합.
 
 ---
 
