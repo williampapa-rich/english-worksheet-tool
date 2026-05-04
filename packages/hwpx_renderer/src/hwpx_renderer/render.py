@@ -4,8 +4,18 @@
 
 P1-8a 범위:
     - ``highlight``, ``underline``, ``inline_note`` 3종 charPr 계열 구현.
-    - 나머지 4종 (``top_label``, ``bottom_label``, ``bracket``, ``arrow``) 은
-      본 PR 에서 silent-skip + 로그 처리 (P1-8b/c 에서 구현 예정).
+
+P1-8b 범위 (본 PR):
+    - ``top_label`` / ``bottom_label`` — 3단 단락 구조 (라벨 / 본문 / 라벨).
+      본문 단락 앞/뒤에 별도 라벨 단락을 삽입한다. 같은 종류의 라벨 여러 개는
+      한 단락 안에 공백으로 join (수평 align 정밀도는 b-2 follow-up — 본 PR 은
+      LEFT 정렬로 충분).
+    - ``bracket`` — ADR-0007 채택안 = Unicode `[ ]` `( )` `{ }` 를 본문 inline run
+      으로 양 끝점에 삽입. 본문 텍스트 분할 시 bracket span 의 시작/끝을
+      분할점으로 추가하고 해당 위치에 여닫이 charPrIDRef=0 run 삽입.
+
+P1-8c 범위 (이후 PR):
+    - ``arrow`` 는 별도 PoC 필요 — 본 PR 에서 silent-skip 유지.
 
 inline_note 결정 (P1-7 §6 미해결 #2):
     후보 A (inline run, 작은 폰트 charPr) 채택.
@@ -46,6 +56,7 @@ from hwpx_renderer._xml_builders import (
     UNDERLINE_DEFAULT_COLOR,
     build_hwpx_zip,
     charpr_xml,
+    label_para_xml,
     secpr_run_xml,
     xe,
 )
@@ -282,6 +293,57 @@ def _slice_text_with_annotations(
     return segments
 
 
+# ── bracket 처리 ────────────────────────────────────────────────────────────
+
+# bracket_style 별 여닫이 Unicode 매핑 (ADR-0007).
+# 스키마는 "()" / "{}" / "[]" 3종만 지원.
+_BRACKET_OPEN_CLOSE: dict[str, tuple[str, str]] = {
+    "[]": ("[", "]"),
+    "()": ("(", ")"),
+    "{}": ("{", "}"),
+}
+
+
+def _bracket_runs_at_position(
+    pos: int,
+    open_brackets_at: dict[int, list[str]],
+    close_brackets_at: dict[int, list[str]],
+) -> str:
+    """주어진 본문 위치에서 시작/끝나는 bracket 의 inline run XML 을 생성.
+
+    여닫이 Unicode 글자 1개씩을 charPrIDRef=0 plain run 으로 본문에 삽입.
+    같은 위치에 여러 bracket 이 시작/끝나는 경우 모두 이어 붙임.
+    닫는 bracket 을 먼저 (position 에서 끝나는 span 을 닫고) 그 뒤 여는 bracket.
+    """
+    parts: list[str] = []
+    for close_char in close_brackets_at.get(pos, []):
+        parts.append(f'<hp:run charPrIDRef="{_CHARPR_BODY}"><hp:t>{xe(close_char)}</hp:t></hp:run>')
+    for open_char in open_brackets_at.get(pos, []):
+        parts.append(f'<hp:run charPrIDRef="{_CHARPR_BODY}"><hp:t>{xe(open_char)}</hp:t></hp:run>')
+    return "".join(parts)
+
+
+# ── 라벨 단락 빌더 ──────────────────────────────────────────────────────────
+
+
+def _join_labels(annotations: list[SyntaxAnnotation]) -> str | None:
+    """라벨 annotation 목록을 단일 라벨 단락 텍스트로 join.
+
+    같은 단락 안에 여러 라벨이 들어가는 경우 span.start 순으로 정렬해 공백으로 join.
+    수평 align 정밀도 (각 라벨이 본문 단어 위/아래에 정확히 위치) 는 P1-8b-2 (폰트
+    metric) 에서 처리 — 본 PR 은 LEFT 정렬 + 공백 join 으로 baseline.
+
+    None 반환 = 단락 생성 안 함 (빈 라벨 단락 방지).
+    """
+    if not annotations:
+        return None
+    sorted_anns = sorted(annotations, key=lambda a: a.span.start)
+    texts = [a.text for a in sorted_anns if a.text]
+    if not texts:
+        return None
+    return " ".join(texts)
+
+
 # ── 섹션 XML 빌더 ────────────────────────────────────────────────────────────
 
 
@@ -291,9 +353,14 @@ def _build_section_xml(
 ) -> str:
     """단일 지문을 HWPX section0.xml 으로 변환.
 
-    P1-8a 에서는 단일 단락으로 처리한다 (줄바꿈 없음).
-    P1-8b 에서 top_label / bottom_label 의 3단 단락 구조가 추가될 때
-    단락 분할 로직이 확장된다.
+    P1-8b 출력 구조 (단일 줄 본문 가정 — 다중 줄 본문 wrap 처리는 P1-10):
+        단락 0: secPr (섹션 정의)
+        단락 1: top_label 단락 (top_label 이 1개 이상일 때만)
+        단락 2: 본문 단락 (highlight/underline/inline_note charPr 적용
+                + bracket Unicode inline run 삽입)
+        단락 3: bottom_label 단락 (bottom_label 이 1개 이상일 때만)
+
+    P1-8c 에서 arrow 도형이 추가되며, 다중 단락 본문 처리는 P1-10 에서.
 
     Args:
         body_text: 렌더 대상 지문 본문.
@@ -302,52 +369,110 @@ def _build_section_xml(
     Returns:
         section0.xml 내용 문자열.
     """
-    # 텍스트 런 계열 분류
+    # kind 별 분류
     text_run_kinds = {
         AnnotationKind.HIGHLIGHT,
         AnnotationKind.UNDERLINE,
         AnnotationKind.INLINE_NOTE,
     }
     text_run_anns = [a for a in annotations if a.kind in text_run_kinds]
+    top_label_anns = [a for a in annotations if a.kind == AnnotationKind.TOP_LABEL]
+    bottom_label_anns = [a for a in annotations if a.kind == AnnotationKind.BOTTOM_LABEL]
+    bracket_anns = [a for a in annotations if a.kind == AnnotationKind.BRACKET]
 
-    # P1-8b/c 에서 구현 예정인 kind — silent skip + log
-    unsupported_kinds = {
-        AnnotationKind.TOP_LABEL,
-        AnnotationKind.BOTTOM_LABEL,
-        AnnotationKind.BRACKET,
-        AnnotationKind.ARROW,
-    }
+    # arrow 는 P1-8c 에서 구현 예정 — silent skip
     for ann in annotations:
-        if ann.kind in unsupported_kinds:
-            logger.debug(
-                "Annotation kind=%s skipped (P1-8b/c not yet implemented).",
-                ann.kind.value,
+        if ann.kind == AnnotationKind.ARROW:
+            logger.debug("Annotation kind=arrow skipped (P1-8c not yet implemented).")
+
+    # bracket span → 위치별 여닫이 dict 사전 구성
+    n = len(body_text)
+    open_brackets_at: dict[int, list[str]] = {}
+    close_brackets_at: dict[int, list[str]] = {}
+    for ann in bracket_anns:
+        start = ann.span.start
+        end = ann.span.end
+        if start >= n or end > n:
+            logger.warning(
+                "Bracket annotation span (%d, %d) out of body_text range (%d). Skipped.",
+                start,
+                end,
+                n,
             )
+            continue
+        style = ann.bracket_style or "[]"
+        open_close = _BRACKET_OPEN_CLOSE.get(style)
+        if open_close is None:
+            logger.warning("Bracket annotation has unsupported bracket_style=%r. Skipped.", style)
+            continue
+        open_char, close_char = open_close
+        open_brackets_at.setdefault(start, []).append(open_char)
+        close_brackets_at.setdefault(end, []).append(close_char)
 
-    # inline_note 는 텍스트 span 에 charPr 변경으로 처리 (후보 A 채택)
-    # 단, inline_note 의 text 필드 (예: "(=foster)") 를 별도 run 으로 삽입하지 않음.
-    # span 범위의 글자를 작은 폰트로만 변경 — 실제 note 텍스트 삽입은 P1-8b follow-up.
-    # 이유: annotation span 자체가 note 대상 범위 → 해당 범위를 시각적으로 약화시킴.
-    # ann.text 활용 (예: "(=동의어)") 을 inline 삽입하는 형태는 추후 확장 가능.
-
+    # 본문 segment 분할 (highlight/underline/inline_note charPr 적용)
     segments = _slice_text_with_annotations(body_text, text_run_anns)
 
-    # 단락 1: secPr (섹션 정의 — 빈 단락)
+    # bracket run 을 segment 사이에 삽입하면서 본문 run XML 조립
+    body_runs: list[str] = []
+    cursor = 0
+    for seg in segments:
+        if not seg.text:
+            continue
+        seg_start = cursor
+        seg_end = cursor + len(seg.text)
+
+        # 세그먼트 내부에서 시작/끝나는 bracket 위치를 찾아 sub-segment 로 분할
+        # (한 세그먼트 안에 bracket 시작/끝이 있을 수 있으므로)
+        split_points = sorted(
+            {seg_start, seg_end}
+            | {p for p in open_brackets_at if seg_start < p < seg_end}
+            | {p for p in close_brackets_at if seg_start < p < seg_end}
+        )
+
+        # seg_start 위치의 bracket run 을 먼저 삽입 (이 segment 가 시작되는 지점)
+        body_runs.append(_bracket_runs_at_position(seg_start, open_brackets_at, close_brackets_at))
+
+        # split point 사이의 텍스트를 segment charPr 로 출력 + 각 split point 에서 bracket run 삽입
+        for i in range(len(split_points) - 1):
+            sub_start = split_points[i]
+            sub_end = split_points[i + 1]
+            sub_text = body_text[sub_start:sub_end]
+            if sub_text:
+                body_runs.append(
+                    f'<hp:run charPrIDRef="{seg.char_pr_id}"><hp:t>{xe(sub_text)}</hp:t></hp:run>'
+                )
+            # sub_end 가 segment 끝 (seg_end) 이면 bracket 은 다음 segment 시작 시 처리 — 중복 방지
+            if sub_end < seg_end:
+                body_runs.append(
+                    _bracket_runs_at_position(sub_end, open_brackets_at, close_brackets_at)
+                )
+
+        cursor = seg_end
+
+    # 본문 끝 (n) 위치의 닫는 bracket 처리
+    body_runs.append(_bracket_runs_at_position(n, open_brackets_at, close_brackets_at))
+
+    body_runs_xml = "".join(body_runs)
+
+    # 단락 0: secPr (섹션 정의 — 빈 단락)
     sec_para = (
         '<hp:p id="0" paraPrIDRef="0" styleIDRef="0" '
         'pageBreak="0" columnBreak="0" merged="0">' + secpr_run_xml() + "</hp:p>"
     )
 
-    # 단락 2: 본문 (run 분할 적용)
-    run_xmls = "".join(
-        f'<hp:run charPrIDRef="{seg.char_pr_id}"><hp:t>{xe(seg.text)}</hp:t></hp:run>'
-        for seg in segments
-        if seg.text  # 빈 세그먼트 건너뜀
-    )
+    # 단락 1: top_label (있을 때만)
+    top_label_text = _join_labels(top_label_anns)
+    top_label_para = label_para_xml(top_label_text) if top_label_text else ""
+
+    # 단락 2: 본문
     body_para = (
         '<hp:p id="0" paraPrIDRef="0" styleIDRef="0" '
-        'pageBreak="0" columnBreak="0" merged="0">' + run_xmls + "</hp:p>"
+        'pageBreak="0" columnBreak="0" merged="0">' + body_runs_xml + "</hp:p>"
     )
+
+    # 단락 3: bottom_label (있을 때만)
+    bottom_label_text = _join_labels(bottom_label_anns)
+    bottom_label_para = label_para_xml(bottom_label_text) if bottom_label_text else ""
 
     return (
         "<?xml version='1.0' encoding='UTF-8'?>"
@@ -355,7 +480,9 @@ def _build_section_xml(
         ' xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph"'
         ' xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section">'
         + sec_para
+        + top_label_para
         + body_para
+        + bottom_label_para
         + "</hs:sec>"
     )
 

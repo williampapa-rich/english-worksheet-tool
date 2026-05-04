@@ -155,16 +155,6 @@ def inline_note_run_xml(text: str, char_pr_id: int) -> str:
     return f'<hp:run charPrIDRef="{char_pr_id}"><hp:t>{xe(text)}</hp:t></hp:run>'
 
 
-def bracket_run_xml(text: str, style: str = "[]", char_pr_id: int = 0) -> str:
-    """괄호 run — Unicode bracket 으로 본문에 inline 삽입.
-
-    P1-8b 범위. 본 헬퍼는 P1-8a 에서 자리만 준비.
-    """
-    open_b, close_b = style[0], style[1]
-    escaped = xe(f"{open_b}{text}{close_b}")
-    return f'<hp:run charPrIDRef="{char_pr_id}"><hp:t>{escaped}</hp:t></hp:run>'
-
-
 def label_para_xml(label_text: str) -> str:
     """3단 단락 구조의 라벨 단락 XML.
 
