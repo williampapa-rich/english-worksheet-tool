@@ -62,7 +62,7 @@ export interface SerializedAnnotation {
   span: AnnotationSpanV1;
   color_index?: number | null;
   text?: string | null;
-  bracket_style?: "()" | "{}" | "[]" | null;
+  bracket_style?: "()" | "{}" | "[]" | "⌜⌟" | "<>" | null; // P1-10c: ⌜⌟ / <> 추가
   arrow_target_span?: AnnotationSpanV1 | null;
   category?: string | null;
   annotation_id?: string | null;
@@ -159,25 +159,38 @@ function collectMarksFromDoc(doc: JSONContent): CollectedMark[] {
  *
  * ADR-0004 §결정: "Tiptap 에디터 내부: ProseMirror position (from, to) 로 작업."
  *
- * ProseMirror doc 에서 position 은 노드 경계 포함 1-based 카운트다.
- * 텍스트 노드 내 글자 위치 = 노드 시작 position + 텍스트 내 index.
- * 단락 노드 자체가 position 1개를 차지하므로, 첫 단락 시작 = pos 1 + 1(단락 열기) = 2.
+ * ProseMirror position 은 노드 토큰 사이 위치다.
+ * 각 비텍스트 노드는 open/close 토큰을 각 1씩 소비하고, 텍스트 노드는 글자 수만큼 소비한다.
+ *
+ * doc = [paragraph("Hello"), paragraph("World")] 구조에서:
+ *   pos 0: doc 내부 첫 위치 (paragraph[0] 앞)
+ *   pos 1: paragraph[0] 내부 첫 위치 ('H' 앞)  ← paragraph open 토큰 소비
+ *   pos 6: paragraph[0] 내부 마지막 위치 ('o' 뒤)
+ *   pos 7: paragraph[0] 와 paragraph[1] 사이     ← paragraph[0] close 소비
+ *   pos 8: paragraph[1] 내부 첫 위치 ('W' 앞)    ← paragraph[1] open 토큰 소비
+ *
+ * 공식: 단락 i (0-based) 의 charOffset k → pmPos = 1 + sum(len[0..i-1]) + 2*i + localOffset
+ *   여기서 localOffset = charOffset - paragraphStartCharOffset
  *
  * 단일 단락 (paragraphLengths 없음 또는 길이 1):
- *   - charOffset k → pmPos = k + 2
+ *   - charOffset k → pmPos = k + 1
  *
  * 다중 단락 (paragraphLengths 전달):
  *   body_text = paragraphs.join("\n") 기준.
  *   단락 i (0-based) 의 첫 글자:
  *     charOffset = sum(len[0..i-1]) + i  (앞 단락 글자 + 단락 사이 \n 수)
- *     pmPos      = 2 + sum(len[0..i-1]) + 2*i
- *   → 단락 내 local offset k 에 대해: pmPos = 2 + sum(len[0..i-1]) + 2*i + k
+ *     pmPos      = 1 + sum(len[0..i-1]) + 2*i
+ *   → 단락 내 local offset k 에 대해: pmPos = 1 + sum(len[0..i-1]) + 2*i + k
  *
  * paragraphLengths: optional — 없으면 단일 단락 가정 (기존 호출자 호환).
+ *
+ * NOTE (P1-10a fix): 이전 구현은 +2 를 사용해 charOffset=0 → pmPos=2 를 반환했는데,
+ * 이는 실제 ProseMirror 의 paragraph 내부 첫 위치 (pos 1) 보다 1 큰 값이었다.
+ * 결과적으로 역직렬화 시 mark 의 시작 위치가 1 글자씩 밀려 첫 글자가 짤리는 버그 발생.
  */
 function charOffsetToPmPos(charOffset: number, paragraphLengths?: number[]): number {
   if (!paragraphLengths || paragraphLengths.length <= 1) {
-    return charOffset + 2;
+    return charOffset + 1;
   }
 
   let acc = 0; // 누적 단락 글자 수
@@ -191,16 +204,16 @@ function charOffsetToPmPos(charOffset: number, paragraphLengths?: number[]): num
       const localOffset = charOffset - paragraphStartCharOffset;
       if (localOffset < 0) {
         // charOffset 이 \n 위치인 경우 — 다음 단락 첫 글자로 fallback
-        return 2 + acc + 2 * (i + 1);
+        return 1 + acc + 2 * (i + 1);
       }
-      return 2 + acc + 2 * i + localOffset;
+      return 1 + acc + 2 * i + localOffset;
     }
     acc += len;
   }
 
   // 범위 밖 → 마지막 단락 끝
   const lastLen = paragraphLengths[paragraphLengths.length - 1] ?? 0;
-  return 2 + acc + 2 * (paragraphLengths.length - 1) + lastLen;
+  return 1 + acc + 2 * (paragraphLengths.length - 1) + lastLen;
 }
 
 /**
@@ -209,13 +222,16 @@ function charOffsetToPmPos(charOffset: number, paragraphLengths?: number[]): num
  * charOffsetToPmPos 의 역함수.
  *
  * paragraphLengths: optional — 없으면 단일 단락 가정 (기존 호출자 호환).
+ *
+ * NOTE (P1-10a fix): charOffsetToPmPos 의 base 를 +1 로 수정함에 따라
+ * pmAcc 의 초기값도 2 → 1 로 수정한다.
  */
 function pmPosToCharOffset(pmPos: number, paragraphLengths?: number[]): number {
   if (!paragraphLengths || paragraphLengths.length <= 1) {
-    return pmPos - 2;
+    return pmPos - 1;
   }
 
-  let pmAcc = 2; // 현재 단락 첫 글자 pmPos
+  let pmAcc = 1; // 현재 단락 첫 글자 pmPos (paragraph[0] 내부 시작 = 1)
   let charAcc = 0; // 현재 단락 첫 글자 charOffset
   for (let i = 0; i < paragraphLengths.length; i++) {
     const len = paragraphLengths[i] ?? 0;
@@ -278,7 +294,7 @@ export function docToAnnotations(doc: JSONContent): SerializedAnnotation[] {
 
     if (kind === ANNOTATION_KIND.BRACKET) {
       annotation.bracket_style =
-        (raw.attrs.bracketStyle as "()" | "{}" | "[]" | null | undefined) ?? null;
+        (raw.attrs.bracketStyle as "()" | "{}" | "[]" | "⌜⌟" | "<>" | null | undefined) ?? null;
     }
 
     if (kind === ANNOTATION_KIND.ARROW) {
