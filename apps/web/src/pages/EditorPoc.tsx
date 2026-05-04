@@ -7,6 +7,7 @@ import {
   TopLabelMark,
   UnderlineMark,
   WordSnapExtension,
+  annotationsToMarks,
   collectMarkRangesByAnnotationId,
   docToAnnotations,
 } from "@english-worksheet-tool/editor";
@@ -14,7 +15,7 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { HexColorPicker } from "react-colorful";
-import { Link } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import {
   AnalysisTable,
   type AnnotationChip,
@@ -24,6 +25,7 @@ import { BracketEntryModal, type BracketStyleOption } from "../components/Bracke
 import type { BracketEditStyle } from "../components/ChipEditModal";
 import { ChipEditModal } from "../components/ChipEditModal";
 import { LabelEntryModal, type LabelEntryModalKind } from "../components/LabelEntryModal";
+import { getAnnotations, getPassage, replaceAnnotations } from "../lib/api";
 import { buildChips } from "./buildChips";
 import "./EditorPoc.css";
 
@@ -86,6 +88,10 @@ const COLOR_PALETTE: Array<{ index: number; hex: string; label: string }> = [
 // ---------------------------------------------------------------------------
 
 export function EditorPoc() {
+  // URL param — passageId 있으면 API 로드 모드, 없으면 fixture 모드
+  const { passageId } = useParams<{ passageId?: string }>();
+  const isLoadMode = !!passageId;
+
   const [selectedColorIndex, setSelectedColorIndex] = useState<number | null>(1);
   const [customColor, setCustomColor] = useState<string | null>(null);
   const [showColorWheel, setShowColorWheel] = useState(false);
@@ -93,6 +99,12 @@ export function EditorPoc() {
   const colorWheelRef = useRef<HTMLDivElement>(null);
   const [serializedJson, setSerializedJson] = useState<string | null>(null);
   const [chips, setChips] = useState<AnnotationChip[]>([]);
+
+  // API 로드 모드 전용 state
+  const [loadState, setLoadState] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; kind: "success" | "error" } | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 라벨 모달 상태 (성분/구/절 진입 버튼)
   const [modalState, setModalState] = useState<{
@@ -119,6 +131,95 @@ export function EditorPoc() {
       },
     },
   });
+
+  // ---------------------------------------------------------------------------
+  // 토스트 헬퍼
+  // ---------------------------------------------------------------------------
+
+  /** showToast — 5초 후 자동 숨김. 기존 타이머 교체. */
+  const showToast = useCallback((message: string, kind: "success" | "error") => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast({ message, kind });
+    toastTimerRef.current = setTimeout(() => setToast(null), 5000);
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // API 로드 모드 — passage + annotations 초기 로드
+  // ---------------------------------------------------------------------------
+
+  useEffect(() => {
+    if (!isLoadMode || !passageId || !editor) return;
+
+    setLoadState("loading");
+    setLoadError(null);
+
+    void (async () => {
+      try {
+        const [passage, annotations] = await Promise.all([
+          getPassage(passageId),
+          getAnnotations(passageId),
+        ]);
+
+        // passage body_text → HTML 변환
+        // paragraphs 가 있으면 각 단락을 <p> 로, 없으면 body_text 단일 <p>
+        let html: string;
+        if (passage.paragraphs && passage.paragraphs.length > 0) {
+          html = passage.paragraphs.map((p) => `<p>${p}</p>`).join("");
+        } else {
+          html = `<p>${passage.body_text}</p>`;
+        }
+
+        // setContent — false = emit update event 안 함 (round-trip emit 폭주 방지)
+        editor.commands.setContent(html, false);
+
+        // annotation 역직렬화 — character offset → ProseMirror position
+        // P1-6 follow-up: 다중 단락 paragraphLengths 전달 → 두번째 단락 이후
+        // mark 위치도 정확. paragraphs 가 없으면 단일 body_text 단락 1개로 처리.
+        if (annotations.length > 0) {
+          const paragraphLengths =
+            passage.paragraphs && passage.paragraphs.length > 0
+              ? passage.paragraphs.map((p) => p.length)
+              : [passage.body_text.length];
+          const marks = annotationsToMarks(annotations, paragraphLengths);
+          // race condition 방지 — 단일 setTimeout(0) 으로 setContent 완료 후 실행
+          setTimeout(() => {
+            let chain = editor.chain();
+            for (const m of marks) {
+              chain = chain
+                .setTextSelection({ from: m.from, to: m.to })
+                .setMark(m.markName, m.attrs);
+            }
+            chain.run();
+          }, 0);
+        }
+
+        setLoadState("done");
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        setLoadError(message);
+        setLoadState("error");
+      }
+    })();
+    // editor 는 mount 시 한 번만 실행 — passageId 변경 시 재실행
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoadMode, passageId, editor]);
+
+  // ---------------------------------------------------------------------------
+  // 핸들러 — 저장 (API 로드 모드 전용)
+  // ---------------------------------------------------------------------------
+
+  const handleSave = useCallback(async () => {
+    if (!editor || !passageId) return;
+    try {
+      const doc = editor.getJSON();
+      const annotations = docToAnnotations(doc);
+      await replaceAnnotations(passageId, annotations);
+      showToast("저장 완료", "success");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      showToast(`저장 실패: ${message}`, "error");
+    }
+  }, [editor, passageId, showToast]);
 
   // 색상 휠 팝오버 outside click 감지
   useEffect(() => {
@@ -634,6 +735,31 @@ export function EditorPoc() {
       ? "sentence_role"
       : ((modalState.entry?.category as LabelEntryModalKind | undefined) ?? "phrase");
 
+  // 로드 모드 + 로딩 중 — 에디터 전체 대신 로딩 화면 반환
+  if (isLoadMode && loadState === "loading") {
+    return (
+      <main className="min-h-screen bg-gray-50 p-8 flex items-center justify-center">
+        <p className="text-gray-500 text-sm">로딩 중...</p>
+      </main>
+    );
+  }
+
+  // 로드 모드 + 에러
+  if (isLoadMode && loadState === "error") {
+    return (
+      <main className="min-h-screen bg-gray-50 p-8">
+        <div className="max-w-4xl mx-auto">
+          <Link to="/" className="text-blue-600 hover:underline text-sm">
+            ← 홈으로
+          </Link>
+          <p className="mt-4 text-red-600 text-sm">
+            지문 로드 실패: {loadError ?? "알 수 없는 오류"}
+          </p>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <>
       <LabelEntryModal
@@ -655,6 +781,20 @@ export function EditorPoc() {
         onRemove={handleRemoveAnnotation}
         onClose={() => setChipEditState({ open: false, chip: null })}
       />
+      {/* 토스트 알림 (5초 자동 숨김) */}
+      {toast && (
+        <output
+          className={[
+            "fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl shadow-lg text-sm font-medium transition-all",
+            toast.kind === "success"
+              ? "bg-green-50 border border-green-200 text-green-800"
+              : "bg-red-50 border border-red-200 text-red-800",
+          ].join(" ")}
+          aria-live="polite"
+        >
+          {toast.message}
+        </output>
+      )}
       <main className="min-h-screen bg-gray-50 p-8">
         <div className="max-w-4xl mx-auto space-y-6">
           {/* 헤더 */}
@@ -666,6 +806,11 @@ export function EditorPoc() {
             <span className="text-xs text-gray-400 bg-yellow-100 px-2 py-0.5 rounded">
               드래프트 — PM 검수용
             </span>
+            {isLoadMode && (
+              <span className="text-xs text-blue-500 bg-blue-50 px-2 py-0.5 rounded">
+                API 모드 — passage {passageId}
+              </span>
+            )}
           </div>
 
           {/* 에디터 + 분석표 영역 */}
@@ -794,7 +939,7 @@ export function EditorPoc() {
                 </span>
               </div>
 
-              {/* 툴바 제어: 직렬화 / 초기화 */}
+              {/* 툴바 제어: 직렬화 / 초기화 / 저장 */}
               <div className="px-4 py-2 border-b border-gray-100 bg-gray-50 flex items-center gap-2">
                 <button
                   type="button"
@@ -819,6 +964,17 @@ export function EditorPoc() {
                     className="px-3 py-1.5 text-sm font-medium rounded-lg bg-white border border-gray-200 text-gray-400 hover:bg-gray-50 transition-colors"
                   >
                     패널 닫기
+                  </button>
+                )}
+                {/* 저장 버튼 — API 로드 모드 전용 */}
+                {isLoadMode && (
+                  <button
+                    type="button"
+                    onClick={() => void handleSave()}
+                    disabled={!editor}
+                    className="px-3 py-1.5 text-sm font-medium rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 transition-colors disabled:opacity-50 ml-auto"
+                  >
+                    저장
                   </button>
                 )}
               </div>
