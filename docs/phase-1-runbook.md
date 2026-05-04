@@ -12,26 +12,49 @@ Phase 0 runbook (`docs/phase-0-runbook.md`) 에서 API 추출 사용법을 다�
 
 ### 1.1 .env 작성
 
-`apps/api/.env` 파일이 없으면 `.env.example` 을 복사해 작성한다.
+**위치**: repo 루트 `.env`. `apps/api/.env` 는 루트 `.env` 의 symlink 로 둠 (docker-compose + apps/api 양쪽이 같은 값을 보도록).
 
 ```bash
-# apps/api/ 기준
+# repo 루트
+cat > .env << 'EOF'
+# DB (asyncpg)
 DATABASE_URL=postgresql+asyncpg://worksheet:worksheet@localhost:5432/worksheet_db
-ANTHROPIC_API_KEY=sk-ant-api03-...   # fixture 시드는 LLM 호출 없음 — 빈 값도 OK
-MVP_TENANT_ID=00000000-0000-0000-0000-000000000001
-MVP_WORKSPACE_ID=00000000-0000-0000-0000-000000000002
-LLM_USAGE_LOG_PATH=var/llm_usage.jsonl
 
-# Docker compose 용
+# docker-compose 용
 POSTGRES_USER=worksheet
 POSTGRES_PASSWORD=worksheet
 POSTGRES_DB=worksheet_db
+
+# 멀티테넌트 stub
+MVP_TENANT_ID=00000000-0000-0000-0000-000000000001
+MVP_WORKSPACE_ID=00000000-0000-0000-0000-000000000002
+
+# LLM (fixture 시드는 호출 안 함 — 빈 값도 OK)
+ANTHROPIC_API_KEY=
+
+# 로그
+LLM_USAGE_LOG_PATH=var/llm_usage.jsonl
+DEBUG=false
+EOF
+
+# apps/api/.env 를 루트로 symlink
+ln -sf ../../.env apps/api/.env
 ```
 
-> fixture 시드는 LLM 을 호출하지 않으므로 `ANTHROPIC_API_KEY` 는 임의 값이어도 무방.
+> fixture 시드는 LLM 을 호출하지 않으므로 `ANTHROPIC_API_KEY` 는 빈 값도 무방.
 > 실제 추출 기능 (POST /passages/extract) 사용 시에는 실제 키 필요.
 
-### 1.2 Node.js / pnpm 확인
+### 1.2 의존성 sync (uv workspace 전체)
+
+```bash
+# repo 루트
+uv sync --all-packages
+```
+
+`--all-packages` 가 **필수**. 이 옵션 없으면 `shared` 패키지가 venv 에 들어가지 않아
+API 서버 import 실패 (`ModuleNotFoundError: No module named 'shared'`).
+
+### 1.3 Node.js / pnpm 확인
 
 ```bash
 node --version   # 18+ 권장
@@ -52,9 +75,12 @@ docker compose ps   # worksheet_db_1 가 healthy 상태인지 확인
 
 ### 2.2 Alembic 마이그레이션
 
+`alembic/env.py` 가 `os.environ` 만 읽고 `.env` 자동 로드 안 함 → 환경변수 export 필수.
+
 ```bash
-cd apps/api
-uv run alembic upgrade head
+# repo 루트
+set -a && source .env && set +a
+cd apps/api && uv run alembic upgrade head
 ```
 
 ### 2.3 Tenant / Workspace stub 시드
@@ -78,8 +104,9 @@ SQL
 ### 2.4 Phase 1 fixture 시드
 
 ```bash
-cd apps/api
-uv run python -m scripts.seed_phase1_fixtures
+# repo 루트
+set -a && source .env && set +a
+cd apps/api && uv run python -m scripts.seed_phase1_fixtures
 ```
 
 성공 시 출력 예시:
@@ -133,9 +160,14 @@ fixture 재시드가 필요하면 그냥 한 번 더 실행하면 됩니다.
 
 ### 2.5 API 서버 시작
 
+`shared` 패키지가 editable install 의 매핑 한계로 `from shared.schemas...` import 가
+실패할 수 있음 (Python 3.14 + 최신 hatchling 조합에서 확인). repo 루트를 PYTHONPATH 에
+추가해 우회.
+
 ```bash
-# apps/api/ 기준
-uv run uvicorn worksheet_api.main:app \
+# repo 루트
+set -a && source .env && set +a
+PYTHONPATH=$(pwd) uv run --directory apps/api uvicorn worksheet_api.main:app \
   --host 127.0.0.1 \
   --port 8000 \
   --reload
@@ -145,7 +177,7 @@ uv run uvicorn worksheet_api.main:app \
 
 ```bash
 curl http://127.0.0.1:8000/health
-# 기대: {"status":"ok","version":"0.1.0"}
+# 기대: {"status":"ok","db":"ok"}
 ```
 
 ### 2.6 Web dev 서버 시작
@@ -210,13 +242,26 @@ docker compose ps   # DB 컨테이너 상태 확인
 docker compose up -d db   # 재시작
 ```
 
-### "MODULE_NOT_FOUND" 또는 import 오류 (시드 스크립트)
+### "ModuleNotFoundError: No module named 'shared'" (uvicorn 또는 시드 스크립트)
 
-```bash
-# apps/api/ 에서 실행 중인지 확인
-cd apps/api
-uv run python -m scripts.seed_phase1_fixtures
-```
+editable install 매핑 한계 — `shared` 패키지가 venv 에 dist-info 만 남고 모듈 자체는
+들어가지 않을 수 있다 (Python 3.14 + 최신 hatchling 조합에서 확인).
+
+해결책 (둘 중 하나):
+
+1. **PYTHONPATH 워크어라운드 (권장)**: uvicorn 실행 시 repo 루트를 PATH 에 추가.
+
+   ```bash
+   PYTHONPATH=/Users/.../english-worksheet-tool uv run --directory apps/api uvicorn ...
+   ```
+
+2. **uv sync 재실행**:
+
+   ```bash
+   uv sync --all-packages   # repo 루트
+   ```
+
+시드 스크립트는 자체 `sys.path` 보정 코드가 있어 위 문제와 무관하게 동작.
 
 ### PORT 5173 충돌 (web dev)
 

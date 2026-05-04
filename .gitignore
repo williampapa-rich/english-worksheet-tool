@@ -32,6 +32,11 @@ out/
 # pnpm
 .pnpm-store/
 
+# Playwright (apps/web/.gitignore 가 더 좁게 잡지만 root 레벨 안전망)
+test-results/
+playwright-report/
+playwright/.cache/
+
 # ─── 환경변수 / 시크릿 ──────────────────────────────────────────────────────
 .env
 .env.local
