@@ -43,7 +43,8 @@ from extractor.errors import (
 from extractor.image import extract_from_image
 from extractor.pdf import extract_from_pdf
 from extractor.text import extract_from_text
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
+from hwpx_renderer.render import render_passage_with_annotations
 from llm.client import StructuredLLMClient
 from llm.errors import (
     LLMSchemaValidationError,
@@ -63,6 +64,7 @@ from worksheet_api.llm_setup import get_llm_client
 from worksheet_api.repositories import (
     PassageRepository,
     QuestionRepository,
+    SyntaxAnnotationRepository,
     TenantContext,
     get_tenant_context,
 )
@@ -256,6 +258,54 @@ async def get_passage(
 
     questions = await question_repo.list_by_passage(passage_id)
     return PassageWithRelations(passage=passage, questions=questions)
+
+
+@router.get("/{passage_id}/hwpx", status_code=200)
+async def download_passage_hwpx(
+    passage_id: UUID,
+    tenant_ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> Response:
+    """Passage + annotation 을 HWPX 파일로 렌더해 다운로드.
+
+    Phase 1 DoD #3 — 와이프 검수용 HWPX 파일 출력. 에디터의 현재 저장 상태
+    (DB 의 SyntaxAnnotation) 를 hwpx_renderer 로 직렬화한다.
+
+    멀티테넌트: passage 존재 여부 + tenant 소유 확인 (다른 tenant 소유면 404).
+    annotation 도 동일 tenant_ctx 기반 repository 로 조회 — cross-tenant 누수 차단.
+
+    Args:
+        passage_id: 다운로드할 Passage UUID.
+        tenant_ctx: 현재 요청의 테넌트 컨텍스트.
+        session: DB 세션.
+
+    Returns:
+        HWPX (application/hwp+zip) 바이트 스트림. Content-Disposition 으로
+        파일명 ``passage_{id}.hwpx`` 권장.
+
+    Raises:
+        HTTPException 404: Passage 가 존재하지 않거나 다른 tenant 소유.
+    """
+    passage_repo = PassageRepository(session, tenant_ctx)
+    annotation_repo = SyntaxAnnotationRepository(session, tenant_ctx)
+
+    passage = await passage_repo.get(passage_id)
+    if passage is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Passage {passage_id} 를 찾을 수 없습니다.",
+        )
+
+    annotations = await annotation_repo.list_by_passage(passage_id)
+    hwpx_bytes = render_passage_with_annotations(passage, annotations)
+
+    return Response(
+        content=hwpx_bytes,
+        media_type="application/hwp+zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="passage_{passage_id}.hwpx"',
+        },
+    )
 
 
 # ─── extractor 분기 헬퍼 ─────────────────────────────────────────────────────

@@ -469,3 +469,62 @@ async def test_get_passage_other_tenant_404(async_client: AsyncClient) -> None:
     assert resp.status_code == 404
     # 존재 여부 노출 없이 단순 404
     assert "찾을 수 없" in resp.json()["detail"]
+
+
+# ─── GET /passages/{id}/hwpx 테스트 (P1-9) ───────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_download_passage_hwpx_ok(async_client: AsyncClient) -> None:
+    """GET /{id}/hwpx 정상 → 200, application/hwp+zip + attachment header."""
+    saved = _make_saved_passage()
+
+    with (
+        patch("worksheet_api.routers.passages.PassageRepository") as mock_prepo,
+        patch("worksheet_api.routers.passages.SyntaxAnnotationRepository") as mock_arepo,
+    ):
+        mock_prepo.return_value.get = AsyncMock(return_value=saved)
+        mock_arepo.return_value.list_by_passage = AsyncMock(return_value=[])
+
+        resp = await async_client.get(f"/passages/{PASSAGE_ID_1}/hwpx")
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/hwp+zip"
+    assert "attachment" in resp.headers["content-disposition"]
+    assert f"passage_{PASSAGE_ID_1}.hwpx" in resp.headers["content-disposition"]
+    # ZIP magic bytes (HWPX 는 ZIP 컨테이너) — 첫 4바이트 PK\x03\x04
+    assert resp.content[:2] == b"PK"
+
+
+@pytest.mark.asyncio
+async def test_download_passage_hwpx_not_found_404(async_client: AsyncClient) -> None:
+    """GET /{id}/hwpx not found → 404."""
+    with (
+        patch("worksheet_api.routers.passages.PassageRepository") as mock_prepo,
+        patch("worksheet_api.routers.passages.SyntaxAnnotationRepository"),
+    ):
+        mock_prepo.return_value.get = AsyncMock(return_value=None)
+
+        resp = await async_client.get(f"/passages/{PASSAGE_ID_1}/hwpx")
+
+    assert resp.status_code == 404
+    assert "찾을 수 없" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_download_passage_hwpx_other_tenant_404(async_client: AsyncClient) -> None:
+    """GET /{id}/hwpx 다른 tenant 소유 → 404 (멀티테넌트 격리).
+
+    repository.get() 이 tenant_id 필터를 적용하므로 다른 tenant 의 Passage 는
+    None → 404. annotation 도 같은 tenant_ctx 기반 repository 로 조회되므로
+    cross-tenant 누수 차단.
+    """
+    with (
+        patch("worksheet_api.routers.passages.PassageRepository") as mock_prepo,
+        patch("worksheet_api.routers.passages.SyntaxAnnotationRepository"),
+    ):
+        mock_prepo.return_value.get = AsyncMock(return_value=None)
+
+        resp = await async_client.get(f"/passages/{PASSAGE_ID_2}/hwpx")
+
+    assert resp.status_code == 404

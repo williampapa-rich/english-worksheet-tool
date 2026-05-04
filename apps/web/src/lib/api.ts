@@ -14,6 +14,7 @@
  *   - getPassage(id) — GET /passages/{id}
  *   - getAnnotations(passageId) — GET /passages/{id}/annotations → annotations[]
  *   - replaceAnnotations(passageId, annotations) — POST /passages/{id}/annotations
+ *   - downloadPassageHwpx(passageId) — GET /passages/{id}/hwpx → 브라우저 다운로드 트리거
  */
 
 import type { SerializedAnnotation } from "@english-worksheet-tool/editor";
@@ -121,4 +122,39 @@ export async function replaceAnnotations(
   await checkOk(response);
   const body = (await response.json()) as { annotations: SyntaxAnnotation[] };
   return body.annotations ?? [];
+}
+
+/**
+ * downloadPassageHwpx — GET /passages/{id}/hwpx 후 브라우저 다운로드 트리거.
+ *
+ * Phase 1 DoD #3 — 와이프 검수용 HWPX 출력. 백엔드가 hwpx_renderer 로 변환한
+ * application/hwp+zip 바이트를 받아 a[download] 로 사용자 디스크에 저장.
+ *
+ * 파일명은 백엔드 Content-Disposition 헤더의 filename 을 그대로 사용한다.
+ * 헤더 파싱은 단순 정규식으로 처리 (RFC 5987 enc'ed 처리 미지원 — Phase 1
+ * 단일 사용자 환경에서는 ASCII filename 으로 충분).
+ *
+ * 저장 직후 호출하는 것이 일반적 — 에디터의 미저장 변경이 있으면 호출자가
+ * 저장 후 본 함수를 호출해야 한다 (본 함수 자체는 저장 책임 없음).
+ */
+export async function downloadPassageHwpx(passageId: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/passages/${passageId}/hwpx`);
+  await checkOk(response);
+
+  const blob = await response.blob();
+
+  // Content-Disposition 의 filename 추출. 실패 시 fallback.
+  const disposition = response.headers.get("content-disposition") ?? "";
+  const match = disposition.match(/filename="([^"]+)"/);
+  const filename = match?.[1] ?? `passage_${passageId}.hwpx`;
+
+  // a[download] 트리거 — DOM 임시 element + URL.revokeObjectURL 정리.
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
