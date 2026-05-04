@@ -189,9 +189,9 @@ class SyntaxAnnotation(WorkspaceScopedEntity):
         ),
     )
 
-    bracket_style: Literal["()", "{}", "[]"] | None = Field(
+    bracket_style: Literal["()", "{}", "[]", "⌜⌟", "<>"] | None = Field(
         default=None,
-        description="괄호 모양 (``kind == bracket`` 일 때).",
+        description="괄호 모양 (``kind == bracket`` 일 때). P1-10c: ⌜⌟ / <> 추가.",
     )
     arrow_target_span: AnnotationSpan | None = Field(
         default=None,
@@ -267,9 +267,9 @@ class SyntaxAnnotationInput(BaseModel):
         default=None,
         description="표시 텍스트 (top_label / bottom_label / inline_note).",
     )
-    bracket_style: Literal["()", "{}", "[]"] | None = Field(
+    bracket_style: Literal["()", "{}", "[]", "⌜⌟", "<>"] | None = Field(
         default=None,
-        description="괄호 모양 (kind == bracket 일 때).",
+        description="괄호 모양 (kind == bracket 일 때). P1-10c: ⌜⌟ / <> 추가.",
     )
     arrow_target_span: AnnotationSpan | None = Field(
         default=None,

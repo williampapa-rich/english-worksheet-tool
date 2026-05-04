@@ -31,8 +31,8 @@ export interface AnnotationChip {
   colorIndex: number | null;
   labelText: string; // top_label / bottom_label / inline_note 의 text (없으면 "")
   spanText: string; // 본문 span 텍스트 (30자 초과 시 줄임)
-  /** 같은 annotationId 에 bracket mark 가 있을 때 해당 스타일 (top_label 전용) */
-  bracketStyle?: "()" | "{}" | "[]" | null;
+  /** 같은 annotationId 에 bracket mark 가 있을 때 해당 스타일 (top_label 전용). P1-10c: ⌜⌟ / <> 추가 */
+  bracketStyle?: "()" | "{}" | "[]" | "⌜⌟" | "<>" | null;
 }
 
 /**

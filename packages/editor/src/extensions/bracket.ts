@@ -17,7 +17,8 @@
  */
 import { Mark, mergeAttributes } from "@tiptap/core";
 
-export type BracketStyle = "()" | "{}" | "[]";
+// P1-10c: ⌜⌟ / <> 추가 — Unicode 글자를 inline run 으로 삽입하는 방식
+export type BracketStyle = "()" | "{}" | "[]" | "⌜⌟" | "<>";
 
 export interface BracketOptions {
   HTMLAttributes: Record<string, unknown>;

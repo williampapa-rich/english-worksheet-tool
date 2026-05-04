@@ -24,7 +24,8 @@ import "./ChipEditModal.css";
 // 타입
 // ---------------------------------------------------------------------------
 
-export type BracketEditStyle = "()" | "{}" | "[]";
+// P1-10c: ⌜⌟ / <> 추가
+export type BracketEditStyle = "()" | "{}" | "[]" | "⌜⌟" | "<>";
 
 export interface ChipEditModalProps {
   open: boolean;
@@ -61,18 +62,19 @@ const COLOR_PALETTE: Array<{ index: number; hex: string; label: string }> = [
 ];
 
 interface BracketOptDef {
-  value: BracketEditStyle | "⌜⌟" | "<>";
+  value: BracketEditStyle;
   label: string;
   disabled: boolean;
   tooltip?: string;
 }
 
+// P1-10c: ⌜⌟ / <> 활성화
 const BRACKET_EDIT_OPTS: BracketOptDef[] = [
   { value: "[]", label: "[]", disabled: false },
   { value: "{}", label: "{}", disabled: false },
   { value: "()", label: "()", disabled: false },
-  { value: "⌜⌟", label: "⌜⌟", disabled: true, tooltip: "HWPX schema 미지원" },
-  { value: "<>", label: "<>", disabled: true, tooltip: "HWPX schema 미지원" },
+  { value: "⌜⌟", label: "⌜⌟", disabled: false },
+  { value: "<>", label: "<>", disabled: false },
 ];
 
 // ---------------------------------------------------------------------------
