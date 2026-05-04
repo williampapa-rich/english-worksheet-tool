@@ -306,6 +306,7 @@
   (ADR 결정에 그 fix 들은 의존하지 않음).
 - **PM 코멘트 (2026-05-04)**: A 채택 시 변형문제 (Phase 3) / 학생용 자료 (Phase 2)
   도 같은 방향으로 가게 됨 → 출력 포맷 통일 결정의 무게 큼. ADR 에서 이 영향을 명시.
+- **머지**: `docs/adr/0008-phase-1-output-format.md` (Accepted, 2026-05-04). 채택안 = **A: HTML→PDF 클라이언트-사이드 + 부수 PNG export**. `packages/hwpx_renderer/` deprecate (코드 보존, 신규 사용 금지). Phase 2/3 도 PDF 표준. follow-up: (1) CLAUDE.md §1.3 / §3.5 / §2.1 Phase 2 DoD 갱신 별 PR (2) `docs/annotation-hwpx-mapping.md` deprecate 표기 별 PR (3) P1-10e 진입.
 
 ##### P1-10e — 출력 방향 결정 후 구현 (대형, 가변)
 
