@@ -5,9 +5,10 @@
  *
  * 전략:
  *   - FastAPI/DB 미기동. setupApiMocks() 로 backend 호출을 정적 fixture 로 대체.
- *   - ProseMirror selection: dblclick 으로 단어 선택 시도 → 실패하면 Range API fallback.
- *     dblclick 은 contenteditable 에서 브라우저 표준 word selection 을 트리거한다.
- *     안정성을 위해 waitForFunction 으로 selection 확인 후 버튼 클릭.
+ *   - ProseMirror selection: 키보드 입력 단일 경로.
+ *     Playwright keyboard 이벤트는 contenteditable 의 ProseMirror plugin 으로
+ *     직접 흘러가 ProseMirror state 의 selection 으로 잡힌다.
+ *     browser-level Selection / blur / focus 다툼을 회피.
  */
 
 import { expect, test } from "@playwright/test";
@@ -28,42 +29,26 @@ test("passage 로드 → 형광펜 적용 → 저장 → HWPX 다운로드", asy
     timeout: 15_000,
   });
 
-  // ── 3. 본문 일부 선택 (첫 단어 "The" 더블클릭 — word selection) ─────────
+  // ── 3. 본문 일부 선택 (키보드로 첫 N글자) ─────────────────────────────────
   //
-  // ProseMirror 의 contenteditable 에서 더블클릭은 브라우저 표준 word selection 을
-  // 트리거한다. 단 focus 이벤트가 selection 을 리셋할 수 있어 editor 클릭 후 진행.
+  // ProseMirror state 에 selection 을 박는 가장 안정적인 방법은 키보드 입력.
+  // Playwright keyboard 이벤트는 contenteditable 의 ProseMirror plugin 으로
+  // 직접 흘러가 ProseMirror state 의 selection 으로 잡힌다.
+  // browser-level Selection / blur / focus 다툼을 회피.
   const proseMirror = page.locator(".ProseMirror");
-  const firstP = proseMirror.locator("p").first();
+  await proseMirror.click({ position: { x: 50, y: 20 } });
 
-  // 첫 단어 "The" 위치를 더블클릭으로 선택
-  await firstP.dblclick({ position: { x: 10, y: 10 } });
+  // OS 별 modifier 분기 — macOS 는 Meta, 그 외는 Control
+  const isMac = process.platform === "darwin";
+  const homeShortcut = isMac ? "Meta+ArrowUp" : "Control+Home";
 
-  // selection 이 실제로 만들어졌는지 확인 (ProseMirror state 기준).
-  // 더블클릭이 selection 을 만들지 못한 경우 Range API 로 fallback.
-  const hasSelection = await page.evaluate(() => {
-    const sel = window.getSelection();
-    return sel !== null && sel.toString().trim().length > 0;
-  });
-
-  if (!hasSelection) {
-    // Fallback: Range API 로 첫 텍스트 노드의 0~3 문자 ("The") 선택
-    await page.evaluate(() => {
-      const editor = document.querySelector(".ProseMirror");
-      if (!editor) return;
-      const textNode = editor.querySelector("p")?.firstChild;
-      if (!textNode || textNode.nodeType !== Node.TEXT_NODE) return;
-      const range = document.createRange();
-      range.setStart(textNode, 0);
-      range.setEnd(textNode, 3);
-      const sel = window.getSelection();
-      sel?.removeAllRanges();
-      sel?.addRange(range);
-      // ProseMirror 에 selection 변경을 알리기 위해 selectionchange 이벤트 dispatch
-      editor.dispatchEvent(new Event("mouseup", { bubbles: true }));
-    });
+  // 문서 시작으로 이동 후 첫 3글자 ("The") 선택
+  await page.keyboard.press(homeShortcut);
+  for (let i = 0; i < 3; i++) {
+    await page.keyboard.press("Shift+ArrowRight");
   }
 
-  // ProseMirror 가 selection 을 인식할 때까지 대기 (최대 3s)
+  // selection 이 ProseMirror state 에 잡혔는지 확인 (browser Selection API 기준)
   await page.waitForFunction(
     () => {
       const sel = window.getSelection();
@@ -72,31 +57,15 @@ test("passage 로드 → 형광펜 적용 → 저장 → HWPX 다운로드", asy
     { timeout: 3_000 }
   );
 
-  // ── 4. 형광펜 버튼 클릭 — selection 보존을 위해 mousedown 인터셉트 ────
-  //
-  // ProseMirror 는 blur 시 selection 을 잃는다. AnnotationButton 의 onClick 은
-  // focus 를 돌려주지만, 버튼 클릭 직전 blur 가 발생하면 selection 이 사라질 수 있음.
-  // 실제 EditorPoc 의 handleHighlight 는 trimSelection() 으로 selection 유효성 체크 →
-  // selection 이 없으면 mark 를 적용하지 않음. 따라서 버튼에 mousedown 이 발생하기
-  // 전 ProseMirror 가 selection 을 기억하고 있어야 한다.
-  //
-  // Playwright 의 .click() 은 mousedown → mouseup → click 순서로 실행하며,
-  // .getByRole('button', { name }) 은 aria 기반으로 정확하게 매칭된다.
+  // ── 4. 형광펜 버튼 클릭 ─────────────────────────────────────────────────
   const highlightBtn = page.getByRole("button", { name: "형광펜" });
   await highlightBtn.click();
 
-  // mark 가 적용되면 에디터 안에 highlight 스타일 span 이 생겨야 한다.
-  // (HighlightMark 는 background-color 인라인 스타일로 렌더)
-  // selection 이 보존되지 않은 경우 mark 가 없을 수 있어 optional 검증으로 처리.
-  // 핵심 regression 방지는 저장 / HWPX 다운로드 단계에서 이루어짐.
+  // mark 가 적용되어야 한다 — silent fail 금지. 회귀 방지의 핵심 검증.
+  // HighlightMark 는 @tiptap/extension-highlight 기반으로 <mark style="..."> 로 렌더.
+  // (renderHTML: ['mark', HTMLAttributes, 0] — tiptap extension-highlight v2 확인됨)
   const highlightSpan = proseMirror.locator("mark[style]");
-  const highlightCount = await highlightSpan.count();
-  // highlight 가 실제 적용됐으면 count > 0. 선택이 유실된 경우 0 일 수 있음.
-  // 0 이더라도 저장/다운로드 흐름 자체는 계속 진행.
-  // eslint-disable-next-line no-console
-  if (highlightCount === 0) {
-    console.warn("[e2e] 형광펜 mark 미적용 — selection 유실 가능성. 저장 흐름은 계속.");
-  }
+  await expect(highlightSpan).toHaveCount(1, { timeout: 3_000 });
 
   // ── 5. 저장 버튼 클릭 → 토스트 확인 ──────────────────────────────────
   const saveBtn = page.getByRole("button", { name: "저장" });
