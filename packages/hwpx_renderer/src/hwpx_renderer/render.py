@@ -45,12 +45,13 @@ inline_note 결정 (P1-7 §6 미해결 #2):
 
 charPr id 배치 (header.xml 안):
     id 0       : 본문 body (plain 10pt)
-    id 1       : 라벨 (7pt bold) — top/bottom label, P1-8b 에서 사용
-    id 2       : underline BOTTOM 흑색
+    id 1       : top_label (7pt bold + BOTTOM underline 표식 — 글자 아래 줄)
+    id 2       : underline annotation BOTTOM 흑색
     id 3       : inline_note (7pt, 회색)
     id 4 ~ 15  : highlight color_index 1~12
+    id 16      : bottom_label (7pt bold + TOP underline 표식 — 글자 위 줄)
 
-    itemCnt = 16, max id = 15 → 0~15 연속 배치.
+    itemCnt = 17, max id = 16 → 0~16 연속 배치.
     한컴 HWPX 스펙: itemCnt 는 실제 항목 수여야 하며, id 는 0 부터 (itemCnt-1) 까지
     연속이어야 한다. 비연속 id (예: 0,1,10,30,50) + itemCnt=16 조합은 한컴 파서가
     OOB(Out-of-Bounds) 로 처리해 파일 손상 팝업을 발생시킨다.
@@ -82,10 +83,14 @@ logger = logging.getLogger(__name__)
 # charPr id 상수 — 0부터 연속 배치 (itemCnt = max_id + 1 필수)
 # 한컴 스펙: id 가 비연속이면 파서가 OOB 처리 → 파일 손상 거부.
 _CHARPR_BODY = 0  # 본문 plain 10pt
-_CHARPR_LABEL_BASE = 1  # 라벨 7pt bold (P1-8b 예약)
-_CHARPR_UNDERLINE = 2  # underline BOTTOM 흑색
+_CHARPR_LABEL_TOP = 1  # top_label 7pt bold + BOTTOM underline (라벨 표식, 본문 쪽으로)
+_CHARPR_UNDERLINE = 2  # underline annotation BOTTOM 흑색
 _CHARPR_INLINE_NOTE = 3  # inline_note 7pt 회색
 _CHARPR_HIGHLIGHT_BASE = 4  # color_index 1 → id 4, ..., color_index 12 → id 15
+_CHARPR_LABEL_BOTTOM = 16  # bottom_label 7pt bold (TOP underline 시도; 한컴 인정 의존)
+
+# 호환 별칭 (기존 코드/테스트 대응) — top_label charPr 와 동일.
+_CHARPR_LABEL_BASE = _CHARPR_LABEL_TOP
 
 
 def _highlight_charpr_id(color_index: int) -> int:
@@ -171,6 +176,20 @@ def _build_header_xml() -> str:
         cid = _highlight_charpr_id(idx)
         color = HIGHLIGHT_PALETTE[idx]
         charpr_list.append(charpr_xml(cid, shade_color=color))
+
+    # id 16: bottom_label 7pt bold + TOP underline (글자 위쪽 줄 — 본문 쪽으로 표식)
+    # 한컴 HWPX 스펙상 type="TOP" 인정 여부는 PM 검수 의존.
+    # 인정되지 않으면 줄이 안 그어지거나 다른 위치에 그어질 수 있음 — 그 경우 fallback
+    # 으로 다른 표현 (예: borderFill 도형) 으로 전환.
+    charpr_list.append(
+        charpr_xml(
+            _CHARPR_LABEL_BOTTOM,
+            height=700,
+            bold=True,
+            underline_type="TOP",
+            underline_color=UNDERLINE_DEFAULT_COLOR,
+        )
+    )
 
     total_charpr = len(charpr_list)
     charpr_block = (
@@ -355,6 +374,7 @@ def _bracket_runs_at_position(
 def _build_label_runs_xml(
     annotations: list[SyntaxAnnotation],
     body_text: str,
+    label_char_pr_id: int,
 ) -> str | None:
     """라벨 annotation 목록을 라벨 단락 안의 ``<hp:run>`` 들로 조립.
 
@@ -362,8 +382,10 @@ def _build_label_runs_xml(
         - leading whitespace: ``charPrIDRef=_CHARPR_BODY`` (id=0, 본문 plain 10pt)
           → 단어 사이 폭이 본문과 동일해 정렬 안정. underline 없음 → 빈 공간에 줄
             그어지지 않음.
-        - 라벨 글자: ``charPrIDRef=_CHARPR_LABEL_BASE`` (id=1, 7pt bold + BOTTOM
-          underline) → 라벨 표식 underline 이 글자 밑에만 그어짐.
+        - 라벨 글자: ``label_char_pr_id`` 가 가리키는 charPr.
+          top_label → ``_CHARPR_LABEL_TOP`` (BOTTOM underline, 본문 쪽 줄)
+          bottom_label → ``_CHARPR_LABEL_BOTTOM`` (TOP underline, 본문 쪽 줄)
+          어느 쪽이든 줄이 본문을 향해 그어져 어떤 단어를 가리키는지 시각 표시.
 
     각 라벨 anchor (``span.start``) 위치까지 본문 prefix 글자 수에 비례한 공백을
     채워 본문 단어 위/아래에 근사 정렬한다 (`_font_metrics.label_leading_spaces`).
@@ -403,7 +425,7 @@ def _build_label_runs_xml(
             used_columns += pad
 
         text = ann.text or ""
-        runs.append(f'<hp:run charPrIDRef="{_CHARPR_LABEL_BASE}"><hp:t>{xe(text)}</hp:t></hp:run>')
+        runs.append(f'<hp:run charPrIDRef="{label_char_pr_id}"><hp:t>{xe(text)}</hp:t></hp:run>')
         # 라벨 글자가 차지한 컬럼 누적 (글자 수 근사 — 정확한 폭은 라벨 폰트 metric
         # 으로 측정 가능하지만 baseline 은 글자 수로 충분).
         used_columns += len(text)
@@ -528,8 +550,8 @@ def _build_section_xml(
         'pageBreak="0" columnBreak="0" merged="0">' + secpr_run_xml() + "</hp:p>"
     )
 
-    # 단락 1: top_label (있을 때만)
-    top_label_runs = _build_label_runs_xml(top_label_anns, body_text)
+    # 단락 1: top_label (있을 때만) — BOTTOM underline 표식 (글자 밑 = 본문 쪽)
+    top_label_runs = _build_label_runs_xml(top_label_anns, body_text, _CHARPR_LABEL_TOP)
     top_label_para = label_para_xml(top_label_runs) if top_label_runs else ""
 
     # 단락 2: 본문
@@ -538,8 +560,8 @@ def _build_section_xml(
         'pageBreak="0" columnBreak="0" merged="0">' + body_runs_xml + "</hp:p>"
     )
 
-    # 단락 3: bottom_label (있을 때만)
-    bottom_label_runs = _build_label_runs_xml(bottom_label_anns, body_text)
+    # 단락 3: bottom_label (있을 때만) — TOP underline 표식 (글자 위 = 본문 쪽)
+    bottom_label_runs = _build_label_runs_xml(bottom_label_anns, body_text, _CHARPR_LABEL_BOTTOM)
     bottom_label_para = label_para_xml(bottom_label_runs) if bottom_label_runs else ""
 
     return (

@@ -162,20 +162,51 @@ def test_top_label_para_uses_label_style(section0_xml: str) -> None:
     assert 'styleIDRef="1"' in section0_xml
 
 
-def test_label_charpr_has_bottom_underline(hwpx_zip: zipfile.ZipFile) -> None:
-    """라벨 charPr (id=1) 에 BOTTOM underline 이 정의되어야 한다 (라벨 표식).
+def test_top_label_charpr_has_bottom_underline(hwpx_zip: zipfile.ZipFile) -> None:
+    """top_label charPr (id=1) 에 BOTTOM underline 이 정의되어야 한다.
 
-    PM 의도 = 라벨 글자 밑에 짧은 밑줄로 어떤 annotation 인지 표시 (border line 역할).
-    fix A-1: 헤더 charPr id=1 에 underline_type="BOTTOM" 활성화.
+    top_label 은 본문 위 단락이라 글자 *아래*에 줄 → 본문 쪽으로 표식.
     """
     header = hwpx_zip.read("Contents/header.xml").decode("utf-8")
-    # charPr id="1" 블록 안에 underline type="BOTTOM" 이 있어야 함
     m = re.search(r'<hh:charPr id="1"[^>]*>.*?</hh:charPr>', header, re.DOTALL)
-    assert m, "라벨 charPr id=1 블록을 찾을 수 없음"
-    label_block = m.group(0)
-    assert 'type="BOTTOM"' in label_block, (
-        "라벨 charPr 에 BOTTOM underline 이 없음 — 라벨 표식이 사라짐 (fix A-1 회귀)"
+    assert m, "top_label charPr id=1 블록을 찾을 수 없음"
+    block = m.group(0)
+    assert 'type="BOTTOM"' in block, "top_label charPr 에 BOTTOM underline 이 없음 — 라벨 표식 회귀"
+
+
+def test_bottom_label_charpr_has_top_underline(hwpx_zip: zipfile.ZipFile) -> None:
+    """bottom_label charPr (id=16) 에 TOP underline 이 정의되어야 한다.
+
+    bottom_label 은 본문 아래 단락이라 글자 *위*에 줄 → 본문 쪽으로 표식.
+    한컴 HWPX 가 type="TOP" 을 인정하는지는 PM 검수 의존.
+    """
+    header = hwpx_zip.read("Contents/header.xml").decode("utf-8")
+    m = re.search(r'<hh:charPr id="16"[^>]*>.*?</hh:charPr>', header, re.DOTALL)
+    assert m, "bottom_label charPr id=16 블록을 찾을 수 없음"
+    block = m.group(0)
+    assert 'type="TOP"' in block, (
+        "bottom_label charPr 에 TOP underline 이 없음 — 라벨 표식 위치 회귀"
     )
+
+
+def test_bottom_label_run_uses_label_bottom_charpr(section0_xml: str) -> None:
+    """bottom_label 단락의 라벨 글자 run 이 charPrIDRef=16 을 참조해야 한다."""
+    # bottom_label 단락 = 마지막 라벨 단락 (paraPrIDRef="1")
+    label_paras = re.findall(
+        r'<hp:p[^>]*paraPrIDRef="1"[^>]*>(.*?)</hp:p>', section0_xml, re.DOTALL
+    )
+    assert len(label_paras) >= 2, "top + bottom 라벨 단락 2개가 있어야 함"
+    bottom_para = label_paras[-1]
+    # 라벨 글자 run 들 (whitespace 가 아닌 실 라벨 텍스트)
+    label_runs = re.findall(
+        r'<hp:run\s+charPrIDRef="(\d+)"[^>]*><hp:t>([^<\s]+[^<]*)</hp:t></hp:run>',
+        bottom_para,
+    )
+    assert label_runs, "bottom_label 단락에 라벨 글자 run 이 없음"
+    for cid, _txt in label_runs:
+        assert cid == "16", (
+            f"bottom_label 라벨 글자 charPrIDRef={cid} — 16 (TOP underline) 이어야 함"
+        )
 
 
 def test_label_run_does_not_use_underline_charpr(section0_xml: str) -> None:
@@ -195,13 +226,17 @@ def test_label_run_does_not_use_underline_charpr(section0_xml: str) -> None:
     for para in label_paras:
         run_refs = re.findall(r'<hp:run\s+charPrIDRef="(\d+)"', para)
         assert "2" not in run_refs, (
-            "라벨 단락의 run 에 charPrIDRef=2 (underline charPr) 가 있음 — "
-            "라벨에 underline BOTTOM 이 그어지는 회귀 (P1-8b fix 1)."
+            "라벨 단락의 run 에 charPrIDRef=2 (underline annotation charPr) 가 있음 — "
+            "라벨에 BOTTOM 밑줄이 그어지는 회귀 (P1-8b fix 1)."
         )
-        # 모든 run 이 BODY(0) 또는 LABEL(1) 이어야 함
+        # 라벨 단락 허용 charPr:
+        #   0  = body (leading whitespace)
+        #   1  = label_top (BOTTOM underline 표식)
+        #   16 = label_bottom (TOP underline 표식)
         for ref in run_refs:
-            assert ref in ("0", "1"), (
-                f"라벨 단락 예상 외 charPrIDRef={ref} — 0(leading) 또는 1(라벨) 이어야 함"
+            assert ref in ("0", "1", "16"), (
+                f"라벨 단락 예상 외 charPrIDRef={ref} — "
+                "0(leading) / 1(top_label) / 16(bottom_label) 이어야 함"
             )
 
 
