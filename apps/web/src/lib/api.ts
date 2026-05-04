@@ -74,7 +74,8 @@ async function checkOk(response: Response): Promise<void> {
 export async function getPassage(id: string): Promise<Passage> {
   const response = await fetch(`${API_BASE_URL}/passages/${id}`);
   await checkOk(response);
-  return (await response.json()) as Passage;
+  const body = (await response.json()) as { passage: Passage };
+  return body.passage;
 }
 
 /**
