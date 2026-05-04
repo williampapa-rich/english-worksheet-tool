@@ -5,6 +5,10 @@ description = "HWPX 출력 패키지 — hwpx-auto-parser-for-template 재활용
 requires-python = ">=3.12"
 dependencies = [
   "shared",
+  # 폰트 metric 측정 (라벨 수평 align 보정용 — P1-8b fix 2).
+  # CLAUDE.md §3.6 No Reinventing the Wheel: pillow 는 폰트 metric 측정의 사실상 표준 (검증된 라이브러리).
+  # 직접 TrueType 파서 작성 회피. 사용 범위는 ImageFont.getlength() 1개 — 의존성 비대화 risk 낮음.
+  "pillow>=10.0",
 ]
 
 [tool.uv.sources]

@@ -162,9 +162,40 @@ def test_top_label_para_uses_label_style(section0_xml: str) -> None:
     assert 'styleIDRef="1"' in section0_xml
 
 
+def test_label_run_uses_label_charpr_not_underline(section0_xml: str) -> None:
+    """라벨 단락의 run 은 charPrIDRef=1 (라벨 charPr) 이어야 한다.
+
+    회귀 방지: 이전 버그 — label_para_xml 헬퍼가 PoC 시절 매핑 (charPrIDRef=2) 을
+    하드코딩해 라벨이 underline charPr 를 잘못 참조 → 라벨에 BOTTOM 밑줄이 그어졌음.
+    한컴 검증에서 'S V' / '동격' 양쪽 모두 밑줄로 보임. 본 테스트는 그 회귀를 차단.
+    """
+    # 라벨 단락 (paraPrIDRef="1") 안의 run charPrIDRef 추출
+    label_paras = re.findall(
+        r'<hp:p[^>]*paraPrIDRef="1"[^>]*>(.*?)</hp:p>', section0_xml, re.DOTALL
+    )
+    assert label_paras, "라벨 단락을 찾을 수 없음"
+    for para in label_paras:
+        run_refs = re.findall(r'<hp:run\s+charPrIDRef="(\d+)"', para)
+        for ref in run_refs:
+            assert ref == "1", (
+                f"라벨 단락의 run charPrIDRef={ref} — 1 (라벨 charPr) 이어야 함. "
+                "id=2 는 underline charPr 로 라벨에 밑줄을 그음 (P1-8b fix 1 회귀)."
+            )
+
+
 def test_top_label_text_in_section(section0_xml: str) -> None:
-    """top_label 'S' 와 'V' 가 한 단락 안에 공백으로 join 되어야 한다."""
-    assert "S V" in section0_xml
+    """top_label 'S' 와 'V' 가 한 라벨 단락 안에 모두 존재해야 한다.
+
+    P1-8b fix 2 이후: 라벨 사이 공백은 폰트 metric 으로 가변 — 'S' 와 'V' 사이에
+    여러 공백이 들어간다 (각 라벨이 자기 anchor 단어 위에 정렬되도록).
+    """
+    # top_label 단락의 hp:t 내부에 두 라벨이 모두 있어야 함
+    label_match = re.search(r'paraPrIDRef="1"[^>]*>.*?<hp:t>([^<]*)</hp:t>', section0_xml)
+    assert label_match, "top_label 단락을 찾을 수 없음"
+    label_text = label_match.group(1)
+    assert "S" in label_text and "V" in label_text
+    # S 가 V 보다 먼저 (anchor 위치순 정렬)
+    assert label_text.index("S") < label_text.index("V")
 
 
 def test_bottom_label_text_in_section(section0_xml: str) -> None:
@@ -174,10 +205,12 @@ def test_bottom_label_text_in_section(section0_xml: str) -> None:
 
 def test_label_paragraph_order(section0_xml: str) -> None:
     """단락 순서: secPr → top_label → 본문 → bottom_label."""
-    s_idx = section0_xml.index(">S V<")
-    body_idx = section0_xml.index("The quick")
+    # top_label 'S' 위치 (라벨 단락 안의 첫 등장)
+    s_idx = section0_xml.index(">S<") if ">S<" in section0_xml else section0_xml.index("S")
+    # 첫 'S' 가 본문 'quick' 보다 앞에 있어야 (실제로 본문 안엔 S 가 없으므로 안전)
+    quick_idx = section0_xml.index("quick")
     bottom_idx = section0_xml.index("동격")
-    assert s_idx < body_idx < bottom_idx
+    assert s_idx < quick_idx < bottom_idx
 
 
 # ── 3. bracket Unicode 삽입 검증 ─────────────────────────────────────────────

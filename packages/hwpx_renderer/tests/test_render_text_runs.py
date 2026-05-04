@@ -257,6 +257,21 @@ def test_header_has_two_parapr(header_xml: str) -> None:
     assert 'hh:paraPr id="1"' in header_xml
 
 
+def test_body_paragraph_align_is_left(header_xml: str) -> None:
+    """본문 paraPr 0 의 align 이 LEFT 여야 한다 (P1-8b fix 2 회귀 방지).
+
+    JUSTIFY 는 단어 사이 간격이 가변이라 라벨을 본문 단어 위에 폰트 metric 으로
+    정렬하는 것이 불가능. LEFT 로 고정하지 않으면 라벨 align 이 깨진다.
+    """
+    # paraPr id="0" 블록 안에 horizontal="LEFT" 가 있어야 함
+    m = re.search(r'<hh:paraPr id="0"[^>]*>(.*?)</hh:paraPr>', header_xml, re.DOTALL)
+    assert m, "paraPr id=0 블록을 찾을 수 없음"
+    body_para = m.group(1)
+    assert 'horizontal="LEFT"' in body_para, (
+        "본문 paraPr align 이 LEFT 가 아님 — 라벨 정렬을 위해 JUSTIFY 가 아닌 LEFT 여야 함"
+    )
+
+
 # ── 3. section0.xml 본문 분할 검증 ───────────────────────────────────────────
 
 
