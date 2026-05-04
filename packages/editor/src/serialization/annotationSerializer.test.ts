@@ -382,8 +382,8 @@ describe("annotationsToMarks", () => {
 
     expect(marks).toHaveLength(1);
     const m: MarkAttrs = first(marks);
-    // charOffset 4 → pmPos charOffsetToPmPos(4) = 6
-    // charOffset 11 → pmPos charOffsetToPmPos(11) = 13
+    // charOffset 4 → pmPos charOffsetToPmPos(4) = 5  (P1-10a fix: +1 not +2)
+    // charOffset 11 → pmPos charOffsetToPmPos(11) = 12
     expect(m.from).toBe(charOffsetToPmPos(4));
     expect(m.to).toBe(charOffsetToPmPos(11));
     expect(m.kind).toBe(ANNOTATION_KIND.HIGHLIGHT);
@@ -506,10 +506,11 @@ describe("annotationId — docToAnnotations + annotationsToMarks", () => {
 // ---------------------------------------------------------------------------
 
 describe("charOffsetToPmPos / pmPosToCharOffset", () => {
-  it("charOffsetToPmPos 는 charOffset 에 2 를 더한 값을 반환한다", () => {
-    expect(charOffsetToPmPos(0)).toBe(2);
-    expect(charOffsetToPmPos(4)).toBe(6);
-    expect(charOffsetToPmPos(11)).toBe(13);
+  // P1-10a fix: +2 → +1 (ProseMirror 단락 내부 첫 위치 = pos 1, not pos 2)
+  it("charOffsetToPmPos 는 charOffset 에 1 을 더한 값을 반환한다", () => {
+    expect(charOffsetToPmPos(0)).toBe(1);
+    expect(charOffsetToPmPos(4)).toBe(5);
+    expect(charOffsetToPmPos(11)).toBe(12);
   });
 
   it("pmPosToCharOffset 는 charOffsetToPmPos 의 역함수다", () => {
@@ -518,26 +519,35 @@ describe("charOffsetToPmPos / pmPosToCharOffset", () => {
     }
   });
 
-  // 신규 8건 — 다중 단락 변환
+  // 다중 단락 변환
+  // ProseMirror position 구조 (doc = [para("Hello"), para("World")]):
+  //   pos 0: para[0] 앞 (doc 내부)
+  //   pos 1: para[0] 내부 시작, 'H' 앞   ← para open token
+  //   pos 2~5: 'e','l','l','o' 사이
+  //   pos 6: 'o' 뒤 (para[0] 내부 끝)
+  //   pos 7: para[0] 와 para[1] 사이     ← para[0] close token
+  //   pos 8: para[1] 내부 시작, 'W' 앞   ← para[1] open token
+  //   ...
+  // charOffset=0 → pmPos=1, charOffset=6 → pmPos=8
 
-  // 신규 1: 단일 단락 charOffsetToPmPos +2 회귀 (paragraphLengths 1개)
-  it("[다중단락] paragraphLengths 가 1개이면 단일 단락 로직 (+2) 과 동일하다", () => {
+  // 신규 1: 단일 단락 charOffsetToPmPos +1 회귀 (paragraphLengths 1개)
+  it("[다중단락] paragraphLengths 가 1개이면 단일 단락 로직 (+1) 과 동일하다", () => {
     // 단락 1개: "Hello" (5자)
     const lens = [5];
-    expect(charOffsetToPmPos(0, lens)).toBe(2);
-    expect(charOffsetToPmPos(3, lens)).toBe(5);
-    expect(charOffsetToPmPos(5, lens)).toBe(7);
+    expect(charOffsetToPmPos(0, lens)).toBe(1);
+    expect(charOffsetToPmPos(3, lens)).toBe(4);
+    expect(charOffsetToPmPos(5, lens)).toBe(6);
   });
 
   // 신규 2: 다중 단락 — 첫 단락 안 charOffsetToPmPos 정확
   it("[다중단락] 첫 단락 안 charOffset 을 pmPos 로 정확히 변환한다", () => {
     // 단락0: "Hello" (5자), 단락1: "World" (5자)
     // body_text = "Hello\nWorld"
-    // 단락0 첫 글자 charOffset=0 → pmPos=2, 끝 charOffset=5 → pmPos=7
+    // 단락0 첫 글자 charOffset=0 → pmPos=1, 끝 charOffset=5 → pmPos=6
     const lens = [5, 5];
-    expect(charOffsetToPmPos(0, lens)).toBe(2); // 첫 글자
-    expect(charOffsetToPmPos(4, lens)).toBe(6); // 'o' (index 4)
-    expect(charOffsetToPmPos(5, lens)).toBe(7); // 단락 끝 위치 (len 포함)
+    expect(charOffsetToPmPos(0, lens)).toBe(1); // 첫 글자 앞
+    expect(charOffsetToPmPos(4, lens)).toBe(5); // 'o' 앞 (charOffset=4)
+    expect(charOffsetToPmPos(5, lens)).toBe(6); // 단락0 끝 (exclusive to)
   });
 
   // 신규 3: 다중 단락 — 두 번째 단락 안 charOffsetToPmPos 정확
@@ -545,29 +555,29 @@ describe("charOffsetToPmPos / pmPosToCharOffset", () => {
     // 단락0: "Hello" (5자), 단락1: "World" (5자)
     // body_text = "Hello\nWorld"
     // 단락1 첫 글자 charOffset = 5+1 = 6
-    // pmPos 공식: 2 + 5 + 2*1 + 0 = 9
+    // pmPos 공식: 1 + 5 + 2*1 + 0 = 8
     const lens = [5, 5];
-    expect(charOffsetToPmPos(6, lens)).toBe(9); // 두 번째 단락 첫 글자
-    expect(charOffsetToPmPos(10, lens)).toBe(13); // 두 번째 단락 끝 (6+4)
-    expect(charOffsetToPmPos(11, lens)).toBe(14); // 두 번째 단락 끝+1 (마지막 pmPos)
+    expect(charOffsetToPmPos(6, lens)).toBe(8); // 두 번째 단락 첫 글자 앞
+    expect(charOffsetToPmPos(10, lens)).toBe(12); // 두 번째 단락 끝 (charOffset=6+4)
+    expect(charOffsetToPmPos(11, lens)).toBe(13); // 두 번째 단락 끝+1 (마지막 exclusive pmPos)
   });
 
   // 신규 4: 다중 단락 pmPosToCharOffset — 첫 단락 정확
   it("[다중단락] 첫 단락 pmPos 를 charOffset 으로 정확히 변환한다", () => {
     // 단락0: "Hello" (5자), 단락1: "World" (5자)
     const lens = [5, 5];
-    expect(pmPosToCharOffset(2, lens)).toBe(0); // 첫 글자
-    expect(pmPosToCharOffset(6, lens)).toBe(4); // index 4
-    expect(pmPosToCharOffset(7, lens)).toBe(5); // 단락0 끝
+    expect(pmPosToCharOffset(1, lens)).toBe(0); // 첫 글자 앞
+    expect(pmPosToCharOffset(5, lens)).toBe(4); // charOffset 4 ('o' 앞)
+    expect(pmPosToCharOffset(6, lens)).toBe(5); // 단락0 끝
   });
 
   // 신규 5: 다중 단락 pmPosToCharOffset — 두 번째 단락 정확
   it("[다중단락] 두 번째 단락 pmPos 를 charOffset 으로 정확히 변환한다", () => {
     // 단락0: "Hello" (5자), 단락1: "World" (5자)
-    // 단락1 첫 글자 pmPos = 2 + 5 + 2 = 9
+    // 단락1 첫 글자 pmPos = 1 + 5 + 2 = 8
     const lens = [5, 5];
-    expect(pmPosToCharOffset(9, lens)).toBe(6); // 두 번째 단락 첫 글자 charOffset
-    expect(pmPosToCharOffset(13, lens)).toBe(10); // 마지막 글자 charOffset
+    expect(pmPosToCharOffset(8, lens)).toBe(6); // 두 번째 단락 첫 글자 charOffset
+    expect(pmPosToCharOffset(12, lens)).toBe(10); // 마지막 글자 charOffset (charOffset=10)
   });
 
   // 신규 6: round-trip charOffset → pmPos → charOffset (다중 단락)
@@ -626,8 +636,11 @@ describe("다중 단락 — collectMarksFromDoc + annotationsToMarks", () => {
     // 단락0: "Hello world" (11자), 단락1: "Scientists have" (15자)
     // "have" charStart=23, charEnd=27
     // paragraphLengths = [11, 15]
-    // pmPos(23) = 2 + 11 + 2*1 + (23-12) = 2 + 11 + 2 + 11 = 26
-    // pmPos(27) = 2 + 11 + 2*1 + (27-12) = 2 + 11 + 2 + 15 = 30
+    // 단락1 내부 시작 pmPos = 1 + 11 + 2*1 = 14 (charOffset=12 → pmPos=14)
+    // charOffset=23: localOffset = 23 - 12 = 11
+    //   pmPos(23) = 1 + 11 + 2*1 + 11 = 25
+    // charOffset=27: localOffset = 27 - 12 = 15
+    //   pmPos(27) = 1 + 11 + 2*1 + 15 = 29
     const paragraphLengths = [11, 15];
     const annotations: import("./annotationSerializer").SerializedAnnotation[] = [
       {
@@ -639,7 +652,146 @@ describe("다중 단락 — collectMarksFromDoc + annotationsToMarks", () => {
     const marks = annotationsToMarks(annotations, paragraphLengths);
     expect(marks).toHaveLength(1);
     const m = first(marks);
-    expect(m.from).toBe(26);
-    expect(m.to).toBe(30);
+    expect(m.from).toBe(25);
+    expect(m.to).toBe(29);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// P1-10a: 첫 글자 짤림 버그 fix 검증 — round-trip 시나리오
+// ---------------------------------------------------------------------------
+
+describe("P1-10a: 첫 글자 짤림 버그 — 저장→로드 round-trip", () => {
+  /**
+   * 재현 시나리오: 본문 첫 단어에 bottom_label 적용 → 저장 → 로드 → 동일 범위 복원.
+   * 이전 +2 구현에서는 charOffset=0 → pmPos=2 로 'T' 앞이 아닌 'T' 뒤에서 시작해
+   * "The" → "he" (첫 글자 짤림) 버그가 발생했다.
+   * 수정 후: charOffset=0 → pmPos=1 ('T' 앞 위치) — 정확한 range 복원.
+   */
+  it("본문 첫 단어 mark 의 round-trip — charOffset=0 이 pmPos=1 로 정확히 복원된다", () => {
+    // doc: 단일 단락 "The student"
+    // "The" (3자) 에 bottom_label mark
+    const doc = makeDoc([
+      {
+        segments: [
+          {
+            text: "The",
+            marks: [{ type: "bottomLabel", attrs: { text: "S", annotationId: "id-1" } }],
+          },
+          { text: " student" },
+        ],
+      },
+    ]);
+
+    const annotations = docToAnnotations(doc);
+    expect(annotations).toHaveLength(1);
+    const ann = first(annotations);
+    expect(ann.span.start).toBe(0); // "The" charStart = 0
+    expect(ann.span.end).toBe(3); // "The" charEnd = 3
+
+    const marks = annotationsToMarks(annotations);
+    const m = first(marks);
+    // P1-10a fix: charOffset=0 → pmPos=1 (첫 글자 앞, 짤림 없음)
+    expect(m.from).toBe(1);
+    expect(m.to).toBe(4); // charOffset=3 → pmPos=4 (3+1)
+    expect(m.markName).toBe("bottomLabel");
+    expect(m.attrs.text).toBe("S");
+  });
+
+  it("다중 단락 첫 단어 round-trip — 두 번째 단락 첫 글자 pmPos 가 정확하다", () => {
+    // 단락0: "Hello world" (11자)
+    // 단락1: "Scientists discovered" — 첫 단어 "Scientists" (10자) 에 top_label
+    const doc = makeDoc([
+      {
+        segments: [{ text: "Hello world" }],
+      },
+      {
+        segments: [
+          {
+            text: "Scientists",
+            marks: [{ type: "topLabel", attrs: { text: "S", annotationId: "id-2" } }],
+          },
+          { text: " discovered" },
+        ],
+      },
+    ]);
+
+    const annotations = docToAnnotations(doc);
+    expect(annotations).toHaveLength(1);
+    const ann = first(annotations);
+    // 단락0 = 11자, \n = 1자 → 단락1 시작 charOffset=12
+    // "Scientists" charStart=12, charEnd=22
+    expect(ann.span.start).toBe(12);
+    expect(ann.span.end).toBe(22);
+
+    const paragraphLengths = [11, 20]; // "Hello world"=11, "Scientists discovered"=20
+    const marks = annotationsToMarks(annotations, paragraphLengths);
+    const m = first(marks);
+    // 단락1 내부 시작 pmPos = 1 + 11 + 2*1 = 14 (charOffset=12 → localOffset=0)
+    expect(m.from).toBe(14); // 단락1 첫 글자 앞
+    expect(m.to).toBe(24); // charOffset=22, localOffset=10 → 1+11+2+10=24
+  });
+
+  it("본문 끝 단어 round-trip — 단락 끝 경계 pmPos 가 정확하다", () => {
+    // "Hello world" 에서 "world" (5자, charOffset=6..11) 에 highlight
+    const doc = makeDoc([
+      {
+        segments: [
+          { text: "Hello " },
+          {
+            text: "world",
+            marks: [{ type: "highlight", attrs: { color: "#ff0", annotationId: "id-3" } }],
+          },
+        ],
+      },
+    ]);
+
+    const annotations = docToAnnotations(doc);
+    const ann = first(annotations);
+    expect(ann.span.start).toBe(6);
+    expect(ann.span.end).toBe(11);
+
+    const marks = annotationsToMarks(annotations);
+    const m = first(marks);
+    // charOffset=6 → pmPos=7, charOffset=11 → pmPos=12
+    expect(m.from).toBe(7);
+    expect(m.to).toBe(12);
+  });
+
+  it("7종 kind 모두 charOffset=0 에서 pmPos=1 round-trip 통과", () => {
+    const kinds = [
+      { type: "highlight", attrs: { color: "#fef08a", annotationId: "id-hl" } },
+      { type: "underline", attrs: { annotationId: "id-ul" } },
+      { type: "topLabel", attrs: { text: "S", annotationId: "id-tl" } },
+      { type: "bottomLabel", attrs: { text: "V", annotationId: "id-bl" } },
+      { type: "bracket", attrs: { bracketStyle: "()", annotationId: "id-br" } },
+      { type: "inlineNote", attrs: { text: "=foster", annotationId: "id-in" } },
+      // arrow 는 arrowTargetStart/End 필수라 별도 처리
+    ];
+
+    for (const mark of kinds) {
+      const doc = makeDoc([
+        {
+          segments: [
+            {
+              text: "William",
+              marks: [mark],
+            },
+            { text: " helped" },
+          ],
+        },
+      ]);
+
+      const annotations = docToAnnotations(doc);
+      // arrow drop 이 아닌 kind 는 1건 직렬화
+      if (annotations.length === 0) continue;
+      const ann = first(annotations);
+      expect(ann.span.start).toBe(0); // 첫 글자 charOffset=0
+
+      const annotationMarks = annotationsToMarks(annotations);
+      const m = first(annotationMarks);
+      // P1-10a fix: from=1 (pmPos=charOffset+1=1), not from=2
+      expect(m.from).toBe(1);
+    }
   });
 });

@@ -3,7 +3,7 @@
  *
  * 외부 라이브러리 없이 div + state 로 자작 (drafts 단계).
  * 괄호 옵션은 phrase / clause 진입 시에만 표시.
- * ⌜⌟ / <> 는 BracketStyle enum 미지원으로 비활성.
+ * P1-10c: ⌜⌟ / <> 활성화.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -20,7 +20,10 @@ type BracketOption = "()" | "{}" | "[]" | "⌜⌟" | "<>" | null;
 export interface LabelEntryModalProps {
   open: boolean;
   entryKind: LabelEntryModalKind;
-  onSubmit: (params: { text: string; bracketStyle: "()" | "{}" | "[]" | null }) => void;
+  onSubmit: (params: {
+    text: string;
+    bracketStyle: "()" | "{}" | "[]" | "⌜⌟" | "<>" | null;
+  }) => void;
   onClose: () => void;
 }
 
@@ -58,23 +61,14 @@ interface BracketOptionDef {
   tooltip?: string;
 }
 
+// P1-10c: ⌜⌟ / <> 활성화
 const BRACKET_OPTIONS: BracketOptionDef[] = [
   { value: null, label: "없음", disabled: false },
   { value: "[]", label: "[]", disabled: false },
   { value: "{}", label: "{}", disabled: false },
   { value: "()", label: "()", disabled: false },
-  {
-    value: "⌜⌟",
-    label: "⌜⌟",
-    disabled: true,
-    tooltip: "HWPX schema 미지원 — P1-8b 후 활성",
-  },
-  {
-    value: "<>",
-    label: "<>",
-    disabled: true,
-    tooltip: "HWPX schema 미지원 — P1-8b 후 활성",
-  },
+  { value: "⌜⌟", label: "⌜⌟", disabled: false },
+  { value: "<>", label: "<>", disabled: false },
 ];
 
 // ---------------------------------------------------------------------------
@@ -143,10 +137,11 @@ export function LabelEntryModal({ open, entryKind, onSubmit, onClose }: LabelEnt
       inputRef.current?.focus();
       return;
     }
-    // bracketOption 이 disabled 값이면 null 로 강제 (방어)
+    // bracketOption 이 유효한 값인지 방어 (P1-10c: ⌜⌟ / <> 포함)
+    const validBracketStyles = ["()", "{}", "[]", "⌜⌟", "<>"] as const;
     const safeBracket =
-      bracketOption === "()" || bracketOption === "{}" || bracketOption === "[]"
-        ? bracketOption
+      bracketOption !== null && (validBracketStyles as readonly string[]).includes(bracketOption)
+        ? (bracketOption as "()" | "{}" | "[]" | "⌜⌟" | "<>")
         : null;
     onSubmit({ text: resolved.trim(), bracketStyle: safeBracket });
     onClose();

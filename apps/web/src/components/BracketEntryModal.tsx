@@ -14,7 +14,7 @@ import "./LabelEntryModal.css";
 // 타입
 // ---------------------------------------------------------------------------
 
-export type BracketStyleOption = "()" | "{}" | "[]";
+export type BracketStyleOption = "()" | "{}" | "[]" | "⌜⌟" | "<>";
 
 export interface BracketEntryModalProps {
   open: boolean;
@@ -27,28 +27,19 @@ export interface BracketEntryModalProps {
 // ---------------------------------------------------------------------------
 
 interface BracketOptDef {
-  value: BracketStyleOption | "⌜⌟" | "<>";
+  value: BracketStyleOption;
   label: string;
   disabled: boolean;
   tooltip?: string;
 }
 
+// P1-10c: ⌜⌟ / <> 활성화 (schema + HWPX Unicode inline run 지원 확인 완료)
 const BRACKET_OPTS: BracketOptDef[] = [
   { value: "[]", label: "[]", disabled: false },
   { value: "{}", label: "{}", disabled: false },
   { value: "()", label: "()", disabled: false },
-  {
-    value: "⌜⌟",
-    label: "⌜⌟",
-    disabled: true,
-    tooltip: "HWPX schema 미지원 — P1-8b 후 활성",
-  },
-  {
-    value: "<>",
-    label: "<>",
-    disabled: true,
-    tooltip: "HWPX schema 미지원 — P1-8b 후 활성",
-  },
+  { value: "⌜⌟", label: "⌜⌟", disabled: false },
+  { value: "<>", label: "<>", disabled: false },
 ];
 
 // ---------------------------------------------------------------------------

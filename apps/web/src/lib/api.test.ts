@@ -87,8 +87,8 @@ describe("highlight round-trip", () => {
     expect(marks).toHaveLength(1);
     const m = marks[0];
     expect(m?.kind).toBe("highlight");
-    expect(m?.from).toBe(2); // charOffset 0 → pmPos 2
-    expect(m?.to).toBe(7); // charOffset 5 → pmPos 7
+    expect(m?.from).toBe(1); // charOffset 0 → pmPos 1 (P1-10a fix: +1 not +2)
+    expect(m?.to).toBe(6); // charOffset 5 → pmPos 6
     expect(m?.attrs.colorIndex).toBe(1);
     expect(m?.attrs.annotationId).toBe("hl-uuid-001");
   });
@@ -126,8 +126,8 @@ describe("underline round-trip", () => {
 
     const marks = annotationsToMarks(annotations);
     const m = marks[0];
-    expect(m?.from).toBe(5); // charOffset 3 → pmPos 5
-    expect(m?.to).toBe(8);
+    expect(m?.from).toBe(4); // charOffset 3 → pmPos 4 (P1-10a fix: +1 not +2)
+    expect(m?.to).toBe(7); // charOffset 6 → pmPos 7
   });
 });
 

@@ -510,7 +510,7 @@ export function EditorPoc() {
    * bracketStyle 이 있으면 동일 span 에 bracket mark 도 동시 적용.
    */
   const handleModalSubmit = useCallback(
-    (params: { text: string; bracketStyle: "()" | "{}" | "[]" | null }) => {
+    (params: { text: string; bracketStyle: "()" | "{}" | "[]" | "⌜⌟" | "<>" | null }) => {
       if (!editor || !modalState.entry || !modalState.pendingSelection) return;
 
       const { from, to } = modalState.pendingSelection;
