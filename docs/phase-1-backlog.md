@@ -215,15 +215,112 @@
   - **와이프 검수 1라운드 완료** — fixture 3건 (각 다른 유형) 에 대해 OK / NG 피드백
     수집 → `docs/phase-1-wife-feedback.md` 에 기록. NG 항목은 P1-10 으로.
 - **PR 단위**: 2 PR (a: 엔드포인트 + 버튼, b: 검수 피드백 문서).
+- **머지 (a)**: PR #24 (`3b01285`). `GET /passages/{id}/hwpx` 엔드포인트 + EditorPoc HWPX 다운로드 버튼.
+- **머지 (b)**: PR #27 (`backend-dev/p1-9b-fixture-seed`). fixture 3건 시드 스크립트 + Phase 1 runbook + 와이프 검수 양식.
+- **검수 결과 (2026-05-04, PM 가 와이프 대신 검수)**:
+  - **에디터 자체**: fixture 3건 모두 종합 등급 **A** — 에디터 위에서 작성 / 저장 / 분석표 / 칩 수정 흐름은 1차 사용 가능.
+  - **HWPX 출력**: **사용 불가 수준 (D 등급)**. 한컴오피스에서 연 결과 에디터 화면 재현이 깨져
+    PM 판정 "냉정하게 사용 불가". 와이프 대안 2가지 제시:
+    - **A**: HTML 렌더링 + PDF 출력
+    - **B**: 에디터 패널을 이미지화 → HWPX 안에 삽입
+    - 둘 다 A4 세로 + 지문 박스 overflow 로직 필요.
+  - **에디터 NG 2건** (P1-10 으로 인계):
+    1. 첫 글자 짤림 버그 (annotation 저장 → 재로드 시 첫 글자 누락)
+    2. 괄호 줄바꿈 분리 (긴 절 + bracket Unicode 가 줄바꿈 지점에서 여는 괄호만 남고 본문 통째 다음 줄)
+  - **PM 추가 요구**: BracketEntryModal 에서 disabled 처리된 `⌜⌟` / `<>` 옵션도 활성화.
+- **Phase 1 DoD #3 ("와이프가 검수해서 OK 받을 수준") 상태**: **에디터 부분 충족 / HWPX 출력
+  부분 미충족**. P1-10 의 출력 방향 ADR 결정 → 구현 → 재검수 사이클 필요.
 
-#### P1-10 — 와이프 피드백 반영 라운드 (가변)
+#### P1-10 — 와이프 피드백 반영 라운드 (Phase 1 DoD #3 마감)
 
-- **담당**: backend-dev / frontend-dev (피드백 내용에 따라)
-- **의존**: P1-9
+본 task 는 P1-9 와이프 검수 결과 (에디터 NG 2건 + HWPX 출력 D 등급) 를 fix 한다. 단순
+패치 task 가 아니라 **출력 방향 아키텍처 재검토** 가 포함되므로 sub-task 로 분해.
+
+##### P1-10a — 첫 글자 짤림 버그 fix
+
+- **담당**: frontend-dev (+ backend-dev 보조 — DB 저장 단계 검증)
+- **의존**: -
 - **DoD**:
-  - P1-9 의 NG 항목이 모두 OK 또는 PM 가 "Phase 1 baseline 으로 충분" 판정.
-  - DoD 3 ("와이프가 검수해서 OK 받을 수준") 충족 선언.
-- **PR 단위**: 가변 (1~5 PR). 큰 변경 발생 시 백로그 갱신.
+  - 재현: 에디터에서 본문 일부 (예: "William") 선택 → bottom_label "S" 적용 → 저장 →
+    페이지 리로드 → 칩 라벨이 "illiam" 으로 줄어들고 본문 mark 도 "illiam" 만 덮음.
+  - 원인 추정: ProseMirror position ↔ character offset 변환의 off-by-one. 
+    `packages/editor/src/serialization/annotationSerializer.ts` 의 `pmPosToCharOffset` /
+    `charOffsetToPmPos` 또는 `apps/api/src/worksheet_api/routers/annotations.py` 의
+    저장 단계 중 한 곳.
+  - 회귀 테스트: vitest 단위 (직렬화) + Playwright E2E (저장 → 리로드 → 동일 mark 범위
+    확인) 추가.
+  - **모든 7종 annotation kind 에서 동일 동작 보장**.
+- **PR 단위**: 1 PR.
+- **우선순위**: 가중치 3 — Phase 1 DoD #3 마감 차단.
+
+##### P1-10b — 괄호 줄바꿈 분리 fix
+
+- **담당**: frontend-dev
+- **의존**: -
+- **DoD**:
+  - 재현: bracket annotation 의 본문이 길어 줄바꿈 지점에 걸리면 여는 괄호만 위 줄에
+    남고 본문이 통째 다음 줄로 내려감 (예: `{\n blah blah}` 형태).
+  - 해결책 후보:
+    - `packages/editor/src/extensions/bracket.ts` 의 `renderHTML` 에 `white-space: nowrap`
+      또는 `display: inline-block` 적용. 단 inline-block 은 selection / caret 동작에
+      영향 가능 — 영향 시 `nowrap` 우선.
+    - 그래도 깨지면 bracket 글자를 별도 inline span 으로 분리 (여는·닫는 글자 각각).
+  - 시각 회귀 테스트는 어려움 — 수동 확인 + Playwright `page.evaluate` 로 wrap 발생
+    여부 측정.
+- **PR 단위**: 1 PR.
+- **우선순위**: 가중치 3 (와이프 평가).
+
+##### P1-10c — Bracket 옵션 5종 활성화 (`⌜⌟` / `<>`)
+
+- **담당**: frontend-dev (+ architect — schema 확장)
+- **의존**: -
+- **DoD**:
+  - `apps/web/src/components/BracketEntryModal.tsx` 의 `BRACKET_OPTIONS` 에서 `⌜⌟`,
+    `<>` 의 `disabled: false` 로 전환. `BracketStyleOption` 타입에 두 값 추가.
+  - `shared/schemas/annotation.py` 의 `bracket_style` (현재 `"()" | "{}" | "[]"`)
+    Literal 에 `"⌜⌟"`, `"<>"` 추가. Pydantic 단위 테스트 갱신.
+  - HWPX 렌더러 (`packages/hwpx_renderer/`) 의 bracket 매핑에도 두 글자 inline run 추가
+    — Unicode 글자라 단순 텍스트 삽입.
+  - Alembic revision 불필요 (bracket_style 이 String 컬럼으로 저장 — 새 enum 값도 자유 삽입).
+- **PR 단위**: 1 PR (web + schema + hwpx_renderer 묶음).
+- **우선순위**: PM 요구. 가중치는 P1-10a/b 보다 낮음 (기능 추가 vs 버그 fix).
+
+##### P1-10d — Phase 1 출력 방향 ADR (HWPX 재현 vs HTML→PDF vs 이미지 임베드)
+
+- **담당**: PM 결정 + architect (ADR 작성) + domain-expert (도메인 영향 검토)
+- **의존**: -
+- **DoD**:
+  - `docs/adr/0008-phase-1-output-format.md` 신설.
+  - 와이프 대안 A (HTML→PDF), B (이미지→HWPX 삽입) 평가 + 현재 방향 (텍스트 런 + 도형) 유지
+    가능성 비교.
+  - 결정 기준:
+    - **CLAUDE.md §1.3 "HWPX 우선" 원칙**: 한국 학원 시장 표준. 대안 A 는 이 원칙 위반.
+    - **재사용성**: 출력물이 한컴에서 텍스트로 편집 가능한가? 대안 B 는 이미지라 편집 불가.
+    - **Phase 2/3 일관성**: 학생용 자료 (Phase 2) / 변형문제 (Phase 3) 도 같은 출력 경로
+      쓸 가능성 高 — 한 번의 결정이 Phase 전체에 영향.
+    - **구현 복잡도** + **A4 overflow 로직**: 두 대안 모두 페이지 분할 로직 필요.
+  - 결정 후: 그 방향으로 P1-10e (구현) task 신설 + 백로그 갱신.
+- **PR 단위**: 1 PR (ADR 문서만).
+- **우선순위**: **Phase 1 DoD #3 마감의 critical path**. P1-10a/b/c 와 병렬 진행 가능
+  (ADR 결정에 그 fix 들은 의존하지 않음).
+- **PM 코멘트 (2026-05-04)**: A 채택 시 변형문제 (Phase 3) / 학생용 자료 (Phase 2)
+  도 같은 방향으로 가게 됨 → 출력 포맷 통일 결정의 무게 큼. ADR 에서 이 영향을 명시.
+
+##### P1-10e — 출력 방향 결정 후 구현 (대형, 가변)
+
+- **담당**: backend-dev (+ frontend-dev — 이미지화 시 클라이언트 캡처 필요)
+- **의존**: P1-10d
+- **DoD**:
+  - P1-10d 결정 사항 구현. fixture 3건 재검수 → 와이프 (또는 PM) 등급 A/B 도달.
+  - A4 세로 overflow 로직 포함.
+  - Phase 1 DoD #3 충족 선언.
+- **PR 단위**: 가변 — ADR 결정에 따라 1~5 PR.
+
+##### P1-10 종합 DoD
+
+- P1-10a/b/c/d 모두 머지.
+- P1-10e (출력 방향 구현) 완료 후 와이프 (또는 PM) 재검수 → 종합 등급 A 또는 B 도달.
+- Phase 1 DoD #3 충족 선언 — `docs/phase-1-wife-feedback.md` §5 "충족" 갱신.
 
 ---
 
@@ -270,11 +367,17 @@
 [Wave 5 — 닫기]
   P1-9 (HWPX API + 와이프 검수)    ← P1-8 + P1-6
   P1-10 (피드백 반영)              ← P1-9
+    ├─ P1-10a (첫 글자 짤림 fix)        ─┐ 병렬 가능
+    ├─ P1-10b (괄호 줄바꿈 fix)          ─┤
+    ├─ P1-10c (Bracket 5종 활성화)        ─┤
+    └─ P1-10d (출력 방향 ADR)             ─┘
+        └─ P1-10e (출력 방향 구현)        ← P1-10d 결정 후
 ```
 
-**예상 PR 수 합계**: 16~22 PR (P1-10 가변 포함).
+**예상 PR 수 합계**: 22~30 PR (P1-10 sub-task 5개 + 가변 P1-10e 포함).
 
-**critical path**: P1-0b → P1-7 → P1-8 → P1-9 → P1-10. 가장 먼저 P1-0b 착수 권장.
+**critical path**: P1-0b → P1-7 → P1-8 → P1-9 → **P1-10d (출력 방향 ADR) → P1-10e (구현) →
+재검수**. P1-10a/b/c 는 병렬 진행 가능.
 
 ---
 
@@ -299,7 +402,13 @@
    있는 수준" / "약간 수기 보완 후 사용 가능" 등 등급 정의) 을 명문화 권장.
 7. **테스트 자동화 부재** — Phase 1 에 E2E (Playwright) 가 없으면 회귀가 빠르게
    누적될 가능성. P1-2 또는 P1-6 에서 기본 골격이라도 도입하면 좋음 — 본 백로그에
-   별 task 로 빼지 않았으나 PM 이 우선순위 결정.
+   별 task 로 빼지 않았으나 PM 이 우선순위 결정. **[부분 해소]** P1-6b (PR #26) 로
+   chromium 1케이스 baseline 도입 — 7종 시나리오 확장은 follow-up.
+8. **[critical, 신규] HWPX 출력 품질 — Phase 1 DoD #3 마감 차단** (P1-9 와이프 검수
+   결과). 현재 텍스트 런 + 3단 단락 + 도형 접근으로 와이프 평가 D 등급. P1-10d 의
+   ADR 결정 (대안 A: HTML→PDF, B: 이미지→HWPX 삽입, C: 현재 방향 미세 개선) 이
+   Phase 1 마감의 critical path. ADR 결정에 따라 Phase 2 (학생용 자료) / Phase 3
+   (변형문제) 출력 경로도 영향 — PM 이 Phase 전체 일관성 고려해 결정해야 함.
 
 ---
 
