@@ -155,29 +155,17 @@ def inline_note_run_xml(text: str, char_pr_id: int) -> str:
     return f'<hp:run charPrIDRef="{char_pr_id}"><hp:t>{xe(text)}</hp:t></hp:run>'
 
 
-def bracket_run_xml(text: str, style: str = "[]", char_pr_id: int = 0) -> str:
-    """괄호 run — Unicode bracket 으로 본문에 inline 삽입.
+def label_para_xml(runs_xml: str) -> str:
+    """3단 단락 구조의 라벨 단락 wrapper.
 
-    P1-8b 범위. 본 헬퍼는 P1-8a 에서 자리만 준비.
-    """
-    open_b, close_b = style[0], style[1]
-    escaped = xe(f"{open_b}{text}{close_b}")
-    return f'<hp:run charPrIDRef="{char_pr_id}"><hp:t>{escaped}</hp:t></hp:run>'
-
-
-def label_para_xml(label_text: str) -> str:
-    """3단 단락 구조의 라벨 단락 XML.
-
-    paraPrIDRef="1" (라벨 단락 스타일: lineSpacing=100%, margin prev/next=0)
-    charPrIDRef="2" (라벨 글자: 7pt bold)
+    paraPrIDRef="1" / styleIDRef="1" (라벨 단락 스타일).
+    runs_xml: <hp:run> XML 들이 미리 조립된 문자열. 호출자(render.py)가 라벨 글자와
+    leading whitespace 를 각각 다른 charPr 로 분리해 조립한다 (라벨 글자에는 BOTTOM
+    underline 표식, whitespace 에는 밑줄이 그어지지 않도록).
     """
     return (
         f'<hp:p id="0" paraPrIDRef="1" styleIDRef="1" '
-        f'pageBreak="0" columnBreak="0" merged="0">'
-        f'<hp:run charPrIDRef="2">'
-        f"<hp:t>{xe(label_text)}</hp:t>"
-        f"</hp:run>"
-        f"</hp:p>"
+        f'pageBreak="0" columnBreak="0" merged="0">{runs_xml}</hp:p>'
     )
 
 

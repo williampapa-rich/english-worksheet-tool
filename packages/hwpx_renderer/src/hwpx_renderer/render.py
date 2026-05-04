@@ -4,8 +4,31 @@
 
 P1-8a 범위:
     - ``highlight``, ``underline``, ``inline_note`` 3종 charPr 계열 구현.
-    - 나머지 4종 (``top_label``, ``bottom_label``, ``bracket``, ``arrow``) 은
-      본 PR 에서 silent-skip + 로그 처리 (P1-8b/c 에서 구현 예정).
+
+P1-8b 범위 (본 PR):
+    - ``top_label`` / ``bottom_label`` — 3단 단락 구조 (라벨 / 본문 / 라벨).
+      본문 단락 앞/뒤에 별도 라벨 단락을 삽입한다. 같은 단락 안에 여러 라벨이
+      있으면 각 라벨 anchor (``span.start``) 위치까지 글자 수 비례로 leading
+      whitespace 를 채워 본문 단어 위/아래에 근사 정렬한다.
+    - 라벨 단락의 leading whitespace 는 본문 charPr (id=0) 로, 라벨 글자만 라벨
+      charPr (id=1, BOTTOM underline 표식) 로 분리 출력. underline 이 빈 공간에
+      그어지지 않도록.
+    - ``bracket`` — ADR-0007 채택안 = Unicode `[ ]` `( )` `{ }` 를 본문 inline run
+      으로 양 끝점에 삽입.
+    - 본문 paraPr ``align="LEFT"`` 고정 — 단어 사이 간격을 한컴 spacing 룰로 고정.
+
+P1-8b fix 라운드 (PM 검수 후):
+    - 라벨 charPr id 버그 수정 — 헬퍼가 PoC 시절 매핑 (charPrIDRef=2 = underline
+      charPr) 을 하드코딩해 라벨에 의도치 않은 BOTTOM 밑줄이 그어졌음.
+    - 라벨 수평 정렬 = 글자 수 비례. pillow 폰트 metric 1차 안은 한컴이 본문
+      paraPr LEFT 임에도 spacing 을 페이지 폭에 맞춰 늘리는 동작과 어긋나 라벨이
+      실제 단어보다 훨씬 멀리 위치. 본문도 라벨 leading 도 같은 charPr 폰트 폭을
+      쓰면 한컴 spacing 룰 위에 비례 관계가 보존된다.
+    - 라벨 charPr 에 BOTTOM underline 표식 추가 — 라벨 글자 밑에 짧은 밑줄로
+      어떤 annotation 인지 시각적으로 표시 (PM 의도 = "border line 역할").
+
+P1-8c 범위 (이후 PR):
+    - ``arrow`` 는 별도 PoC 필요 — 본 PR 에서 silent-skip 유지.
 
 inline_note 결정 (P1-7 §6 미해결 #2):
     후보 A (inline run, 작은 폰트 charPr) 채택.
@@ -22,12 +45,13 @@ inline_note 결정 (P1-7 §6 미해결 #2):
 
 charPr id 배치 (header.xml 안):
     id 0       : 본문 body (plain 10pt)
-    id 1       : 라벨 (7pt bold) — top/bottom label, P1-8b 에서 사용
-    id 2       : underline BOTTOM 흑색
+    id 1       : top_label (7pt bold + BOTTOM underline 표식 — 글자 아래 줄)
+    id 2       : underline annotation BOTTOM 흑색
     id 3       : inline_note (7pt, 회색)
     id 4 ~ 15  : highlight color_index 1~12
+    id 16      : bottom_label (7pt bold + TOP underline 표식 — 글자 위 줄)
 
-    itemCnt = 16, max id = 15 → 0~15 연속 배치.
+    itemCnt = 17, max id = 16 → 0~16 연속 배치.
     한컴 HWPX 스펙: itemCnt 는 실제 항목 수여야 하며, id 는 0 부터 (itemCnt-1) 까지
     연속이어야 한다. 비연속 id (예: 0,1,10,30,50) + itemCnt=16 조합은 한컴 파서가
     OOB(Out-of-Bounds) 로 처리해 파일 손상 팝업을 발생시킨다.
@@ -39,6 +63,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
+from hwpx_renderer._font_metrics import label_leading_spaces
 from hwpx_renderer._xml_builders import (
     HIGHLIGHT_PALETTE,
     INLINE_NOTE_FONT_SIZE,
@@ -46,6 +71,7 @@ from hwpx_renderer._xml_builders import (
     UNDERLINE_DEFAULT_COLOR,
     build_hwpx_zip,
     charpr_xml,
+    label_para_xml,
     secpr_run_xml,
     xe,
 )
@@ -57,10 +83,14 @@ logger = logging.getLogger(__name__)
 # charPr id 상수 — 0부터 연속 배치 (itemCnt = max_id + 1 필수)
 # 한컴 스펙: id 가 비연속이면 파서가 OOB 처리 → 파일 손상 거부.
 _CHARPR_BODY = 0  # 본문 plain 10pt
-_CHARPR_LABEL_BASE = 1  # 라벨 7pt bold (P1-8b 예약)
-_CHARPR_UNDERLINE = 2  # underline BOTTOM 흑색
+_CHARPR_LABEL_TOP = 1  # top_label 7pt bold + BOTTOM underline (라벨 표식, 본문 쪽으로)
+_CHARPR_UNDERLINE = 2  # underline annotation BOTTOM 흑색
 _CHARPR_INLINE_NOTE = 3  # inline_note 7pt 회색
 _CHARPR_HIGHLIGHT_BASE = 4  # color_index 1 → id 4, ..., color_index 12 → id 15
+_CHARPR_LABEL_BOTTOM = 16  # bottom_label 7pt bold (TOP underline 시도; 한컴 인정 의존)
+
+# 호환 별칭 (기존 코드/테스트 대응) — top_label charPr 와 동일.
+_CHARPR_LABEL_BASE = _CHARPR_LABEL_TOP
 
 
 def _highlight_charpr_id(color_index: int) -> int:
@@ -110,8 +140,18 @@ def _build_header_xml() -> str:
     # id 0: 본문 plain 10pt
     charpr_list.append(charpr_xml(_CHARPR_BODY, height=1000))
 
-    # id 1: 라벨 7pt bold (P1-8b 예약 — 본 PR 에서도 정의해 둠)
-    charpr_list.append(charpr_xml(_CHARPR_LABEL_BASE, height=700, bold=True))
+    # id 1: 라벨 7pt bold + BOTTOM underline (라벨 표식)
+    # 라벨 글자 밑에 짧은 밑줄을 그려 어떤 annotation 인지 시각적으로 표시.
+    # PM 검수 의도 = "border line 역할" — 라벨이 본문 단어와 시각적으로 묶임.
+    charpr_list.append(
+        charpr_xml(
+            _CHARPR_LABEL_BASE,
+            height=700,
+            bold=True,
+            underline_type="BOTTOM",
+            underline_color=UNDERLINE_DEFAULT_COLOR,
+        )
+    )
 
     # id 2: underline BOTTOM 흑색 (type="BOTTOM" = 하단 단일 밑줄 — 한컴 스펙)
     charpr_list.append(
@@ -137,6 +177,20 @@ def _build_header_xml() -> str:
         color = HIGHLIGHT_PALETTE[idx]
         charpr_list.append(charpr_xml(cid, shade_color=color))
 
+    # id 16: bottom_label 7pt bold + TOP underline (글자 위쪽 줄 — 본문 쪽으로 표식)
+    # 한컴 HWPX 스펙상 type="TOP" 인정 여부는 PM 검수 의존.
+    # 인정되지 않으면 줄이 안 그어지거나 다른 위치에 그어질 수 있음 — 그 경우 fallback
+    # 으로 다른 표현 (예: borderFill 도형) 으로 전환.
+    charpr_list.append(
+        charpr_xml(
+            _CHARPR_LABEL_BOTTOM,
+            height=700,
+            bold=True,
+            underline_type="TOP",
+            underline_color=UNDERLINE_DEFAULT_COLOR,
+        )
+    )
+
     total_charpr = len(charpr_list)
     charpr_block = (
         f'<hh:charProperties itemCnt="{total_charpr}">'
@@ -147,10 +201,12 @@ def _build_header_xml() -> str:
     # paraPr
     parapr_block = (
         '<hh:paraPrList itemCnt="2">'
-        # 0: 기본 본문 단락
+        # 0: 기본 본문 단락 — align=LEFT (P1-8b fix 2: 라벨 metric 정렬을 위해 단어 사이
+        # 간격을 고정. JUSTIFY 는 단어 간격이 가변이라 폰트 metric 으로 라벨을 단어 위에
+        # 정렬하는 것이 불가능해진다.)
         '<hh:paraPr id="0" tabDef="0" condense="0" fontLineHeight="0" snapToGrid="1"'
         ' suppressLineNumbers="0" checked="0">'
-        '<hh:align horizontal="JUSTIFY" vertical="BASELINE"/>'
+        '<hh:align horizontal="LEFT" vertical="BASELINE"/>'
         '<hh:heading type="NONE" idRef="0" level="0"/>'
         '<hh:breakSetting breakLatinWord="KEEP_WORD" breakNonLatinWord="1" widowOrphan="0"'
         ' keepWithNext="0" keepLines="0" pageBreakBefore="0" lineWrap="BREAK"/>'
@@ -282,6 +338,102 @@ def _slice_text_with_annotations(
     return segments
 
 
+# ── bracket 처리 ────────────────────────────────────────────────────────────
+
+# bracket_style 별 여닫이 Unicode 매핑 (ADR-0007).
+# 스키마는 "()" / "{}" / "[]" 3종만 지원.
+_BRACKET_OPEN_CLOSE: dict[str, tuple[str, str]] = {
+    "[]": ("[", "]"),
+    "()": ("(", ")"),
+    "{}": ("{", "}"),
+}
+
+
+def _bracket_runs_at_position(
+    pos: int,
+    open_brackets_at: dict[int, list[str]],
+    close_brackets_at: dict[int, list[str]],
+) -> str:
+    """주어진 본문 위치에서 시작/끝나는 bracket 의 inline run XML 을 생성.
+
+    여닫이 Unicode 글자 1개씩을 charPrIDRef=0 plain run 으로 본문에 삽입.
+    같은 위치에 여러 bracket 이 시작/끝나는 경우 모두 이어 붙임.
+    닫는 bracket 을 먼저 (position 에서 끝나는 span 을 닫고) 그 뒤 여는 bracket.
+    """
+    parts: list[str] = []
+    for close_char in close_brackets_at.get(pos, []):
+        parts.append(f'<hp:run charPrIDRef="{_CHARPR_BODY}"><hp:t>{xe(close_char)}</hp:t></hp:run>')
+    for open_char in open_brackets_at.get(pos, []):
+        parts.append(f'<hp:run charPrIDRef="{_CHARPR_BODY}"><hp:t>{xe(open_char)}</hp:t></hp:run>')
+    return "".join(parts)
+
+
+# ── 라벨 단락 빌더 ──────────────────────────────────────────────────────────
+
+
+def _build_label_runs_xml(
+    annotations: list[SyntaxAnnotation],
+    body_text: str,
+    label_char_pr_id: int,
+) -> str | None:
+    """라벨 annotation 목록을 라벨 단락 안의 ``<hp:run>`` 들로 조립.
+
+    leading whitespace 와 라벨 글자를 별도 run 으로 분리:
+        - leading whitespace: ``charPrIDRef=_CHARPR_BODY`` (id=0, 본문 plain 10pt)
+          → 단어 사이 폭이 본문과 동일해 정렬 안정. underline 없음 → 빈 공간에 줄
+            그어지지 않음.
+        - 라벨 글자: ``label_char_pr_id`` 가 가리키는 charPr.
+          top_label → ``_CHARPR_LABEL_TOP`` (BOTTOM underline, 본문 쪽 줄)
+          bottom_label → ``_CHARPR_LABEL_BOTTOM`` (TOP underline, 본문 쪽 줄)
+          어느 쪽이든 줄이 본문을 향해 그어져 어떤 단어를 가리키는지 시각 표시.
+
+    각 라벨 anchor (``span.start``) 위치까지 본문 prefix 글자 수에 비례한 공백을
+    채워 본문 단어 위/아래에 근사 정렬한다 (`_font_metrics.label_leading_spaces`).
+
+    span.start 가 같은 라벨이 여러 개면 공백 1개로만 join.
+
+    None 반환 = 단락 생성 안 함 (빈 라벨 단락 방지).
+    """
+    if not annotations:
+        return None
+    sorted_anns = sorted(annotations, key=lambda a: a.span.start)
+    valid = [a for a in sorted_anns if a.text]
+    if not valid:
+        return None
+
+    runs: list[str] = []
+    used_columns = 0  # 현재까지 라벨 단락에 채워진 본문 글자 좌표계 컬럼 수
+    last_anchor = -1
+    for ann in valid:
+        anchor = ann.span.start
+        prefix = body_text[:anchor]
+        target_col = label_leading_spaces(prefix)
+
+        if anchor == last_anchor:
+            # 같은 위치를 여러 라벨이 가리키는 경우 공백 1개로 join
+            pad = 1
+        else:
+            pad = max(0, target_col - used_columns)
+            # 라벨 사이에 최소 공백 1개 보장
+            if runs and pad == 0:
+                pad = 1
+
+        if pad > 0:
+            runs.append(
+                f'<hp:run charPrIDRef="{_CHARPR_BODY}"><hp:t>{xe(" " * pad)}</hp:t></hp:run>'
+            )
+            used_columns += pad
+
+        text = ann.text or ""
+        runs.append(f'<hp:run charPrIDRef="{label_char_pr_id}"><hp:t>{xe(text)}</hp:t></hp:run>')
+        # 라벨 글자가 차지한 컬럼 누적 (글자 수 근사 — 정확한 폭은 라벨 폰트 metric
+        # 으로 측정 가능하지만 baseline 은 글자 수로 충분).
+        used_columns += len(text)
+        last_anchor = anchor
+
+    return "".join(runs)
+
+
 # ── 섹션 XML 빌더 ────────────────────────────────────────────────────────────
 
 
@@ -291,9 +443,14 @@ def _build_section_xml(
 ) -> str:
     """단일 지문을 HWPX section0.xml 으로 변환.
 
-    P1-8a 에서는 단일 단락으로 처리한다 (줄바꿈 없음).
-    P1-8b 에서 top_label / bottom_label 의 3단 단락 구조가 추가될 때
-    단락 분할 로직이 확장된다.
+    P1-8b 출력 구조 (단일 줄 본문 가정 — 다중 줄 본문 wrap 처리는 P1-10):
+        단락 0: secPr (섹션 정의)
+        단락 1: top_label 단락 (top_label 이 1개 이상일 때만)
+        단락 2: 본문 단락 (highlight/underline/inline_note charPr 적용
+                + bracket Unicode inline run 삽입)
+        단락 3: bottom_label 단락 (bottom_label 이 1개 이상일 때만)
+
+    P1-8c 에서 arrow 도형이 추가되며, 다중 단락 본문 처리는 P1-10 에서.
 
     Args:
         body_text: 렌더 대상 지문 본문.
@@ -302,52 +459,110 @@ def _build_section_xml(
     Returns:
         section0.xml 내용 문자열.
     """
-    # 텍스트 런 계열 분류
+    # kind 별 분류
     text_run_kinds = {
         AnnotationKind.HIGHLIGHT,
         AnnotationKind.UNDERLINE,
         AnnotationKind.INLINE_NOTE,
     }
     text_run_anns = [a for a in annotations if a.kind in text_run_kinds]
+    top_label_anns = [a for a in annotations if a.kind == AnnotationKind.TOP_LABEL]
+    bottom_label_anns = [a for a in annotations if a.kind == AnnotationKind.BOTTOM_LABEL]
+    bracket_anns = [a for a in annotations if a.kind == AnnotationKind.BRACKET]
 
-    # P1-8b/c 에서 구현 예정인 kind — silent skip + log
-    unsupported_kinds = {
-        AnnotationKind.TOP_LABEL,
-        AnnotationKind.BOTTOM_LABEL,
-        AnnotationKind.BRACKET,
-        AnnotationKind.ARROW,
-    }
+    # arrow 는 P1-8c 에서 구현 예정 — silent skip
     for ann in annotations:
-        if ann.kind in unsupported_kinds:
-            logger.debug(
-                "Annotation kind=%s skipped (P1-8b/c not yet implemented).",
-                ann.kind.value,
+        if ann.kind == AnnotationKind.ARROW:
+            logger.debug("Annotation kind=arrow skipped (P1-8c not yet implemented).")
+
+    # bracket span → 위치별 여닫이 dict 사전 구성
+    n = len(body_text)
+    open_brackets_at: dict[int, list[str]] = {}
+    close_brackets_at: dict[int, list[str]] = {}
+    for ann in bracket_anns:
+        start = ann.span.start
+        end = ann.span.end
+        if start >= n or end > n:
+            logger.warning(
+                "Bracket annotation span (%d, %d) out of body_text range (%d). Skipped.",
+                start,
+                end,
+                n,
             )
+            continue
+        style = ann.bracket_style or "[]"
+        open_close = _BRACKET_OPEN_CLOSE.get(style)
+        if open_close is None:
+            logger.warning("Bracket annotation has unsupported bracket_style=%r. Skipped.", style)
+            continue
+        open_char, close_char = open_close
+        open_brackets_at.setdefault(start, []).append(open_char)
+        close_brackets_at.setdefault(end, []).append(close_char)
 
-    # inline_note 는 텍스트 span 에 charPr 변경으로 처리 (후보 A 채택)
-    # 단, inline_note 의 text 필드 (예: "(=foster)") 를 별도 run 으로 삽입하지 않음.
-    # span 범위의 글자를 작은 폰트로만 변경 — 실제 note 텍스트 삽입은 P1-8b follow-up.
-    # 이유: annotation span 자체가 note 대상 범위 → 해당 범위를 시각적으로 약화시킴.
-    # ann.text 활용 (예: "(=동의어)") 을 inline 삽입하는 형태는 추후 확장 가능.
-
+    # 본문 segment 분할 (highlight/underline/inline_note charPr 적용)
     segments = _slice_text_with_annotations(body_text, text_run_anns)
 
-    # 단락 1: secPr (섹션 정의 — 빈 단락)
+    # bracket run 을 segment 사이에 삽입하면서 본문 run XML 조립
+    body_runs: list[str] = []
+    cursor = 0
+    for seg in segments:
+        if not seg.text:
+            continue
+        seg_start = cursor
+        seg_end = cursor + len(seg.text)
+
+        # 세그먼트 내부에서 시작/끝나는 bracket 위치를 찾아 sub-segment 로 분할
+        # (한 세그먼트 안에 bracket 시작/끝이 있을 수 있으므로)
+        split_points = sorted(
+            {seg_start, seg_end}
+            | {p for p in open_brackets_at if seg_start < p < seg_end}
+            | {p for p in close_brackets_at if seg_start < p < seg_end}
+        )
+
+        # seg_start 위치의 bracket run 을 먼저 삽입 (이 segment 가 시작되는 지점)
+        body_runs.append(_bracket_runs_at_position(seg_start, open_brackets_at, close_brackets_at))
+
+        # split point 사이의 텍스트를 segment charPr 로 출력 + 각 split point 에서 bracket run 삽입
+        for i in range(len(split_points) - 1):
+            sub_start = split_points[i]
+            sub_end = split_points[i + 1]
+            sub_text = body_text[sub_start:sub_end]
+            if sub_text:
+                body_runs.append(
+                    f'<hp:run charPrIDRef="{seg.char_pr_id}"><hp:t>{xe(sub_text)}</hp:t></hp:run>'
+                )
+            # sub_end 가 segment 끝 (seg_end) 이면 bracket 은 다음 segment 시작 시 처리 — 중복 방지
+            if sub_end < seg_end:
+                body_runs.append(
+                    _bracket_runs_at_position(sub_end, open_brackets_at, close_brackets_at)
+                )
+
+        cursor = seg_end
+
+    # 본문 끝 (n) 위치의 닫는 bracket 처리
+    body_runs.append(_bracket_runs_at_position(n, open_brackets_at, close_brackets_at))
+
+    body_runs_xml = "".join(body_runs)
+
+    # 단락 0: secPr (섹션 정의 — 빈 단락)
     sec_para = (
         '<hp:p id="0" paraPrIDRef="0" styleIDRef="0" '
         'pageBreak="0" columnBreak="0" merged="0">' + secpr_run_xml() + "</hp:p>"
     )
 
-    # 단락 2: 본문 (run 분할 적용)
-    run_xmls = "".join(
-        f'<hp:run charPrIDRef="{seg.char_pr_id}"><hp:t>{xe(seg.text)}</hp:t></hp:run>'
-        for seg in segments
-        if seg.text  # 빈 세그먼트 건너뜀
-    )
+    # 단락 1: top_label (있을 때만) — BOTTOM underline 표식 (글자 밑 = 본문 쪽)
+    top_label_runs = _build_label_runs_xml(top_label_anns, body_text, _CHARPR_LABEL_TOP)
+    top_label_para = label_para_xml(top_label_runs) if top_label_runs else ""
+
+    # 단락 2: 본문
     body_para = (
         '<hp:p id="0" paraPrIDRef="0" styleIDRef="0" '
-        'pageBreak="0" columnBreak="0" merged="0">' + run_xmls + "</hp:p>"
+        'pageBreak="0" columnBreak="0" merged="0">' + body_runs_xml + "</hp:p>"
     )
+
+    # 단락 3: bottom_label (있을 때만) — TOP underline 표식 (글자 위 = 본문 쪽)
+    bottom_label_runs = _build_label_runs_xml(bottom_label_anns, body_text, _CHARPR_LABEL_BOTTOM)
+    bottom_label_para = label_para_xml(bottom_label_runs) if bottom_label_runs else ""
 
     return (
         "<?xml version='1.0' encoding='UTF-8'?>"
@@ -355,7 +570,9 @@ def _build_section_xml(
         ' xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph"'
         ' xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section">'
         + sec_para
+        + top_label_para
         + body_para
+        + bottom_label_para
         + "</hs:sec>"
     )
 
