@@ -25,7 +25,7 @@ import { BracketEntryModal, type BracketStyleOption } from "../components/Bracke
 import type { BracketEditStyle } from "../components/ChipEditModal";
 import { ChipEditModal } from "../components/ChipEditModal";
 import { LabelEntryModal, type LabelEntryModalKind } from "../components/LabelEntryModal";
-import { getAnnotations, getPassage, replaceAnnotations } from "../lib/api";
+import { downloadPassageHwpx, getAnnotations, getPassage, replaceAnnotations } from "../lib/api";
 import { buildChips } from "./buildChips";
 import "./EditorPoc.css";
 
@@ -218,6 +218,30 @@ export function EditorPoc() {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       showToast(`저장 실패: ${message}`, "error");
+    }
+  }, [editor, passageId, showToast]);
+
+  /**
+   * handleDownloadHwpx — Phase 1 DoD #3 와이프 검수용 HWPX 다운로드.
+   *
+   * 현재 에디터 상태를 먼저 저장한 뒤 backend 가 DB 의 annotation 을 기반으로
+   * 렌더한 HWPX 파일을 다운로드한다. 미저장 변경이 있으면 다운로드 결과에
+   * 반영되지 않으므로 항상 저장 → 다운로드 순서.
+   */
+  const handleDownloadHwpx = useCallback(async () => {
+    if (!editor || !passageId) return;
+    try {
+      // 1) 현재 에디터 상태 저장 (미저장 변경 반영)
+      const doc = editor.getJSON();
+      const annotations = docToAnnotations(doc);
+      await replaceAnnotations(passageId, annotations);
+
+      // 2) HWPX 다운로드 트리거
+      await downloadPassageHwpx(passageId);
+      showToast("HWPX 다운로드 완료", "success");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      showToast(`다운로드 실패: ${message}`, "error");
     }
   }, [editor, passageId, showToast]);
 
@@ -975,6 +999,17 @@ export function EditorPoc() {
                     className="px-3 py-1.5 text-sm font-medium rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 transition-colors disabled:opacity-50 ml-auto"
                   >
                     저장
+                  </button>
+                )}
+                {/* HWPX 다운로드 버튼 — API 로드 모드 전용 (P1-9) */}
+                {isLoadMode && (
+                  <button
+                    type="button"
+                    onClick={() => void handleDownloadHwpx()}
+                    disabled={!editor}
+                    className="px-3 py-1.5 text-sm font-medium rounded-lg bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 transition-colors disabled:opacity-50"
+                  >
+                    HWPX 다운로드
                   </button>
                 )}
               </div>
