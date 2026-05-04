@@ -19,9 +19,16 @@ replace-all vs batch upsert:
   passage 조회 시 tenant_id 필터 포함 → 다른 tenant 의 passage 에는 404 반환.
   annotation write 도 SyntaxAnnotationRepository.replace_all 에서 tenant 필터 강제.
 
-P1-6 frontend 호출 시그니처:
+P1-annotation-input-dto 변경:
+  Input DTO (SyntaxAnnotationInput) 도입으로 클라이언트 부담 제거:
+    - tenant_id / workspace_id / passage_id: 클라이언트 입력 불필요.
+      라우터가 TenantContext + path param 으로 주입.
+    - annotation_id: 에디터 chip ID 영속화 (옵션 A) — 클라이언트가 보내면 저장.
+    - extra="forbid" 는 SyntaxAnnotationInput 자체에서 유지 (도메인 모델과 분리).
+
+P1-6 frontend 호출 시그니처 (P1-annotation-input-dto 이후):
   POST /passages/{passage_id}/annotations
-    body: { "annotations": [ <SyntaxAnnotation>, ... ] }
+    body: { "annotations": [ <SyntaxAnnotationInput>, ... ] }
     response: { "annotations": [ <SyntaxAnnotation with id>, ... ] }
 
   GET /passages/{passage_id}/annotations
@@ -31,13 +38,13 @@ P1-6 frontend 호출 시그니처:
 from __future__ import annotations
 
 from typing import Annotated
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from shared.schemas.annotation import SyntaxAnnotation
+from shared.schemas.annotation import SyntaxAnnotation, SyntaxAnnotationInput
 from worksheet_api.db import get_db
 from worksheet_api.repositories import (
     PassageRepository,
@@ -57,12 +64,15 @@ class AnnotationReplaceRequest(BaseModel):
 
     에디터 저장 = 현재 annotation 상태 전체를 전달.
     빈 리스트 = passage 의 모든 annotation 삭제.
+
+    P1-annotation-input-dto: SyntaxAnnotationInput (입력 DTO) 를 사용.
+    클라이언트는 tenant_id / workspace_id / passage_id 를 보내지 않아도 된다.
     """
 
-    annotations: list[SyntaxAnnotation] = Field(
+    annotations: list[SyntaxAnnotationInput] = Field(
         default_factory=list,
         description=(
-            "저장할 SyntaxAnnotation 리스트. "
+            "저장할 annotation 입력 DTO 리스트. "
             "replace-all 방식 — 기존 annotation 을 전부 교체한다. "
             "빈 리스트를 보내면 해당 passage 의 annotation 이 모두 삭제된다."
         ),
@@ -75,6 +85,46 @@ class AnnotationListResponse(BaseModel):
     annotations: list[SyntaxAnnotation] = Field(
         default_factory=list,
         description="SyntaxAnnotation 리스트 (DB 부여 id 포함).",
+    )
+
+
+# ─── 변환 헬퍼 ───────────────────────────────────────────────────────────────
+
+
+def _input_to_domain(
+    inp: SyntaxAnnotationInput,
+    *,
+    tenant_id: UUID,
+    workspace_id: UUID,
+    passage_id: UUID,
+) -> SyntaxAnnotation:
+    """SyntaxAnnotationInput → SyntaxAnnotation 변환.
+
+    서버-side 컨텍스트 필드 (tenant_id / workspace_id / passage_id) 를 주입하고
+    DB PK (id) 는 새 UUID 로 생성한다.
+
+    Args:
+        inp: 클라이언트 입력 DTO.
+        tenant_id: TenantContext 에서 주입.
+        workspace_id: TenantContext 에서 주입.
+        passage_id: URL path param 에서 주입.
+
+    Returns:
+        서버-side 컨텍스트가 채워진 SyntaxAnnotation 도메인 모델.
+    """
+    return SyntaxAnnotation(
+        id=uuid4(),
+        tenant_id=tenant_id,
+        workspace_id=workspace_id,
+        passage_id=passage_id,
+        kind=inp.kind,
+        category=inp.category,
+        span=inp.span,
+        color_index=inp.color_index,
+        text=inp.text,
+        bracket_style=inp.bracket_style,
+        arrow_target_span=inp.arrow_target_span,
+        annotation_id=inp.annotation_id,
     )
 
 
@@ -97,12 +147,15 @@ async def replace_annotations(
     기존 annotation 을 모두 삭제하고 body 의 리스트로 교체한다.
     에디터의 "저장" 동작에 대응 — 항상 현재 에디터 상태 전체를 전달한다.
 
+    P1-annotation-input-dto: 클라이언트는 SyntaxAnnotationInput 을 보낸다.
+    라우터가 tenant_id / workspace_id / passage_id 를 주입해 도메인 모델로 변환.
+
     멀티테넌트: passage 존재 여부를 먼저 확인 (다른 tenant 소유면 404).
     트랜잭션: 삭제 + 신규 insert 를 단일 session.begin() 으로 원자적 처리.
 
     Args:
         passage_id: 대상 Passage UUID.
-        body: 저장할 annotation 리스트.
+        body: 저장할 annotation 입력 DTO 리스트.
         tenant_ctx: 현재 요청의 테넌트 컨텍스트.
         session: DB 세션.
 
@@ -111,7 +164,7 @@ async def replace_annotations(
 
     Raises:
         HTTPException 404: Passage 가 존재하지 않거나 다른 tenant 소유.
-        HTTPException 422: annotation validation 실패 (sentinel UUID, passage_id 불일치 등).
+        HTTPException 422: annotation validation 실패 (sentinel UUID 등).
     """
     async with session.begin():
         passage_repo = PassageRepository(session, tenant_ctx)
@@ -125,19 +178,16 @@ async def replace_annotations(
                 detail=f"Passage {passage_id} 를 찾을 수 없습니다.",
             )
 
-        # 요청 annotation 에 tenant_id / workspace_id / passage_id 주입
-        # (에디터에서 전달된 모델은 id 가 없거나 sentinel 일 수 있음 — 실제 값으로 교체)
-        prepared: list[SyntaxAnnotation] = []
-        for ann in body.annotations:
-            prepared.append(
-                ann.model_copy(
-                    update={
-                        "tenant_id": tenant_ctx.tenant_id,
-                        "workspace_id": tenant_ctx.workspace_id,
-                        "passage_id": passage_id,
-                    }
-                )
+        # 입력 DTO → 도메인 모델 변환 (tenant_id / workspace_id / passage_id 주입)
+        prepared: list[SyntaxAnnotation] = [
+            _input_to_domain(
+                inp,
+                tenant_id=tenant_ctx.tenant_id,
+                workspace_id=tenant_ctx.workspace_id,
+                passage_id=passage_id,
             )
+            for inp in body.annotations
+        ]
 
         try:
             saved = await annotation_repo.replace_all(passage_id, prepared)
