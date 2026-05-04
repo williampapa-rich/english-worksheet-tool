@@ -248,9 +248,19 @@
 /* ---------------------------------------------------------------------------
  * bracket — 괄호 (::before + ::after pseudo-element)
  * bracketStyle: "()" | "{}" | "[]"
+ *
+ * P1-10b fix: display:inline-block + white-space:nowrap 으로 여는 괄호 (::before) 글자가
+ * 줄 끝에 홀로 남는 문제를 방지한다.
+ *   - inline-block: bracket span 이 하나의 레이아웃 단위로 취급됨 → 통째로 다음 줄로 이동.
+ *   - white-space: nowrap: bracket span 내에서 줄바꿈 금지 → ::before(여는 괄호)가 본문
+ *     텍스트와 분리되지 않음.
+ * 트레이드오프: bracket 이 한 줄에 들어가지 않을 만큼 길면 span 전체가 다음 줄로 이동.
+ * 구/절 단위 bracket 에서는 허용 가능한 동작 — 와이프 사용 패턴 기준 (Phase 1 baseline).
  * --------------------------------------------------------------------------- */
 [data-annotation-kind="bracket"] {
   --current-anno-color: var(--anno-color-0);
+  display: inline-block;
+  white-space: nowrap;
   /* bracket 은 outer mark (EXTENSIONS 배열 등록 순서). inline 괄호 글자는
      outer span 안에서 layout 점유 → 양옆 텍스트 침범 없음.
      inner top_label 의 border 는 본문 텍스트 영역만 — 괄호 미포함. */
@@ -321,6 +331,28 @@
 }
 [data-annotation-kind="bracket"][data-bracket-style="[]"]::after {
   content: "]";
+  color: var(--current-anno-color);
+  font-weight: 700;
+}
+
+/* P1-10c: ⌜⌟ / <> bracket style — 괄호 글자 */
+[data-annotation-kind="bracket"][data-bracket-style="⌜⌟"]::before {
+  content: "⌜";
+  color: var(--current-anno-color);
+  font-weight: 700;
+}
+[data-annotation-kind="bracket"][data-bracket-style="⌜⌟"]::after {
+  content: "⌟";
+  color: var(--current-anno-color);
+  font-weight: 700;
+}
+[data-annotation-kind="bracket"][data-bracket-style="<>"]::before {
+  content: "<";
+  color: var(--current-anno-color);
+  font-weight: 700;
+}
+[data-annotation-kind="bracket"][data-bracket-style="<>"]::after {
+  content: ">";
   color: var(--current-anno-color);
   font-weight: 700;
 }
