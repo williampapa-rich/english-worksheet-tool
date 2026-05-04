@@ -20,5 +20,7 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./tests/setup.ts"],
     globals: true,
+    // Playwright e2e 파일은 vitest 수집 대상에서 제외 (별도 `pnpm e2e` 로 실행)
+    exclude: ["**/node_modules/**", "**/tests/e2e/**"],
   },
 });

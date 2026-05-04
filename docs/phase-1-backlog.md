@@ -317,6 +317,15 @@
   - A4 세로 overflow 로직 포함.
   - Phase 1 DoD #3 충족 선언.
 - **PR 단위**: 가변 — ADR 결정에 따라 1~5 PR.
+- **머지**: `feat(web): P1-10e PDF 출력 — ADR-0008 채택안 A 구현` PR.
+  - ADR-0008 §5 채택안 A 구현 — `window.print()` + CSS `@page { size: A4 portrait; margin: 15mm }`.
+  - 라이브러리 없음 (zero dep) — 표준 브라우저 print API 채택 (CLAUDE.md §3.6 평가 기록 포함).
+  - `EditorPoc.tsx`: "PDF 다운로드" 버튼 추가 (`data-testid="pdf-download-btn"`). HWPX 다운로드 버튼 숨김 (ADR-0008 deprecate 옵션 A).
+  - `EditorPoc.css`: `@media print` — 에디터 본문(`#editor-print-area`) 만 print 대상, annotation 7종 색상 강제 출력 (`-webkit-print-color-adjust: exact`).
+  - `apps/web/src/lib/api.ts`: `downloadPassageHwpx` 에 `@deprecated ADR-0008` 주석 추가.
+  - `tests/e2e/editor-roundtrip.spec.ts`: HWPX 다운로드 단계 → PDF 버튼 표시 확인 + `window.print()` headless 토스트 확인으로 교체.
+  - `tests/editor-poc.test.tsx`: PDF 버튼 노출 조건 / HWPX 버튼 숨김 / API 모드 PDF 버튼 표시 vitest 3건 추가.
+  - follow-up: (1) PNG export (강사 한컴 템플릿 1-step 삽입용) — P1-10f 로 분리 (html2canvas 또는 dom-to-image-more 도입 검토). (2) print stylesheet 폴리싱 — 강사 실제 검수 후 여백 / 폰트 크기 조정. (3) Phase 4 서버사이드 Playwright (ADR-0008 §B) 재검토.
 
 ##### P1-10 종합 DoD
 

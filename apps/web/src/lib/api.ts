@@ -127,6 +127,12 @@ export async function replaceAnnotations(
 /**
  * downloadPassageHwpx — GET /passages/{id}/hwpx 후 브라우저 다운로드 트리거.
  *
+ * @deprecated ADR-0008 (2026-05-04) 결정으로 HWPX 출력 경로가 PDF 로 전환됨.
+ *   - P1-9 와이프 검수 D 등급 ("냉정하게 사용 불가") — HWPX 렌더러 한컴 layout 함정 누적.
+ *   - ADR-0008 §5 채택안 A: HTML→PDF (window.print + CSS @page A4 portrait).
+ *   - 신규 코드에서 이 함수를 호출하지 말 것. EditorPoc 의 HWPX 버튼은 숨김 처리됨.
+ *   - packages/hwpx_renderer/ 는 코드 보존 (Phase 2/3 재검토 시 참고), 신규 사용 금지.
+ *
  * Phase 1 DoD #3 — 와이프 검수용 HWPX 출력. 백엔드가 hwpx_renderer 로 변환한
  * application/hwp+zip 바이트를 받아 a[download] 로 사용자 디스크에 저장.
  *
