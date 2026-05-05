@@ -1,5 +1,5 @@
 /**
- * api.ts — backend REST API 클라이언트 (P1-6, P1-annotation-input-dto)
+ * api.ts — backend REST API 클라이언트 (P1-6, P1-annotation-input-dto, C-2b)
  *
  * fetch 직접 사용. axios 등 라이브러리 없음.
  * VITE_API_BASE_URL 환경변수 없으면 http://localhost:8000 으로 fallback.
@@ -10,11 +10,18 @@
  *   클라이언트는 SerializedAnnotation 을 그대로 보내면 된다.
  *   annotation_id 는 에디터 chip ID 로 backend 가 영속화한다 (옵션 A).
  *
+ * C-2b 추가:
+ *   - getPreference(key, workspaceId?) — GET /preferences/{key}?workspace_id=...
+ *   - setPreference(key, value, options?) — PATCH /preferences/{key}
+ *   UserPreference / UserPreferencePatchInput TypeScript 타입 정의
+ *
  * 함수:
  *   - getPassage(id) — GET /passages/{id}
  *   - getAnnotations(passageId) — GET /passages/{id}/annotations → annotations[]
  *   - replaceAnnotations(passageId, annotations) — POST /passages/{id}/annotations
  *   - downloadPassageHwpx(passageId) — GET /passages/{id}/hwpx → 브라우저 다운로드 트리거
+ *   - getPreference(key, workspaceId?) — GET /preferences/{key}
+ *   - setPreference(key, value, options?) — PATCH /preferences/{key}
  */
 
 import type { SerializedAnnotation } from "@english-worksheet-tool/editor";
@@ -27,9 +34,74 @@ const API_BASE_URL =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:8000";
 
 // ---------------------------------------------------------------------------
-// 도메인 타입 — backend SyntaxAnnotation / Passage 최소 인터페이스
-// (full schema 는 shared/schemas/annotation.py 가 source of truth)
+// 도메인 타입 — backend SyntaxAnnotation / Passage / UserPreference 최소 인터페이스
+// (full schema 는 shared/schemas/*.py 가 source of truth)
 // ---------------------------------------------------------------------------
+
+// ─── UserPreference (C-2b) ────────────────────────────────────────────────
+
+/**
+ * UserPreference<T> — GET /preferences/{key} 응답 형태.
+ *
+ * shared/schemas/user_preference.py UserPreference 의 TypeScript 미러.
+ * T 는 value JSONB 의 typed form — 예: SentenceRolePresetValue.
+ *
+ * 필드 정책:
+ *   - id / tenant_id / user_id / created_at / updated_at: 서버 관리 메타데이터
+ *   - key: dot-notation (예: "preset.sentence_role")
+ *   - value: T (key 별 Pydantic 모델로 backend 에서 검증)
+ *   - version: 낙관적 동시성 버전 — 다음 PATCH body 에 echo 해야 함
+ *   - workspace_id: Optional (워크스페이스 범위 분리)
+ */
+export interface UserPreference<T = Record<string, unknown>> {
+  id: string;
+  tenant_id: string;
+  user_id: string;
+  workspace_id: string | null;
+  key: string;
+  value: T;
+  version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * UserPreferencePatchInput — PATCH /preferences/{key} 요청 body.
+ *
+ * shared/schemas/user_preference.py UserPreferencePatchInput 의 TypeScript 미러.
+ * tenant_id / user_id / key 는 서버-side 주입 — 클라이언트가 보내지 않음.
+ */
+export interface UserPreferencePatchInput<T = Record<string, unknown>> {
+  value: T;
+  workspace_id?: string | null;
+  version?: number | null;
+}
+
+/**
+ * SentenceRolePresetValue — "preset.sentence_role" key 의 value schema.
+ *
+ * shared/schemas/user_preference.py SentenceRolePresetValue 의 TypeScript 미러.
+ * presets: 성분 라벨 preset 리스트 (예: ["S", "V", "O", "OC", "SC"]).
+ */
+export interface SentenceRolePresetValue {
+  presets: string[];
+}
+
+/**
+ * PreferenceConflictError — PATCH 409 충돌 (낙관적 동시성 버전 불일치).
+ *
+ * ADR-0009 §D8: 다른 탭/디바이스에서 선행 PATCH 가 완료된 경우.
+ * caller 는 최신 GET 후 재시도해야 한다.
+ */
+export class PreferenceConflictError extends Error {
+  constructor(
+    message: string,
+    public readonly detail: unknown
+  ) {
+    super(message);
+    this.name = "PreferenceConflictError";
+  }
+}
 
 /** Passage — GET /passages/{id} 응답의 최소 필드 */
 export interface Passage {
@@ -122,6 +194,88 @@ export async function replaceAnnotations(
   await checkOk(response);
   const body = (await response.json()) as { annotations: SyntaxAnnotation[] };
   return body.annotations ?? [];
+}
+
+/**
+ * getPreference — GET /preferences/{key}
+ *
+ * 해당 key 의 환경설정 1건을 반환한다.
+ *   - 200 → UserPreference<T> 반환
+ *   - 404 → null 반환 (최초 진입 시 DB 행 없음)
+ *   - 422 (unknown key) → Error throw (backend 에 등록되지 않은 key)
+ *   - 기타 에러 → Error throw
+ *
+ * workspace_id 옵션: 워크스페이스 범위 분리가 필요한 key 에만 전달.
+ * 테넌트 전역 설정이면 생략.
+ *
+ * 낙관적 동시성: 반환된 UserPreference.version 을 다음 setPreference 호출 시 echo.
+ */
+export async function getPreference<T = Record<string, unknown>>(
+  key: string,
+  workspaceId?: string
+): Promise<UserPreference<T> | null> {
+  const url = new URL(`${API_BASE_URL}/preferences/${encodeURIComponent(key)}`);
+  if (workspaceId) url.searchParams.set("workspace_id", workspaceId);
+
+  const response = await fetch(url.toString());
+
+  if (response.status === 404) return null;
+
+  await checkOk(response);
+  const body = (await response.json()) as UserPreference<T>;
+  return body;
+}
+
+/**
+ * setPreference — PATCH /preferences/{key}
+ *
+ * key 에 해당하는 환경설정을 upsert 한다.
+ *   - 200 → 저장된 UserPreference<T> 반환 (version +1 포함)
+ *   - 409 (version conflict) → PreferenceConflictError throw
+ *   - 422 (validation error / unknown key) → Error throw
+ *   - 기타 에러 → Error throw
+ *
+ * 낙관적 동시성 흐름:
+ *   1. getPreference → preference.version 확인
+ *   2. setPreference(..., { version: preference.version }) 로 echo
+ *   3. 다른 탭/디바이스에서 선행 PATCH 시 409 → PreferenceConflictError
+ *   4. 최신 getPreference 후 재시도 필요
+ *
+ * 최초 생성 (DB 행 없음) 시 version 을 omit 하거나 null 로 전달 — 검사 안 함.
+ */
+export async function setPreference<T = Record<string, unknown>>(
+  key: string,
+  value: T,
+  options?: { workspaceId?: string; version?: number }
+): Promise<UserPreference<T>> {
+  const body: UserPreferencePatchInput<T> = {
+    value,
+    ...(options?.workspaceId != null ? { workspace_id: options.workspaceId } : {}),
+    ...(options?.version != null ? { version: options.version } : {}),
+  };
+
+  const response = await fetch(`${API_BASE_URL}/preferences/${encodeURIComponent(key)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  if (response.status === 409) {
+    let detail: unknown = undefined;
+    try {
+      detail = (await response.json()) as unknown;
+    } catch {
+      // JSON 파싱 실패 무시
+    }
+    throw new PreferenceConflictError(
+      `preferences/${key} version conflict (409). 최신 GET 후 재시도.`,
+      detail
+    );
+  }
+
+  await checkOk(response);
+  const saved = (await response.json()) as UserPreference<T>;
+  return saved;
 }
 
 /**

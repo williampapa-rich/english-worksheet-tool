@@ -26,7 +26,14 @@ import { BracketEntryModal, type BracketStyleOption } from "../components/Bracke
 import type { BracketEditStyle } from "../components/ChipEditModal";
 import { ChipEditModal } from "../components/ChipEditModal";
 import { LabelEntryModal, type LabelEntryModalKind } from "../components/LabelEntryModal";
-import { getAnnotations, getPassage, replaceAnnotations } from "../lib/api";
+import {
+  getAnnotations,
+  getPassage,
+  getPreference,
+  replaceAnnotations,
+  setPreference,
+} from "../lib/api";
+import type { SentenceRolePresetValue } from "../lib/api";
 import { buildChips } from "./buildChips";
 import "./EditorPoc.css";
 
@@ -86,6 +93,15 @@ const COLOR_PALETTE: Array<{ index: number; hex: string; label: string }> = [
 // buildChips, extractDocText, truncate, KIND_PRIORITY — ./buildChips.ts 에서 import
 
 // ---------------------------------------------------------------------------
+// 상수 — preset
+// ---------------------------------------------------------------------------
+
+/** 기본 성분 preset (백엔드에 행이 없을 때 in-memory 기본값) */
+const DEFAULT_SENTENCE_ROLE_PRESETS = ["S", "V", "O", "OC", "SC"];
+
+const PREFERENCE_KEY_SENTENCE_ROLE = "preset.sentence_role";
+
+// ---------------------------------------------------------------------------
 // 컴포넌트
 // ---------------------------------------------------------------------------
 
@@ -96,6 +112,13 @@ export function EditorPoc() {
 
   const [selectedColorIndex, setSelectedColorIndex] = useState<number | null>(1);
   const [customColor, setCustomColor] = useState<string | null>(null);
+
+  // C-2b: 성분 preset 상태
+  // prefVersion: 백엔드에서 받은 version — 다음 PATCH 시 echo (낙관적 동시성)
+  const [sentenceRolePresets, setSentenceRolePresets] = useState<string[]>(
+    DEFAULT_SENTENCE_ROLE_PRESETS
+  );
+  const prefVersionRef = useRef<number | null>(null);
   const [showColorWheel, setShowColorWheel] = useState(false);
   const [pickerDraftHex, setPickerDraftHex] = useState("#ffffff");
   const colorWheelRef = useRef<HTMLDivElement>(null);
@@ -205,6 +228,63 @@ export function EditorPoc() {
     // editor 는 mount 시 한 번만 실행 — passageId 변경 시 재실행
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoadMode, passageId, editor]);
+
+  // ---------------------------------------------------------------------------
+  // C-2b: preset 초기 로드 (마운트 시 1회)
+  // ---------------------------------------------------------------------------
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const pref = await getPreference<SentenceRolePresetValue>(PREFERENCE_KEY_SENTENCE_ROLE);
+        if (pref) {
+          // 백엔드 행 있음 → 저장된 preset 적용
+          const presets = pref.value.presets;
+          if (Array.isArray(presets)) {
+            setSentenceRolePresets(presets);
+          }
+          prefVersionRef.current = pref.version;
+        }
+        // 404 → null → 기본값(DEFAULT_SENTENCE_ROLE_PRESETS) 유지, prefVersionRef = null
+      } catch {
+        // 422 (unknown key) 등 에러: 기본값 유지, 로그만
+        // eslint-disable-next-line no-console
+        console.warn("[EditorPoc] getPreference failed. Using default presets.");
+      }
+    })();
+    // 마운트 시 1회만 실행
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // C-2b: preset 저장 헬퍼
+  // ---------------------------------------------------------------------------
+
+  /**
+   * savePresets — 현재 preset 목록을 백엔드에 저장한다.
+   *
+   * 낙관적 동시성: prefVersionRef.current 를 version 으로 echo.
+   * 최초 생성 (prefVersionRef = null) 시 version 없이 PATCH → 백엔드가 upsert.
+   * 저장 성공 시 response 의 version 으로 prefVersionRef 업데이트.
+   * 409 시 최신 GET 후 재시도 없이 토스트로 안내 (Phase 1 단일 사용자 환경).
+   */
+  const savePresets = useCallback(
+    async (presets: string[]) => {
+      try {
+        const saved = await setPreference<SentenceRolePresetValue>(
+          PREFERENCE_KEY_SENTENCE_ROLE,
+          { presets },
+          { version: prefVersionRef.current ?? undefined }
+        );
+        prefVersionRef.current = saved.version;
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn("[EditorPoc] setPreference failed:", err);
+        showToast("preset 저장 실패. 나중에 다시 시도하세요.", "error");
+      }
+    },
+    [showToast]
+  );
 
   // ---------------------------------------------------------------------------
   // 핸들러 — 저장 (API 로드 모드 전용)
@@ -773,6 +853,77 @@ export function EditorPoc() {
   // 핸들러 — 툴바 상단/하단 라벨 버튼 (category=note 자유 메모)
   // ---------------------------------------------------------------------------
 
+  // ---------------------------------------------------------------------------
+  // C-2b: 성분 preset 핸들러
+  // ---------------------------------------------------------------------------
+
+  /**
+   * handleSentenceRolePresetClick — preset 버튼 클릭.
+   *
+   * 해당 라벨 텍스트가 미리 채워진 상태로 성분 라벨 진입 모달을 연다.
+   * EditorPoc 의 handleLabelEntry 와 동일하게 selection 을 확인하고 모달을 트리거하지만,
+   * presetLabel 을 모달 초기값으로 전달한다.
+   *
+   * 현재 LabelEntryModal 은 초기값을 받지 않으므로 — 텍스트 입력만 자동 채움으로 동작.
+   * 우선 selection 이 있으면 바로 해당 텍스트로 bottom_label(sentence_role) 를 적용.
+   * 선택 없으면 성분 진입 모달을 여는 것과 동일하게 진행.
+   */
+  const handleSentenceRolePresetClick = useCallback(
+    (presetLabel: string) => {
+      if (!editor) return;
+      const { from, to } = editor.state.selection;
+      if (from === to) {
+        alert("텍스트를 먼저 선택해주세요.");
+        return;
+      }
+      const text = editor.state.doc.textBetween(from, to);
+      const leftTrim = text.length - text.trimStart().length;
+      const rightTrim = text.length - text.trimEnd().length;
+      const trimmedFrom = from + leftTrim;
+      const trimmedTo = to - rightTrim;
+      if (trimmedFrom >= trimmedTo) {
+        alert("선택 영역이 비어있습니다.");
+        return;
+      }
+
+      // preset 라벨로 bottom_label(sentence_role) 직접 적용 (모달 없이)
+      const annotationId = crypto.randomUUID();
+      const colorIdx = selectedColorIndex ?? 1;
+      editor
+        .chain()
+        .focus()
+        .setTextSelection({ from: trimmedFrom, to: trimmedTo })
+        .setBottomLabel({
+          text: presetLabel,
+          colorIndex: colorIdx,
+          category: "sentence_role",
+          annotationId,
+        })
+        .run();
+    },
+    [editor, selectedColorIndex]
+  );
+
+  /** handleSentenceRolePresetAdd — 커스텀 preset 추가 후 저장 */
+  const handleSentenceRolePresetAdd = useCallback(
+    (label: string) => {
+      const next = [...sentenceRolePresets, label];
+      setSentenceRolePresets(next);
+      void savePresets(next);
+    },
+    [sentenceRolePresets, savePresets]
+  );
+
+  /** handleSentenceRolePresetRemove — preset 삭제 후 저장 */
+  const handleSentenceRolePresetRemove = useCallback(
+    (label: string) => {
+      const next = sentenceRolePresets.filter((p) => p !== label);
+      setSentenceRolePresets(next);
+      void savePresets(next);
+    },
+    [sentenceRolePresets, savePresets]
+  );
+
   /**
    * handleNoteTopLabel — 툴바 "상단라벨" 버튼.
    * 현재 selection 을 저장하고 note_top 모달을 연다.
@@ -1139,6 +1290,10 @@ export function EditorPoc() {
                 onRemove={handleRemoveAnnotation}
                 onLabelEntry={handleLabelEntry}
                 onChipClick={handleChipClick}
+                sentenceRolePresets={sentenceRolePresets}
+                onSentenceRolePresetClick={handleSentenceRolePresetClick}
+                onSentenceRolePresetAdd={handleSentenceRolePresetAdd}
+                onSentenceRolePresetRemove={handleSentenceRolePresetRemove}
               />
             </div>
           </div>
