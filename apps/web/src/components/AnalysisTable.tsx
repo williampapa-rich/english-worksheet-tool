@@ -36,12 +36,16 @@ export interface AnnotationChip {
 }
 
 /**
- * LabelEntryKind — 진입 버튼으로 생성되는 mark 종류
+ * LabelEntryKind — 진입 버튼 또는 툴바 버튼으로 생성되는 mark 종류.
+ *
+ * P1-followup-ng-fixes NG 2: note top/bottom 추가 (툴바 자유 메모 버튼).
  */
 export type LabelEntryKind =
   | { markKind: "bottom_label"; category: "sentence_role" }
   | { markKind: "top_label"; category: "phrase" }
-  | { markKind: "top_label"; category: "clause" };
+  | { markKind: "top_label"; category: "clause" }
+  | { markKind: "top_label"; category: "note" }
+  | { markKind: "bottom_label"; category: "note" };
 
 interface AnalysisTableProps {
   chips: AnnotationChip[];

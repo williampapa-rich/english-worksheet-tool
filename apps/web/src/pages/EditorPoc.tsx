@@ -769,11 +769,79 @@ export function EditorPoc() {
   // 렌더
   // ---------------------------------------------------------------------------
 
-  // entryKind 도출 — entry.category 가 LabelEntryModalKind 와 1:1
-  const modalKind: LabelEntryModalKind =
-    modalState.entry?.markKind === "bottom_label"
-      ? "sentence_role"
-      : ((modalState.entry?.category as LabelEntryModalKind | undefined) ?? "phrase");
+  // ---------------------------------------------------------------------------
+  // 핸들러 — 툴바 상단/하단 라벨 버튼 (category=note 자유 메모)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * handleNoteTopLabel — 툴바 "상단라벨" 버튼.
+   * 현재 selection 을 저장하고 note_top 모달을 연다.
+   * 모달 submit 시 top_label, category="note" 로 mark 적용.
+   */
+  const handleNoteTopLabel = useCallback(() => {
+    if (!editor) return;
+    const { from, to } = editor.state.selection;
+    if (from === to) {
+      alert("텍스트를 먼저 선택해주세요.");
+      return;
+    }
+    const text = editor.state.doc.textBetween(from, to);
+    const leftTrim = text.length - text.trimStart().length;
+    const rightTrim = text.length - text.trimEnd().length;
+    const trimmedFrom = from + leftTrim;
+    const trimmedTo = to - rightTrim;
+    if (trimmedFrom >= trimmedTo) {
+      alert("선택 영역이 비어있습니다.");
+      return;
+    }
+    setModalState({
+      open: true,
+      entry: { markKind: "top_label", category: "note" },
+      pendingSelection: { from: trimmedFrom, to: trimmedTo },
+    });
+  }, [editor]);
+
+  /**
+   * handleNoteBottomLabel — 툴바 "하단라벨" 버튼.
+   * 현재 selection 을 저장하고 note_bottom 모달을 연다.
+   * 모달 submit 시 bottom_label, category="note" 로 mark 적용.
+   */
+  const handleNoteBottomLabel = useCallback(() => {
+    if (!editor) return;
+    const { from, to } = editor.state.selection;
+    if (from === to) {
+      alert("텍스트를 먼저 선택해주세요.");
+      return;
+    }
+    const text = editor.state.doc.textBetween(from, to);
+    const leftTrim = text.length - text.trimStart().length;
+    const rightTrim = text.length - text.trimEnd().length;
+    const trimmedFrom = from + leftTrim;
+    const trimmedTo = to - rightTrim;
+    if (trimmedFrom >= trimmedTo) {
+      alert("선택 영역이 비어있습니다.");
+      return;
+    }
+    setModalState({
+      open: true,
+      entry: { markKind: "bottom_label", category: "note" },
+      pendingSelection: { from: trimmedFrom, to: trimmedTo },
+    });
+  }, [editor]);
+
+  // entryKind 도출 — entry.category + markKind 조합으로 LabelEntryModalKind 결정
+  const modalKind: LabelEntryModalKind = (() => {
+    const entry = modalState.entry;
+    if (!entry) return "phrase";
+    if (entry.markKind === "bottom_label") {
+      // bottom_label: sentence_role 또는 note_bottom
+      return entry.category === "note" ? "note_bottom" : "sentence_role";
+    }
+    // top_label: phrase / clause / note_top
+    if (entry.category === "note") return "note_top";
+    if (entry.category === "clause") return "clause";
+    return "phrase";
+  })();
 
   // 로드 모드 + 로딩 중 — 에디터 전체 대신 로딩 화면 반환
   if (isLoadMode && loadState === "loading") {
@@ -861,7 +929,7 @@ export function EditorPoc() {
               data-print-card
               className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm"
             >
-              {/* 툴바 그룹 1: annotation 적용 버튼 (5종 — 메모 카테고리 자동 매핑) */}
+              {/* 툴바 그룹 1: annotation 적용 버튼 (7종 — 메모 카테고리 자동 매핑) */}
               <div
                 data-print-hide
                 className="px-4 py-3 border-b border-gray-100 bg-gray-50 space-y-2"
@@ -899,6 +967,19 @@ export function EditorPoc() {
                     active={isInlineNoteActive}
                     disabled={!editor}
                     onClick={handleInlineNote}
+                  />
+                  {/* P1-followup-ng-fixes NG 2: 상단/하단 라벨 자유 메모 버튼 */}
+                  <AnnotationButton
+                    label="상단라벨"
+                    active={false}
+                    disabled={!editor}
+                    onClick={handleNoteTopLabel}
+                  />
+                  <AnnotationButton
+                    label="하단라벨"
+                    active={false}
+                    disabled={!editor}
+                    onClick={handleNoteBottomLabel}
                   />
                 </div>
               </div>
