@@ -25,7 +25,7 @@ import { BracketEntryModal, type BracketStyleOption } from "../components/Bracke
 import type { BracketEditStyle } from "../components/ChipEditModal";
 import { ChipEditModal } from "../components/ChipEditModal";
 import { LabelEntryModal, type LabelEntryModalKind } from "../components/LabelEntryModal";
-import { downloadPassageHwpx, getAnnotations, getPassage, replaceAnnotations } from "../lib/api";
+import { getAnnotations, getPassage, replaceAnnotations } from "../lib/api";
 import { buildChips } from "./buildChips";
 import "./EditorPoc.css";
 
@@ -222,13 +222,27 @@ export function EditorPoc() {
   }, [editor, passageId, showToast]);
 
   /**
-   * handleDownloadHwpx — Phase 1 DoD #3 와이프 검수용 HWPX 다운로드.
+   * handleDownloadPdf — ADR-0008 §5 채택안 A 구현.
    *
-   * 현재 에디터 상태를 먼저 저장한 뒤 backend 가 DB 의 annotation 을 기반으로
-   * 렌더한 HWPX 파일을 다운로드한다. 미저장 변경이 있으면 다운로드 결과에
-   * 반영되지 않으므로 항상 저장 → 다운로드 순서.
+   * 현재 에디터 상태를 먼저 저장한 뒤 window.print() 로 print 다이얼로그를 띄운다.
+   * 사용자가 print 다이얼로그에서 "PDF 로 저장" 을 선택하면 A4 portrait PDF 가 저장된다.
+   *
+   * @media print 스타일 (EditorPoc.css) 이 에디터 본문 영역만 인쇄 대상으로 지정:
+   *   - 툴바 / 분석표 / 헤더 / 토스트 → display: none
+   *   - @page size: A4 portrait / 여백 15mm
+   *   - annotation (highlight, underline, top_label, bottom_label, bracket, arrow, inline_note)
+   *     색상 / border 강제 출력 (-webkit-print-color-adjust: exact)
+   *
+   * 라이브러리 평가 기록 (CLAUDE.md §3.6 No Reinventing the Wheel):
+   *   - window.print() + CSS @page (zero dep, 채택) — 진정한 벡터 PDF, 표준 브라우저 API.
+   *   - react-to-print — window.print() 래퍼로 동일 한계. 추가 dep 대비 이득 없음.
+   *   - jsPDF + html2canvas — raster 캡처라 PDF 안에 이미지로 들어감 (벡터 X). Phase 1 baseline 과잉.
+   *   - html2pdf.js — html2canvas + jsPDF 래퍼. 동일 이유로 탈락.
+   *   - @react-pdf/renderer — Tiptap doc 재활용 불가 (컴포넌트 트리 재작성 필요). 탈락.
+   * Phase 1 baseline 2-step (인쇄 다이얼로그 → PDF 저장) 으로 충분.
+   * 1-click 다운로드가 필요하면 P1-10f 에서 jsPDF + html2canvas 추가 가능.
    */
-  const handleDownloadHwpx = useCallback(async () => {
+  const handleDownloadPdf = useCallback(async () => {
     if (!editor || !passageId) return;
     try {
       // 1) 현재 에디터 상태 저장 (미저장 변경 반영)
@@ -236,12 +250,12 @@ export function EditorPoc() {
       const annotations = docToAnnotations(doc);
       await replaceAnnotations(passageId, annotations);
 
-      // 2) HWPX 다운로드 트리거
-      await downloadPassageHwpx(passageId);
-      showToast("HWPX 다운로드 완료", "success");
+      // 2) print 다이얼로그 트리거 — 사용자가 "PDF 로 저장" 선택
+      window.print();
+      showToast("인쇄 다이얼로그에서 'PDF 로 저장'을 선택하세요", "success");
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      showToast(`다운로드 실패: ${message}`, "error");
+      showToast(`PDF 출력 실패: ${message}`, "error");
     }
   }, [editor, passageId, showToast]);
 
@@ -1001,21 +1015,25 @@ export function EditorPoc() {
                     저장
                   </button>
                 )}
-                {/* HWPX 다운로드 버튼 — API 로드 모드 전용 (P1-9) */}
+                {/* PDF 다운로드 버튼 — ADR-0008 §5 채택안 A (window.print + @page A4 portrait) */}
+                {/* HWPX 다운로드 버튼은 ADR-0008 deprecate 결정으로 숨김 처리 (옵션 A). */}
                 {isLoadMode && (
                   <button
                     type="button"
-                    onClick={() => void handleDownloadHwpx()}
+                    data-testid="pdf-download-btn"
+                    onClick={() => void handleDownloadPdf()}
                     disabled={!editor}
-                    className="px-3 py-1.5 text-sm font-medium rounded-lg bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 transition-colors disabled:opacity-50"
+                    className="px-3 py-1.5 text-sm font-medium rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 transition-colors disabled:opacity-50"
                   >
-                    HWPX 다운로드
+                    PDF 다운로드
                   </button>
                 )}
               </div>
 
-              {/* Tiptap 에디터 본문 */}
-              <EditorContent editor={editor} />
+              {/* Tiptap 에디터 본문 — print 대상 영역 */}
+              <div id="editor-print-area" data-testid="editor-print-area">
+                <EditorContent editor={editor} />
+              </div>
             </div>
 
             {/* 분석표 (본문 에디터 하단) */}

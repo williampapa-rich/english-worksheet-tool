@@ -483,3 +483,197 @@
   line-height: 2.4;
   padding: 0.5em 0;
 }
+
+/* ---------------------------------------------------------------------------
+ * @media print — PDF 출력 스타일 (ADR-0008 §5 채택안 A)
+ *
+ * 전략:
+ *   1. 에디터 본문 (#editor-print-area) 만 print 대상으로 노출
+ *      — 툴바 / 분석표 / 헤더 / 토스트 / 기타 UI 는 display: none
+ *   2. @page A4 portrait, 여백 15mm (강사 한컴 템플릿 복붙 시 여백 있어야 편집 가능)
+ *   3. annotation 색상 / border 강제 출력
+ *      -webkit-print-color-adjust: exact (Chrome/Safari 컬러 인쇄 강제)
+ *   4. top_label / bottom_label 의 ::before / ::after pseudo-element 는 print CSS 에서도
+ *      그대로 렌더 (content: attr(...) 가 print 에서도 동작).
+ *   5. 인라인 배경색 (highlight) / border (top_label / bottom_label / bracket) / 점선 (arrow)
+ *      모두 print 에서 보이도록 명시적 -webkit-print-color-adjust 적용.
+ *   6. overflow: visible 강제 — 에디터 카드의 overflow-hidden 이 print 에서 잘림 방지.
+ *   7. A4 overflow: CSS `page-break-inside: avoid` 를 단락 단위로 적용해 어색한 분할 방지.
+ *      단 긴 단락은 브라우저 자동 분할 허용 (강제하면 내용 잘림 발생 가능).
+ * --------------------------------------------------------------------------- */
+@media print {
+  /* A4 세로 / 여백 15mm */
+  @page {
+    size: A4 portrait;
+    margin: 15mm;
+  }
+
+  /* 1. 화면 전체를 숨기고, #editor-print-area 만 다시 표시 */
+  body > *,
+  #root > *,
+  #root main > * {
+    display: none !important;
+  }
+
+  /* 에디터 본문 컨테이너 복원 */
+  #editor-print-area,
+  #editor-print-area * {
+    display: revert !important;
+    visibility: visible !important;
+  }
+
+  /* #root 와 main 을 투명한 wrapper 로 복원 (화면 레이아웃 간섭 없이) */
+  #root,
+  #root main {
+    display: block !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
+    min-height: unset !important;
+  }
+
+  /* 에디터 카드 — overflow 해제, border/shadow 제거 */
+  #editor-print-area {
+    display: block !important;
+    visibility: visible !important;
+    overflow: visible !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+  }
+
+  /* ProseMirror 본문 — print 시 폰트 / 라인 높이 조정 */
+  .ProseMirror {
+    padding: 0 !important;
+    font-size: 11pt !important;
+    line-height: 2.2 !important;
+    color: #000 !important;
+    background: transparent !important;
+    overflow: visible !important;
+  }
+
+  .ProseMirror p {
+    page-break-inside: avoid;
+    orphans: 3;
+    widows: 3;
+    line-height: 2.4 !important;
+    padding: 0.3em 0 !important;
+  }
+
+  /* ── annotation 색상 강제 출력 ──────────────────────────────────────── */
+
+  /* highlight — background-color 인라인 스타일 강제 인쇄 */
+  mark[style] {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* annotation 공통 — color_index CSS 변수 / border / background 강제 인쇄 */
+  [data-annotation-kind] {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* top_label — border-top + ::before 라벨 텍스트 */
+  [data-annotation-kind="top_label"] {
+    position: relative !important;
+    display: inline-block !important;
+    border-top: 2px solid var(--current-anno-color, var(--anno-color-0)) !important;
+    line-height: 1 !important;
+    padding-top: 1px !important;
+    margin-top: calc(0.84em - 0.9px) !important;
+  }
+
+  [data-annotation-kind="top_label"]::before {
+    content: attr(data-top-label-text) !important;
+    position: absolute !important;
+    top: calc(-1.1em - 3px) !important;
+    left: 0 !important;
+    font-size: 0.65em !important;
+    font-weight: 600 !important;
+    color: #1e3a5f !important;
+    white-space: nowrap !important;
+    line-height: 1.4 !important;
+  }
+
+  /* bottom_label — border-bottom + ::after 라벨 텍스트 */
+  [data-annotation-kind="bottom_label"] {
+    position: relative !important;
+    display: inline-block !important;
+    border-bottom: 2px solid var(--current-anno-color, var(--anno-color-0)) !important;
+    line-height: 1 !important;
+    padding-bottom: 1px !important;
+    margin-bottom: calc(0.84em - 0.9px) !important;
+  }
+
+  [data-annotation-kind="bottom_label"]::after {
+    content: attr(data-bottom-label-text) !important;
+    position: absolute !important;
+    bottom: calc(-1.1em - 3px) !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    font-size: 0.65em !important;
+    font-weight: 600 !important;
+    color: #1e3a5f !important;
+    white-space: nowrap !important;
+    line-height: 1.4 !important;
+  }
+
+  /* bracket — ::before / ::after 괄호 문자 */
+  [data-annotation-kind="bracket"][data-bracket-style="()"]::before {
+    content: "(" !important;
+    color: var(--current-anno-color) !important;
+    font-weight: 700 !important;
+  }
+  [data-annotation-kind="bracket"][data-bracket-style="()"]::after {
+    content: ")" !important;
+    color: var(--current-anno-color) !important;
+    font-weight: 700 !important;
+  }
+  [data-annotation-kind="bracket"][data-bracket-style="{}"]::before {
+    content: "{" !important;
+    color: var(--current-anno-color) !important;
+    font-weight: 700 !important;
+  }
+  [data-annotation-kind="bracket"][data-bracket-style="{}"]::after {
+    content: "}" !important;
+    color: var(--current-anno-color) !important;
+    font-weight: 700 !important;
+  }
+  [data-annotation-kind="bracket"][data-bracket-style="[]"]::before {
+    content: "[" !important;
+    color: var(--current-anno-color) !important;
+    font-weight: 700 !important;
+  }
+  [data-annotation-kind="bracket"][data-bracket-style="[]"]::after {
+    content: "]" !important;
+    color: var(--current-anno-color) !important;
+    font-weight: 700 !important;
+  }
+
+  /* arrow — 점선 border-bottom */
+  [data-annotation-kind="arrow"] {
+    border-bottom: 2px dashed var(--current-anno-color, var(--anno-color-0)) !important;
+    padding-bottom: 1px !important;
+  }
+
+  [data-annotation-kind="arrow"]::after {
+    content: " →" !important;
+    font-size: 0.75em !important;
+    opacity: 0.7 !important;
+  }
+
+  /* inline_note — ::after 노트 텍스트 */
+  [data-annotation-kind="inline_note"]::after {
+    content: " (=" attr(data-inline-note-text) ")" !important;
+    font-size: 0.75em !important;
+    color: #4b5563 !important;
+  }
+
+  /* underline — <u> 태그 기본 스타일 유지 (브라우저 기본 underline 인쇄 됨) */
+  u {
+    text-decoration: underline !important;
+  }
+}

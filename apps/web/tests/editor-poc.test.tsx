@@ -6,6 +6,8 @@
  * 2. 초기 텍스트 렌더링 확인
  * 3. "SyntaxAnnotation[] 보기" 버튼 클릭 → JSON 패널 출력
  * 4. JSON 루트 구조 검증 (type: "doc", content 배열)
+ * 5. PDF 버튼 노출 조건 — fixture 모드(passageId 없음) 에서는 숨김, API 모드에서 표시
+ * 6. HWPX 다운로드 버튼 숨김 확인 (ADR-0008 deprecate 처리)
  *
  * 하이라이트 자동 검증:
  *   jsdom 환경에서 텍스트 선택(Selection API) + 마크 적용이 불안정하므로
@@ -13,8 +15,8 @@
  *   (브라우저에서 텍스트 선택 → "하이라이트 토글" 클릭 → JSON에 mark 확인)
  */
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it } from "vitest";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { EditorPoc } from "../src/pages/EditorPoc";
 
 // 각 테스트 후 DOM 정리
@@ -83,5 +85,76 @@ describe("EditorPoc", () => {
     renderEditorPoc();
     const homeLink = screen.getByRole("link", { name: /홈으로/ });
     expect(homeLink).toHaveAttribute("href", "/");
+  });
+
+  it("fixture 모드(passageId 없음)에서 PDF 다운로드 버튼이 표시되지 않는다", async () => {
+    // fixture 모드: URL에 passageId 없음 → isLoadMode = false → PDF / 저장 버튼 숨김
+    renderEditorPoc();
+    await waitFor(() => {
+      expect(screen.getByText(/The student who had studied hard/)).toBeInTheDocument();
+    });
+    // PDF 버튼은 API 로드 모드 전용 — fixture 모드에서는 존재하지 않아야 함
+    expect(screen.queryByTestId("pdf-download-btn")).not.toBeInTheDocument();
+  });
+
+  it("HWPX 다운로드 버튼이 존재하지 않는다 (ADR-0008 deprecate 처리)", async () => {
+    // ADR-0008 §5 채택안 A: HWPX 다운로드 버튼 숨김 (옵션 A)
+    renderEditorPoc();
+    await waitFor(() => {
+      expect(screen.getByText(/The student who had studied hard/)).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("button", { name: "HWPX 다운로드" })).not.toBeInTheDocument();
+  });
+
+  it("API 모드(passageId 있음)에서 PDF 다운로드 버튼이 표시된다", async () => {
+    // API 로드 모드: URL에 passageId 있음 → isLoadMode = true → PDF 버튼 표시
+    // fetch mock — getPassage / getAnnotations 가 실패하지 않도록 stub
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string) => {
+        if (url.includes("/annotations")) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ annotations: [] }),
+          });
+        }
+        // getPassage
+        return Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              passage: {
+                id: "test-p1",
+                body_text: "Hello world.",
+                paragraphs: ["Hello world."],
+              },
+              questions: [],
+            }),
+        });
+      })
+    );
+
+    render(
+      <MemoryRouter initialEntries={["/editor/test-p1"]}>
+        <Routes>
+          <Route path="/editor/:passageId" element={<EditorPoc />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    // 로딩 완료 대기
+    await waitFor(
+      () => {
+        expect(screen.queryByText("로딩 중...")).not.toBeInTheDocument();
+      },
+      { timeout: 5000 }
+    );
+
+    // PDF 버튼이 렌더되어야 함
+    await waitFor(() => {
+      expect(screen.getByTestId("pdf-download-btn")).toBeInTheDocument();
+    });
+
+    vi.unstubAllGlobals();
   });
 });

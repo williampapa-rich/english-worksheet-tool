@@ -1,7 +1,14 @@
 /**
  * editor-roundtrip.spec.ts — P1-6b Playwright E2E 골격 시나리오
  *
- * 시나리오: passage 로드 → 형광펜 적용 → 저장 → HWPX 다운로드
+ * 시나리오: passage 로드 → 형광펜 적용 → 저장 → PDF 다운로드 버튼 표시 확인
+ *
+ * P1-10e 변경 (ADR-0008 §5 채택안 A):
+ *   - HWPX 다운로드 단계 → PDF 다운로드 단계로 교체.
+ *   - PDF 다운로드는 window.print() (print 다이얼로그) 로 처리 — 실제 다운로드 파일 없음.
+ *     따라서 download 이벤트 대신 버튼이 노출되는지 + 클릭 후 토스트 확인으로 검증.
+ *   - window.print() Playwright 에서 dialog 이벤트 발생 없음 (headless 는 print 다이얼로그 skip).
+ *     검증 전략: PDF 버튼이 DOM 에 존재하는지 + 클릭 후 저장 완료 토스트 확인.
  *
  * 전략:
  *   - FastAPI/DB 미기동. setupApiMocks() 로 backend 호출을 정적 fixture 로 대체.
@@ -17,7 +24,7 @@ import { setupApiMocks } from "./api-mock";
 const PASSAGE_ID = "test-passage-1";
 const BODY_TEXT = "The student who had studied hard for the exam passed with an excellent score.";
 
-test("passage 로드 → 형광펜 적용 → 저장 → HWPX 다운로드", async ({ page }) => {
+test("passage 로드 → 형광펜 적용 → 저장 → PDF 다운로드 버튼 확인", async ({ page }) => {
   // ── 1. API mock 등록 ─────────────────────────────────────────────────────
   await setupApiMocks(page, { passageId: PASSAGE_ID, bodyText: BODY_TEXT });
 
@@ -74,16 +81,23 @@ test("passage 로드 → 형광펜 적용 → 저장 → HWPX 다운로드", asy
   // "저장 완료" 토스트 (output[aria-live="polite"]) 가 5초 내 나타나야 함
   await expect(page.getByText("저장 완료")).toBeVisible({ timeout: 8_000 });
 
-  // ── 6. HWPX 다운로드 버튼 클릭 → download 이벤트 확인 ───────────────
-  const downloadPromise = page.waitForEvent("download", { timeout: 10_000 });
+  // ── 6. PDF 다운로드 버튼 확인 (ADR-0008 §5 채택안 A) ──────────────────
+  //
+  // PDF 다운로드는 window.print() 로 print 다이얼로그 트리거 — headless 환경에서
+  // 실제 download 이벤트 없음. 버튼 존재 + 클릭 후 토스트 확인으로 검증.
+  // HWPX 다운로드 버튼은 ADR-0008 deprecate 결정으로 숨김 처리됨 — 존재 확인 X.
+  const pdfBtn = page.getByTestId("pdf-download-btn");
+  await expect(pdfBtn).toBeVisible({ timeout: 3_000 });
+  await expect(pdfBtn).toBeEnabled();
+
+  // HWPX 다운로드 버튼은 숨김 처리 (ADR-0008 §5 HWPX deprecate)
   const hwpxBtn = page.getByRole("button", { name: "HWPX 다운로드" });
-  await hwpxBtn.click();
+  await expect(hwpxBtn).toHaveCount(0);
 
-  const download = await downloadPromise;
-
-  // 파일명에 passageId 포함 여부 확인 (mock 응답의 Content-Disposition 에서 파생)
-  expect(download.suggestedFilename()).toContain(`passage_${PASSAGE_ID}`);
-
-  // "HWPX 다운로드 완료" 토스트 확인
-  await expect(page.getByText("HWPX 다운로드 완료")).toBeVisible({ timeout: 8_000 });
+  // PDF 버튼 클릭 → 저장 후 토스트 확인
+  // window.print() 는 headless Chrome 에서 no-op (다이얼로그 없음) — 저장 완료 토스트만 확인.
+  await pdfBtn.click();
+  await expect(
+    page.getByText("인쇄 다이얼로그에서 'PDF 로 저장'을 선택하세요")
+  ).toBeVisible({ timeout: 8_000 });
 });
