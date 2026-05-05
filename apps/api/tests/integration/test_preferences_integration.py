@@ -213,3 +213,46 @@ async def test_cross_tenant_isolation_get_404(
         f"cross-tenant 격리 실패: tenant B 가 tenant A 의 preference 를 볼 수 있음. "
         f"response: {resp.text}"
     )
+
+
+@pytest.mark.asyncio
+async def test_cross_tenant_isolation_patch_separate_rows(
+    client_a: AsyncClient,
+    client_b: AsyncClient,
+) -> None:
+    """멀티테넌트 격리 — PATCH: tenant A 와 tenant B 가 같은 key 를 PATCH 시 별개 row.
+
+    시나리오:
+      1. Tenant A 가 preset.sentence_role PATCH → DB row (tenant_id=A, user_id=A).
+      2. Tenant B 가 동일 key PATCH (같은 workspace_id) → DB row (tenant_id=B, user_id=B).
+      3. Tenant A 의 GET 은 자신 row (value=["S","V","O"]) 반환.
+      4. Tenant B 의 GET 은 자신 row (value=["X","Y"]) 반환.
+      두 row 가 별개로 존재하며 서로 덮지 않음을 확인한다.
+    """
+    # 1. Tenant A 생성
+    resp_a = await client_a.patch(
+        "/preferences/preset.sentence_role",
+        json={"value": {"presets": ["S", "V", "O"]}},
+    )
+    assert resp_a.status_code == 200, resp_a.text
+
+    # 2. Tenant B 생성 (같은 key)
+    resp_b = await client_b.patch(
+        "/preferences/preset.sentence_role",
+        json={"value": {"presets": ["X", "Y"]}},
+    )
+    assert resp_b.status_code == 200, resp_b.text
+
+    # 3. Tenant A GET — 자신 row
+    resp = await client_a.get("/preferences/preset.sentence_role")
+    assert resp.status_code == 200
+    assert resp.json()["value"] == {"presets": ["S", "V", "O"]}, (
+        f"tenant A row 가 tenant B PATCH 로 덮인 것으로 보임: {resp.text}"
+    )
+
+    # 4. Tenant B GET — 자신 row
+    resp = await client_b.get("/preferences/preset.sentence_role")
+    assert resp.status_code == 200
+    assert resp.json()["value"] == {"presets": ["X", "Y"]}, (
+        f"tenant B row 가 예상과 다름: {resp.text}"
+    )

@@ -22,48 +22,16 @@ import uuid
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ValidationError
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from shared.schemas import UserPreference, UserPreferencePatchInput
 from shared.schemas.user_preference import SentenceRolePresetValue
 from worksheet_api.db import get_db
 from worksheet_api.repositories.tenant_context import TenantContext, get_tenant_context
 from worksheet_api.repositories.user_preference import ConflictError, UserPreferenceRepository
 
 router = APIRouter(prefix="/preferences", tags=["preferences"])
-
-
-# ─── 응답 스키마 ──────────────────────────────────────────────────────────────
-
-
-class UserPreferenceResponse(BaseModel):
-    """GET / PATCH /preferences/{key} 응답 스키마.
-
-    ``shared/schemas/user_preference.UserPreference`` 에 ``version`` 을 추가한
-    API 레이어 전용 응답 모델.
-
-    ``UserPreference`` 는 ``extra="forbid"`` 이므로 ``version`` 을 직접 추가할 수 없다
-    (shared/schemas 는 읽기 전용 — ADR-0001). 본 응답 모델은 ``apps/api/`` 내부에서만
-    사용하며 ``UserPreference`` 를 embed 한다.
-    """
-
-    model_config = ConfigDict(from_attributes=True)
-
-    # UserPreference 필드 플랫 embed (ORM 변환 편의)
-    id: uuid.UUID
-    tenant_id: uuid.UUID
-    user_id: uuid.UUID
-    workspace_id: uuid.UUID | None
-    key: str
-    value: dict[str, Any]
-    version: int
-    created_at: Any
-    updated_at: Any
-
-    @classmethod
-    def from_orm_row(cls, orm: Any) -> UserPreferenceResponse:
-        """ORM 인스턴스 → 응답 변환."""
-        return cls.model_validate(orm)
 
 
 # ─── value schema 레지스트리 (ADR-0009 §D3) ──────────────────────────────────
@@ -123,49 +91,16 @@ def _validate_value(key: str, value: dict[str, Any]) -> None:
         ) from exc
 
 
-# ─── 요청 / 응답 스키마 ───────────────────────────────────────────────────────
-
-
-class PreferencePatchRequest(BaseModel):
-    """PATCH /preferences/{key} 의 request body.
-
-    ADR-0009 §D7: tenant_id / user_id 를 포함하지 않는다 — 클라이언트 위장 차단.
-    server-side TenantContext Depends 에서 주입.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    value: dict[str, Any] = Field(
-        ...,
-        description=(
-            "저장할 JSONB value. key 에 따라 서버가 별 Pydantic 모델로 추가 검증 (실패 시 422)."
-        ),
-    )
-    workspace_id: uuid.UUID | None = Field(
-        default=None,
-        description=(
-            "워크스페이스 ID (Optional). None 이면 테넌트 전역 옵션."
-        ),
-    )
-    version: int | None = Field(
-        default=None,
-        description=(
-            "낙관적 동시성 버전 (Optional). 현재 DB 버전과 다르면 409. "
-            "최초 생성 시 None 또는 임의 값 — 행이 없으므로 검사 안 함."
-        ),
-    )
-
-
 # ─── 엔드포인트 ──────────────────────────────────────────────────────────────
 
 
-@router.get("/{key}", response_model=UserPreferenceResponse, status_code=200)
+@router.get("/{key}", response_model=UserPreference, status_code=200)
 async def get_preference(
     key: str,
     workspace_id: uuid.UUID | None = None,
     tenant_ctx: Annotated[TenantContext, Depends(get_tenant_context)] = ...,
     session: Annotated[AsyncSession, Depends(get_db)] = ...,
-) -> UserPreferenceResponse:
+) -> UserPreference:
     """사용자 환경설정 단건 조회.
 
     멀티테넌트: tenant_id + user_id 필터 자동 적용 (TenantContext Depends).
@@ -191,16 +126,16 @@ async def get_preference(
             status_code=404,
             detail=f"환경설정 key={key!r} (workspace_id={workspace_id}) 를 찾을 수 없습니다.",
         )
-    return UserPreferenceResponse.model_validate(orm)
+    return UserPreference.model_validate(orm)
 
 
-@router.patch("/{key}", response_model=UserPreferenceResponse, status_code=200)
+@router.patch("/{key}", response_model=UserPreference, status_code=200)
 async def patch_preference(
     key: str,
-    body: PreferencePatchRequest,
+    body: UserPreferencePatchInput,
     tenant_ctx: Annotated[TenantContext, Depends(get_tenant_context)] = ...,
     session: Annotated[AsyncSession, Depends(get_db)] = ...,
-) -> UserPreferenceResponse:
+) -> UserPreference:
     """사용자 환경설정 upsert (생성 또는 갱신).
 
     멀티테넌트: tenant_id + user_id 필터 자동 적용.
@@ -208,7 +143,7 @@ async def patch_preference(
 
     Args:
         key: dot-notation 환경설정 key (예: preset.sentence_role).
-        body: value + workspace_id + version.
+        body: UserPreferencePatchInput (value + workspace_id + version).
         tenant_ctx: 현재 요청의 테넌트/사용자 컨텍스트.
         session: DB 세션.
 
@@ -232,4 +167,4 @@ async def patch_preference(
     except ConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-    return UserPreferenceResponse.model_validate(orm)
+    return UserPreference.model_validate(orm)
