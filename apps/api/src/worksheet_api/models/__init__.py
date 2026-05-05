@@ -31,6 +31,7 @@ from worksheet_api.models.question import QuestionORM
 from worksheet_api.models.syntax_annotation import SyntaxAnnotationORM
 from worksheet_api.models.tenant import Tenant, Workspace
 from worksheet_api.models.translation import TranslationORM
+from worksheet_api.models.user_preference import UserPreferenceORM
 from worksheet_api.models.vocabulary import VocabularyORM
 
 # Base.metadata 의 tenants / workspaces 를 SQLModel.metadata 에도 attach.
@@ -52,4 +53,5 @@ __all__ = [
     "TranslationORM",
     "SyntaxAnnotationORM",
     "LlmUsageLogORM",
+    "UserPreferenceORM",
 ]

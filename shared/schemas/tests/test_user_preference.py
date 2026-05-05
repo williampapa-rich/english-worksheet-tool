@@ -2,8 +2,10 @@
 
 ADR-0009 (`docs/adr/0009-user-preferences.md`) 의 결정을 닫는 모델의 검증:
   - dot-notation key 규칙 강제 (정상 / 부적합 형식).
-  - ``UserPreference`` 정상 생성 + tenant_id / user_id 필수 + workspace_id Optional.
-  - ``UserPreferenceInput`` (DTO) — tenant_id / user_id 없음 (server-side 주입 가드레일).
+  - ``UserPreference`` 정상 생성 + tenant_id / user_id 필수 + workspace_id Optional +
+    ``version`` 기본값 / 경계값 (ADR-0009 §D8).
+  - ``UserPreferencePatchInput`` (PATCH body DTO) — tenant_id / user_id / key 없음
+    (server-side 주입 + path param 가드레일, ADR-0009 §D7).
   - ``SentenceRolePresetValue`` — value schema 1예시의 정상 / 길이 / 타입 검증.
   - ``extra="forbid"`` — 알 수 없는 필드 거절.
 """
@@ -19,7 +21,7 @@ from pydantic import ValidationError
 from shared.schemas.user_preference import (
     SentenceRolePresetValue,
     UserPreference,
-    UserPreferenceInput,
+    UserPreferencePatchInput,
 )
 
 TENANT_ID = uuid.uuid4()
@@ -55,6 +57,8 @@ class TestUserPreferenceHappyPath:
         assert pref.workspace_id is None
         assert pref.key == "preset.sentence_role"
         assert pref.value == {"presets": ["S", "V", "O"]}
+        # version 기본값 = 1 (ADR-0009 §D8 — 첫 행 생성 시).
+        assert pref.version == 1
 
     def test_with_workspace_id(self) -> None:
         pref = UserPreference(**_make_kwargs(workspace_id=WORKSPACE_ID))
@@ -163,46 +167,95 @@ class TestUserPreferenceForbidExtra:
             UserPreference(**kwargs)
 
 
-# ─── UserPreferenceInput (DTO) ────────────────────────────────────────────
+# ─── UserPreference.version (낙관적 동시성, ADR-0009 §D8) ─────────────────
 
 
-class TestUserPreferenceInput:
+class TestUserPreferenceVersion:
+    def test_default_version_is_1(self) -> None:
+        # 행이 처음 만들어질 때 기본값은 1.
+        pref = UserPreference(**_make_kwargs())
+        assert pref.version == 1
+
+    def test_version_explicit(self) -> None:
+        # 서버가 ORM 에서 읽어온 행을 직렬화할 때 사용 — 임의 양수 허용.
+        pref = UserPreference(**_make_kwargs(version=42))
+        assert pref.version == 42
+
+    def test_version_zero_rejected(self) -> None:
+        # ge=1 — 0 거절 (낙관적 동시성 의미상 1부터 시작).
+        with pytest.raises(ValidationError):
+            UserPreference(**_make_kwargs(version=0))
+
+    def test_version_negative_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            UserPreference(**_make_kwargs(version=-1))
+
+    def test_version_serialization_roundtrip(self) -> None:
+        # API 응답 직렬화 시 version 이 dump 되는지 확인 — 클라이언트 echo 의 전제.
+        pref = UserPreference(**_make_kwargs(version=7))
+        dumped = pref.model_dump()
+        assert dumped["version"] == 7
+        # 역직렬화 후에도 보존.
+        restored = UserPreference(**dumped)
+        assert restored.version == 7
+
+
+# ─── UserPreferencePatchInput (PATCH body DTO) ────────────────────────────
+
+
+class TestUserPreferencePatchInput:
     def test_minimal_valid(self) -> None:
-        dto = UserPreferenceInput(
-            key="preset.sentence_role",
-            value={"presets": ["S", "V"]},
-        )
-        assert dto.key == "preset.sentence_role"
+        # 최초 생성 분기 — version 없이 value 만.
+        dto = UserPreferencePatchInput(value={"presets": ["S", "V"]})
+        assert dto.value == {"presets": ["S", "V"]}
         assert dto.workspace_id is None
+        assert dto.version is None
 
     def test_with_workspace_id(self) -> None:
-        dto = UserPreferenceInput(
+        dto = UserPreferencePatchInput(
             workspace_id=WORKSPACE_ID,
-            key="editor.layout",
             value={"columns": 2},
         )
         assert dto.workspace_id == WORKSPACE_ID
 
+    def test_with_version_echo(self) -> None:
+        # 정상 갱신 — 클라이언트가 직전 GET 의 version 을 echo.
+        dto = UserPreferencePatchInput(
+            value={"presets": ["S"]},
+            version=3,
+        )
+        assert dto.version == 3
+
+    def test_version_zero_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            UserPreferencePatchInput(value={}, version=0)
+
+    def test_version_negative_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            UserPreferencePatchInput(value={}, version=-5)
+
     def test_tenant_id_rejected(self) -> None:
         # 가드레일 — DTO 에 tenant_id 가 들어오면 거절 (server-side 주입 강제).
         with pytest.raises(ValidationError, match="(?i)extra|not permitted"):
-            UserPreferenceInput(  # type: ignore[call-arg]
+            UserPreferencePatchInput(  # type: ignore[call-arg]
                 tenant_id=TENANT_ID,
-                key="preset.sentence_role",
                 value={"presets": []},
             )
 
     def test_user_id_rejected(self) -> None:
         with pytest.raises(ValidationError, match="(?i)extra|not permitted"):
-            UserPreferenceInput(  # type: ignore[call-arg]
+            UserPreferencePatchInput(  # type: ignore[call-arg]
                 user_id=USER_ID,
-                key="preset.sentence_role",
                 value={"presets": []},
             )
 
-    def test_invalid_key_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="dot-notation"):
-            UserPreferenceInput(key="no_dot", value={})
+    def test_key_rejected(self) -> None:
+        # key 는 path param 으로만 — body 에 들어오면 거절.
+        with pytest.raises(ValidationError, match="(?i)extra|not permitted"):
+            UserPreferencePatchInput(  # type: ignore[call-arg]
+                key="preset.sentence_role",
+                value={"presets": []},
+            )
 
 
 # ─── SentenceRolePresetValue (value schema 예시) ──────────────────────────

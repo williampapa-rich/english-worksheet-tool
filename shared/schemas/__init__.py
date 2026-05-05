@@ -66,7 +66,7 @@ from shared.schemas.translation import Translation, TranslationCreatedBy
 from shared.schemas.user_preference import (
     SentenceRolePresetValue,
     UserPreference,
-    UserPreferenceInput,
+    UserPreferencePatchInput,
 )
 from shared.schemas.vocabulary import Vocabulary, VocabularySelectedBy
 from shared.schemas.worksheet import (
@@ -121,7 +121,7 @@ __all__ = [
     # user_preference
     "SentenceRolePresetValue",
     "UserPreference",
-    "UserPreferenceInput",
+    "UserPreferencePatchInput",
     # vocabulary
     "Vocabulary",
     "VocabularySelectedBy",
