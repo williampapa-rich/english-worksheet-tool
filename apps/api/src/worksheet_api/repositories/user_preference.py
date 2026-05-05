@@ -64,7 +64,7 @@ class UserPreferenceRepository:
         """
         tid = self._tenant_ctx.tenant_id
         if tid == SENTINEL_UUID:
-            raise PermissionError(
+            raise ValueError(
                 "TenantContext.tenant_id 가 sentinel UUID (00000000-…) 입니다. "
                 "환경변수 TENANT_ID 를 올바르게 설정하세요. "
                 "ADR-0003 §D-3.6 이중 방어 참조."
@@ -154,10 +154,11 @@ class UserPreferenceRepository:
         Raises:
             ConflictError: expected_version 불일치 (409 매핑).
         """
-        # 낙관적 동시성 검사 — upsert 전에 현재 버전 확인
-        # Phase 1 단일 사용자 stub — Phase 4 멀티유저 진입 전
-        # SELECT ... FOR UPDATE 또는 SERIALIZABLE isolation 으로 교체 필요.
-        # 현 SELECT-then-INSERT 사이 race 시 후행 PATCH 가 선행 PATCH 를 조용히 덮을 수 있음.
+        # TOCTOU race: expected_version=None 이면 SELECT 없이 바로 upsert (덮음).
+        # expected_version 이 있어도 READ COMMITTED 격리 수준에서 SELECT 가 stale read 를
+        # 반환하면 version 검사를 통과한 뒤 ON CONFLICT DO UPDATE 가 version+1 로 저장 →
+        # 후행 PATCH 가 선행 PATCH 결과를 조용히 덮는다.
+        # Phase 4 멀티유저 진입 전 SELECT ... FOR UPDATE 또는 SERIALIZABLE isolation 으로 교체 필요.
         if expected_version is not None:
             existing = await self.get(key, workspace_id=workspace_id)
             if existing is not None and existing.version != expected_version:
