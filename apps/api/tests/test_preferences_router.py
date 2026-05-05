@@ -314,6 +314,10 @@ async def test_cross_tenant_isolation_get_404(
 
     이 테스트는 repository 의 멀티테넌트 강제가 API 응답에 올바르게 전파되는지 검증.
     tenant_ctx 는 TENANT_B 이고, repository 는 TENANT_A 소유 preference 에 대해 None 반환.
+
+    # 본 단위 테스트는 mock repository 가 None 을 반환할 때 라우터가 404 를 내는지만 검증.
+    # 실제 SQL tenant_id 필터의 격리는 통합 테스트
+    # (tests/integration/test_preferences_integration.py) 가 검증한다.
     """
     with patch("worksheet_api.routers.preferences.UserPreferenceRepository") as mock_repo_cls:
         # Tenant B 컨텍스트로 조회 → repository 가 tenant 필터 후 None 반환

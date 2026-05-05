@@ -56,7 +56,20 @@ class UserPreferenceRepository:
 
     @property
     def _tenant_id(self) -> uuid.UUID:
-        return self._tenant_ctx.tenant_id
+        """tenant_id 는 TenantContext 에서 주입. sentinel 이면 이중 방어 에러.
+
+        ADR-0003 §D-3.6 이중 방어 원칙: _user_id 와 대칭으로 sentinel 검사.
+        TenantContext 가 잘못 구성된 경우 조용히 전 테넌트 데이터를 노출하는
+        사고를 방지한다.
+        """
+        tid = self._tenant_ctx.tenant_id
+        if tid == SENTINEL_UUID:
+            raise ValueError(
+                "TenantContext.tenant_id 가 sentinel UUID (00000000-…) 입니다. "
+                "환경변수 TENANT_ID 를 올바르게 설정하세요. "
+                "ADR-0003 §D-3.6 이중 방어 참조."
+            )
+        return tid
 
     @property
     def _user_id(self) -> uuid.UUID:
@@ -141,7 +154,11 @@ class UserPreferenceRepository:
         Raises:
             ConflictError: expected_version 불일치 (409 매핑).
         """
-        # 낙관적 동시성 검사 — upsert 전에 현재 버전 확인
+        # TOCTOU race: expected_version=None 이면 SELECT 없이 바로 upsert (덮음).
+        # expected_version 이 있어도 READ COMMITTED 격리 수준에서 SELECT 가 stale read 를
+        # 반환하면 version 검사를 통과한 뒤 ON CONFLICT DO UPDATE 가 version+1 로 저장 →
+        # 후행 PATCH 가 선행 PATCH 결과를 조용히 덮는다.
+        # Phase 4 멀티유저 진입 전 SELECT ... FOR UPDATE 또는 SERIALIZABLE isolation 으로 교체 필요.
         if expected_version is not None:
             existing = await self.get(key, workspace_id=workspace_id)
             if existing is not None and existing.version != expected_version:
