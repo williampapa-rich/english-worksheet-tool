@@ -822,6 +822,7 @@ export function EditorPoc() {
       {/* 토스트 알림 (5초 자동 숨김) */}
       {toast && (
         <output
+          data-print-hide
           className={[
             "fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl shadow-lg text-sm font-medium transition-all",
             toast.kind === "success"
@@ -836,7 +837,7 @@ export function EditorPoc() {
       <main className="min-h-screen bg-gray-50 p-8">
         <div className="max-w-4xl mx-auto space-y-6">
           {/* 헤더 */}
-          <div className="flex items-center gap-4">
+          <div data-print-hide className="flex items-center gap-4">
             <Link to="/" className="text-blue-600 hover:underline text-sm">
               ← 홈으로
             </Link>
@@ -854,9 +855,15 @@ export function EditorPoc() {
           {/* 에디터 + 분석표 영역 */}
           <div className="flex flex-col gap-4">
             {/* 에디터 카드 */}
-            <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+            <div
+              data-print-card
+              className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm"
+            >
               {/* 툴바 그룹 1: annotation 적용 버튼 (5종 — 메모 카테고리 자동 매핑) */}
-              <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 space-y-2">
+              <div
+                data-print-hide
+                className="px-4 py-3 border-b border-gray-100 bg-gray-50 space-y-2"
+              >
                 <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
                   Annotation (메모 자동 매핑)
                 </div>
@@ -895,7 +902,10 @@ export function EditorPoc() {
               </div>
 
               {/* 툴바 그룹 2: color_index picker (12색 swatch + 무지개 휠) */}
-              <div className="px-4 py-2 border-b border-gray-100 bg-gray-50 flex items-center gap-3">
+              <div
+                data-print-hide
+                className="px-4 py-2 border-b border-gray-100 bg-gray-50 flex items-center gap-3"
+              >
                 <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">
                   색상
                 </span>
@@ -978,7 +988,10 @@ export function EditorPoc() {
               </div>
 
               {/* 툴바 제어: 직렬화 / 초기화 / 저장 */}
-              <div className="px-4 py-2 border-b border-gray-100 bg-gray-50 flex items-center gap-2">
+              <div
+                data-print-hide
+                className="px-4 py-2 border-b border-gray-100 bg-gray-50 flex items-center gap-2"
+              >
                 <button
                   type="button"
                   onClick={handleSerialize}
@@ -1037,16 +1050,18 @@ export function EditorPoc() {
             </div>
 
             {/* 분석표 (본문 에디터 하단) */}
-            <AnalysisTable
-              chips={chips}
-              onRemove={handleRemoveAnnotation}
-              onLabelEntry={handleLabelEntry}
-              onChipClick={handleChipClick}
-            />
+            <div data-print-hide>
+              <AnalysisTable
+                chips={chips}
+                onRemove={handleRemoveAnnotation}
+                onLabelEntry={handleLabelEntry}
+                onChipClick={handleChipClick}
+              />
+            </div>
           </div>
 
           {/* 사용 안내 */}
-          <p className="text-xs text-gray-400 leading-relaxed">
+          <p data-print-hide className="text-xs text-gray-400 leading-relaxed">
             텍스트를 선택 후 annotation 버튼 (형광펜/밑줄/괄호/화살표/노트) 을 클릭하면 메모
             카테고리로 자동 분류됩니다. 성분/구/절 라벨은 분석표 진입 버튼으로 추가하세요 (텍스트
             선택 후 버튼 클릭). 칩을 클릭하면 수정 모달이 열립니다. ✕ 버튼으로 즉시 삭제.
@@ -1054,7 +1069,10 @@ export function EditorPoc() {
 
           {/* SerializedAnnotation[] 직렬화 결과 패널 */}
           {serializedJson && (
-            <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+            <div
+              data-print-hide
+              className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm"
+            >
               <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
                 <span className="text-sm font-medium text-gray-700">
                   SerializedAnnotation[] (SyntaxAnnotation 호환)
