@@ -28,11 +28,14 @@ class Settings(BaseSettings):
     database_url: PostgresDsn
 
     # ── 멀티테넌트 stub ──────────────────────────────────────────────────────
-    # Phase 4 OAuth 도입 전까지 단일 테넌트/워크스페이스를 환경변수로 고정.
+    # Phase 4 OAuth 도입 전까지 단일 테넌트/워크스페이스/사용자를 환경변수로 고정.
     # 실제 사용은 repositories/tenant_context.py 의 get_tenant_context() Depends 에서 처리.
     mvp_tenant_id: str = "00000000-0000-0000-0000-000000000001"
     # P0-6 TenantContext 에서 사용. Sprint 0 의 단일 워크스페이스 sentinel 기본값.
     mvp_workspace_id: str = "00000000-0000-0000-0000-000000000002"
+    # ADR-0009 — user_preferences 인프라 stub. Phase 4 OAuth 도입 시 실제 ``sub`` 클레임
+    # 매핑 — 그 시점에 stub UUID 의 user_preferences 행은 별 마이그레이션 정책으로 처리.
+    mvp_user_id: str = "00000000-0000-0000-0000-000000000003"
 
     # ── LLM ─────────────────────────────────────────────────────────────────
     # None 이면 환경변수 ANTHROPIC_API_KEY 에서 읽음 (AnthropicStructuredLLMClient 기본 동작).
