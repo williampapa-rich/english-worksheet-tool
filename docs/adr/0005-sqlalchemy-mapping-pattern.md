@@ -481,6 +481,25 @@ async def session(pg_engine: AsyncEngine) -> AsyncSession:
 - 각 테스트는 트랜잭션을 시작하고 종료 시 rollback. DB 상태가 다음 테스트에 영향 없음.
 - `session.begin()` + `yield` + `rollback()` 패턴.
 
+#### 2026-05-05 보강 — `UserPreferenceRepository` 충돌로 인한 변형 패턴
+
+`UserPreferenceRepository.upsert` 가 내부에서 `session.begin()` 을 직접 호출하는 구조다.
+픽스처가 동일 세션에 이미 `session.begin()` 으로 트랜잭션을 열면 **중첩 `begin()` 충돌**이
+발생해 통합 테스트가 전부 실패함을 확인했다 (PR #36 분리분, 2026-05-05).
+
+user_preferences 통합 테스트에 한해 `pg_session` 픽스처는 transaction rollback 패턴
+대신 **DELETE+INSERT 시드/cleanup 패턴** 으로 운용한다:
+
+- 시작 전: 별도 트랜잭션으로 이전 잔류 데이터 DELETE + 시드 INSERT (ON CONFLICT DO NOTHING).
+- 세션 yield: `begin()` 없이 세션만 넘김 — 라우터가 자체 `begin()` 으로 트랜잭션 관리.
+- 종료 후: 별도 트랜잭션으로 동일 DELETE (테스트 데이터 정리).
+
+다른 통합 테스트(passages 등)는 기존 rollback 패턴 유지. 전체 패턴 변경은 별도 ADR 권고
+시 재검토.
+
+> architect 에 의해 별도 ADR 로 분리될 수 있음. 본 보강은 임시 기록이며, 별도 ADR 머지
+> 시 본 섹션은 해당 ADR 로 pointer 처리한다.
+
 #### 검토한 대안
 
 - **A. 항상 Docker PostgreSQL**: SQLite 없이 통일. 단점: CI 가 느림, 로컬 테스트 마다

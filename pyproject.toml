@@ -74,6 +74,8 @@ exclude = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 testpaths = ["apps/api/tests", "packages", "shared/schemas/tests"]
 markers = [
   "integration: PostgreSQL Docker 가 필요한 통합 테스트 (deselect with '-m not integration')",

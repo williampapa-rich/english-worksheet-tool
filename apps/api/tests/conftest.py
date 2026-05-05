@@ -119,25 +119,78 @@ TEST_WORKSPACE_B = uuid.UUID("dddddddd-dddd-dddd-dddd-dddddddddddd")
 
 @pytest.fixture
 async def pg_session(pg_engine):  # type: ignore[return]
-    """테스트별 async session — 종료 시 rollback 으로 격리.
+    """테스트별 async session — 매 테스트 시작 전 cleanup + 시드, 종료 후 cleanup.
 
-    ADR-0005 §D-5.7 의 transaction rollback 기반 격리 패턴.
+    ADR-0005 §D-5.7 변형 패턴:
+      라우터가 내부적으로 ``session.begin()`` 을 호출하므로, pg_session 은
+      트랜잭션을 시작하지 않고 세션만 yield 한다. 중첩 begin() 충돌 방지.
 
-    Repository 테스트가 TENANT_A / TENANT_B 의 데이터를 만들 수 있도록, 매 테스트
-    시작 시 tenants / workspaces 행을 시드한다. rollback 으로 자동 정리됨.
+    격리 전략:
+      시작 전: 이전 테스트 잔류 데이터 DELETE + 시드 INSERT (ON CONFLICT DO NOTHING).
+      종료 후: 동일 DELETE 반복 (테스트 데이터 정리).
+      이 방식으로 테스트 간 완전 격리.
     """
+    from datetime import UTC, datetime
+
+    from sqlalchemy import text as sa_text
     from sqlmodel.ext.asyncio.session import AsyncSession
-    from worksheet_api.models.tenant import Tenant, Workspace
 
+    now = datetime.now(UTC)
+    params = {
+        "ta": str(TEST_TENANT_A),
+        "tb": str(TEST_TENANT_B),
+        "wa": str(TEST_WORKSPACE_A),
+        "wb": str(TEST_WORKSPACE_B),
+        "now": now,
+    }
+
+    async def _cleanup(session: AsyncSession) -> None:
+        """테스트 데이터 삭제 (시드 포함)."""
+        # asyncpg bind param IN 절 호환성을 위해 OR 형태 사용
+        await session.execute(
+            sa_text(
+                "DELETE FROM user_preferences "
+                "WHERE tenant_id = :ta OR tenant_id = :tb"
+            ),
+            params,
+        )
+        await session.execute(
+            sa_text("DELETE FROM workspaces WHERE id = :wa OR id = :wb"),
+            params,
+        )
+        await session.execute(
+            sa_text("DELETE FROM tenants WHERE id = :ta OR id = :tb"),
+            params,
+        )
+
+    # 1) 이전 잔류 데이터 정리 + 시드 INSERT
+    async with AsyncSession(pg_engine) as setup_session:
+        async with setup_session.begin():
+            await _cleanup(setup_session)
+            await setup_session.execute(
+                sa_text(
+                    "INSERT INTO tenants (id, name, created_at, updated_at) "
+                    "VALUES (:ta, 'test-tenant-a', :now, :now), "
+                    "       (:tb, 'test-tenant-b', :now, :now) "
+                    "ON CONFLICT (id) DO NOTHING"
+                ),
+                params,
+            )
+            await setup_session.execute(
+                sa_text(
+                    "INSERT INTO workspaces (id, tenant_id, name, created_at, updated_at) "
+                    "VALUES (:wa, :ta, 'ws-a', :now, :now), "
+                    "       (:wb, :tb, 'ws-b', :now, :now) "
+                    "ON CONFLICT (id) DO NOTHING"
+                ),
+                params,
+            )
+
+    # 2) 테스트용 세션 (begin() 없이 — 라우터가 자체 begin() 사용)
     async with AsyncSession(pg_engine) as session:
-        async with session.begin():
-            # 표준 테스트 테넌트 / 워크스페이스 시드
-            session.add(Tenant(id=TEST_TENANT_A, name="test-tenant-a"))
-            session.add(Tenant(id=TEST_TENANT_B, name="test-tenant-b"))
-            await session.flush()
-            session.add(Workspace(id=TEST_WORKSPACE_A, tenant_id=TEST_TENANT_A, name="ws-a"))
-            session.add(Workspace(id=TEST_WORKSPACE_B, tenant_id=TEST_TENANT_B, name="ws-b"))
-            await session.flush()
+        yield session
 
-            yield session
-            await session.rollback()
+    # 3) 테스트 데이터 정리
+    async with AsyncSession(pg_engine) as cleanup_session:
+        async with cleanup_session.begin():
+            await _cleanup(cleanup_session)
