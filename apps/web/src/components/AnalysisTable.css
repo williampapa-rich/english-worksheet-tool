@@ -92,10 +92,101 @@
   color: #1d4ed8;
 }
 
+.analysis-row__right {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
 .analysis-row__chips {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
+}
+
+/* ---------------------------------------------------------------------------
+ * Preset bar (C-2b — 성분 행 윗줄)
+ * --------------------------------------------------------------------------- */
+.preset-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px;
+}
+
+.preset-bar__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.preset-bar__btn {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #1d4ed8;
+  background: #dbeafe;
+  border: 1px solid #bfdbfe;
+  border-radius: 5px;
+  padding: 1px 6px;
+  cursor: pointer;
+  line-height: 1.5;
+  transition: background 0.12s, color 0.12s;
+  white-space: nowrap;
+}
+
+.preset-bar__btn:hover {
+  background: #bfdbfe;
+  color: #1e3a8a;
+}
+
+.preset-bar__remove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.5rem;
+  color: #9ca3af;
+  padding: 0 1px;
+  line-height: 1;
+  transition: color 0.12s;
+}
+
+.preset-bar__remove:hover {
+  color: #ef4444;
+}
+
+.preset-bar__add-btn {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #6b7280;
+  background: #f3f4f6;
+  border: 1px dashed #d1d5db;
+  border-radius: 5px;
+  padding: 1px 5px;
+  cursor: pointer;
+  line-height: 1.5;
+  transition: background 0.12s, color 0.12s;
+}
+
+.preset-bar__add-btn:hover {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.preset-bar__add-input-wrap {
+  display: inline-flex;
+  align-items: center;
+}
+
+.preset-bar__add-input {
+  font-size: 0.65rem;
+  padding: 1px 4px;
+  border: 1px solid #93c5fd;
+  border-radius: 4px;
+  outline: none;
+  width: 80px;
+  line-height: 1.5;
 }
 
 /* ---------------------------------------------------------------------------
