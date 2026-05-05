@@ -481,6 +481,39 @@ async def session(pg_engine: AsyncEngine) -> AsyncSession:
 - 각 테스트는 트랜잭션을 시작하고 종료 시 rollback. DB 상태가 다음 테스트에 영향 없음.
 - `session.begin()` + `yield` + `rollback()` 패턴.
 
+#### 2026-05-05 보강 — `UserPreferenceRepository` 충돌로 인한 변형 패턴
+
+`UserPreferenceRepository.upsert` 가 내부에서 `session.begin()` 을 직접 호출하는 구조다.
+픽스처가 동일 세션에 이미 `session.begin()` 으로 트랜잭션을 열면 **중첩 `begin()` 충돌**이
+발생해 통합 테스트가 전부 실패함을 확인했다 (PR #36 분리분, 2026-05-05).
+
+**결론 (PR #37 + 회귀 검증, 2026-05-05)**: `pg_session` 픽스처를 **DELETE+INSERT 시드/cleanup 패턴** 으로
+전면 교체했다. 이 변경은 `pg_session` 을 사용하는 모든 통합 테스트에 자동 적용된다:
+
+- 시작 전: 별도 트랜잭션으로 이전 잔류 데이터 DELETE + 시드 INSERT (ON CONFLICT DO NOTHING).
+- 세션 yield: `begin()` 없이 세션만 넘김 — 라우터/리포지토리가 자체 트랜잭션 관리.
+- 종료 후: 별도 트랜잭션으로 동일 DELETE (테스트 데이터 정리).
+
+**영향 범위 — `pg_session` 사용 테스트 파일 회귀 검증 결과** (PR #37 커밋 기준):
+
+| 파일 | 테스트 수 | 개별 실행 결과 | 비고 |
+|---|---|---|---|
+| `integration/test_preferences_integration.py` | 7 | 7 passed | DELETE+INSERT 패턴 원래 대상 |
+| `test_llm_db_sink_integration.py` | 3 | 3 passed | `flush()` 후 SELECT 패턴 정상 동작 |
+| `test_repositories/test_passage_repository.py` | 7 (integration) | 7 passed | rollback 없이도 격리 정상 |
+| `test_repositories/test_question_repository.py` | 8 (integration) | 8 passed | FK 의존성 포함 정상 |
+| `test_repositories/test_syntax_annotation_repository.py` | 7 (integration) | 7 passed | replace_all 패턴 정상 |
+
+**전체 suite 실행 (`-m integration`) 오류 원인 및 해결** (W-1, PR #37 fix):
+
+`pg_engine` 픽스처가 sync fixture 에서 `asyncio.new_event_loop()` 를 직접 사용해
+`asyncio_default_fixture_loop_scope="session"` 의 session loop 와 충돌, 전체 suite
+실행 시 "got Future attached to a different loop" RuntimeError 발생. `@pytest_asyncio.fixture(scope="session")`
+async fixture 로 전환해 동일 event loop 를 공유하도록 수정했다.
+
+> architect 에 의해 별도 ADR 로 분리될 수 있음. 본 보강은 임시 기록이며, 별도 ADR 머지
+> 시 본 섹션은 해당 ADR 로 pointer 처리한다.
+
 #### 검토한 대안
 
 - **A. 항상 Docker PostgreSQL**: SQLite 없이 통일. 단점: CI 가 느림, 로컬 테스트 마다

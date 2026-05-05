@@ -40,11 +40,12 @@ def _ctx_b() -> TenantContext:
 def _make_passage(
     tenant_id: uuid.UUID = TENANT_A,
     workspace_id: uuid.UUID = WORKSPACE_A,
+    body_text: str = "The economy is growing.",
 ) -> Passage:
     return Passage(
         tenant_id=tenant_id,
         workspace_id=workspace_id,
-        body_text="The economy is growing.",
+        body_text=body_text,
         word_count=4,
         source=SourceMeta(provider=SourceProvider.EVALUATOR),
         target_grade=TargetGrade.HIGH_3,
