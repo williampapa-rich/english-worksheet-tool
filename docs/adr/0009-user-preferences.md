@@ -128,7 +128,7 @@ PM 합의 사항:
 ### D1. 채택안 C — 단일 ``user_preferences`` 테이블
 
 도메인 모델은 ``shared/schemas/user_preference.py`` 의 ``UserPreference`` /
-``UserPreferenceInput`` / value schema 1예시 (``SentenceRolePresetValue``).
+``UserPreferencePatchInput`` / value schema 1예시 (``SentenceRolePresetValue``).
 
 ORM / Alembic 마이그레이션 / 라우터는 후속 PR C-2 에서 backend-dev 가 진행 — 본 ADR
 은 schema + ADR + 환경변수 stub 까지만.
@@ -220,14 +220,50 @@ Phase 4 OAuth 도입 시 마이그레이션 시나리오:
 **Phase 1 시점의 결정**: 채택 보류. Phase 4 진입 시 별 ADR (또는 본 ADR 갱신) 으로 결정.
 Phase 1 ~ Phase 3 은 단일 사용자 (와이프) 환경이라 사실상 방안 1 + 1명 = 단순 transfer.
 
-### D7. ``UserPreferenceInput`` (DTO) 의 server-side 컨텍스트 제외
+### D7. ``UserPreferencePatchInput`` (PATCH body DTO) 의 server-side 컨텍스트 제외
 
 API 입력 DTO 에 ``tenant_id`` / ``user_id`` 가 **없는 것은 의도** — 클라이언트가 임의의
 tenant/user 로 위장하는 것을 데이터 모델 레벨에서 차단 (ADR-0001 §"멀티테넌트 함정"
 가드레일). 라우터가 ``TenantContext`` Depends 로 주입.
 
-``UserPreferenceInput.model_config = ConfigDict(extra="forbid")`` 로 ``tenant_id`` /
-``user_id`` 가 들어오면 즉시 422 거절.
+``key`` 도 body 에 없다 — path param ``PATCH /preferences/{key}`` 으로 노출. body 에
+``key`` 가 들어와도 ``extra="forbid"`` 가 거절.
+
+``UserPreferencePatchInput`` 의 필드는 ``value`` (필수) + ``workspace_id`` (Optional) +
+``version`` (Optional, ADR-0009 §D8). ``model_config = ConfigDict(extra="forbid")`` 로
+``tenant_id`` / ``user_id`` / ``key`` 가 들어오면 즉시 422 거절.
+
+**이력 (PR C-2 후속)**: 본 ADR 초안은 ``UserPreferenceInput`` (key 포함) 으로 시작했으나
+PR C-2a 라우터 구현 시 ``key`` 가 path param 으로 결정되어, schema 후속 PR 에서 PATCH
+body 형태에 맞춰 ``UserPreferencePatchInput`` (key 제거 + version 추가) 으로 재정의.
+``apps/api`` 의 ``PreferencePatchRequest`` 는 본 DTO 로 통합.
+
+### D8. 낙관적 동시성 — ``version`` 필드
+
+같은 사용자가 다른 탭/디바이스에서 동시 PATCH 시 lost update 를 방지하기 위해 행마다
+``version: int`` (default 1) 를 둔다.
+
+**흐름**:
+1. 클라이언트가 ``GET /preferences/{key}`` → 응답에 현재 ``version`` 포함.
+2. 클라이언트가 PATCH body 에 ``version`` echo (같은 값).
+3. 서버가 DB 의 현재 ``version`` 과 비교:
+   - **일치**: ``version + 1`` 로 갱신, 200 응답.
+   - **불일치**: 409 Conflict (다른 탭/디바이스가 먼저 갱신함). 클라이언트는 다시 GET
+     해서 머지 후 재시도.
+4. **최초 생성 분기** (DB 행이 없는 상태): ``version`` 검사 안 함. ``None`` 또는 임의 값
+     수용. 첫 행은 ``version=1`` 로 생성.
+
+**필드 정책**:
+- ``UserPreference.version`` — ``int, default=1, ge=1``. 응답 직렬화 시 클라이언트가 echo.
+- ``UserPreferencePatchInput.version`` — ``int | None, default=None, ge=1``. None 이면
+  최초 생성 의미 (DB 행 없을 때만 정상). 행이 있는 상태에서 None 이 들어오면 409.
+
+**왜 ge=1**: 0 또는 음수 ``version`` 은 의미 없음 (낙관적 동시성 카운터는 1부터). schema
+레벨에서 차단해 silent drift 방지.
+
+**대안 검토**:
+- ``updated_at`` 비교 — 시계 동기화 이슈 / 마이크로초 충돌. 정수 카운터가 더 단순.
+- ETag/If-Match — HTTP 표준이지만 본 도메인에선 over-engineering. JSON body 로 충분.
 
 ---
 
@@ -269,3 +305,4 @@ tenant/user 로 위장하는 것을 데이터 모델 레벨에서 차단 (ADR-00
 |---|---|---|---|
 | 2026-05-04 | Proposed | architect | Phase 1 마감 사이클 — PM 결정 4건 (영속 / OAuth 호환 / 범용 / stub) 정리 |
 | 2026-05-04 | Accepted | PM (Dennis) | 채택안 C — 단일 key-value 테이블 + dot-notation key + JSONB value. PR C-2 진입. |
+| 2026-05-05 | Amended | architect | §D7 DTO 재정의 (``UserPreferenceInput`` → ``UserPreferencePatchInput``: key 제거 + version 추가) + §D8 낙관적 동시성 신규. PR C-2a 라우터 구현과 정합. 아키텍처 결정 자체는 불변 (단일 테이블 / dot-notation / JSONB). |

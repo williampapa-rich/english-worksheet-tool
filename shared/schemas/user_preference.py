@@ -17,6 +17,9 @@ ADR-0009 (`docs/adr/0009-user-preferences.md`) 의 결정을 닫는 스키마.
     사용자별 자동 분리. Phase 1 은 ``MVP_USER_ID`` sentinel UUID 1개로 stub.
   - ``workspace_id`` 는 Optional — 워크스페이스별 분리가 필요한 옵션은 채우고,
     테넌트 전역 옵션은 None.
+  - ``version`` 필드로 낙관적 동시성 제어 (ADR-0009 §D8). 같은 사용자가 다른 탭/
+    디바이스에서 동시 PATCH 시 후행 요청을 409 로 거절. 응답 직렬화 시 클라이언트가
+    echo 해 다음 PATCH 요청에 실음.
 
 멀티테넌트 정책:
   본 엔티티는 ``WorkspaceScopedEntity`` 가 아니다 — ``workspace_id`` 가 Optional
@@ -156,6 +159,16 @@ class UserPreference(TenantScopedEntity):
             "/ list 가 필요하면 dict 안에 wrapping (예: ``{'items': [...]}``)."
         ),
     )
+    version: int = Field(
+        default=1,
+        ge=1,
+        description=(
+            "낙관적 동시성 제어 버전 (ADR-0009 §D8). 행이 처음 생성될 때 1, PATCH 마다 +1. "
+            "클라이언트는 GET 응답의 ``version`` 을 다음 PATCH 요청 body 에 echo 해야 한다 — "
+            "DB 의 현재 버전과 다르면 409 Conflict (다른 탭/디바이스의 선행 PATCH 와 충돌). "
+            "최초 생성 (DB 행이 없는 상태) 시 검사 안 함. ``ge=1`` — 0 또는 음수 거절."
+        ),
+    )
 
     @field_validator("key")
     @classmethod
@@ -176,24 +189,41 @@ class UserPreference(TenantScopedEntity):
         return value
 
 
-# ─── DTO — API 입력 ────────────────────────────────────────────────────────
+# ─── DTO — API 입력 (PATCH body) ──────────────────────────────────────────
 
 
-class UserPreferenceInput(BaseModel):
-    """API 라우터 입력 DTO — server-side 컨텍스트 (tenant_id / user_id) 제외.
+class UserPreferencePatchInput(BaseModel):
+    """``PATCH /preferences/{key}`` 요청 body DTO (ADR-0009 §D7 / §D8).
 
-    라우터는 ``TenantContext`` Depends 로 ``tenant_id`` / ``user_id`` 를 주입받고,
-    본 DTO 의 ``key`` / ``value`` / ``workspace_id`` 와 합쳐 ``UserPreference``
-    엔티티를 만든다.
+    server-side 컨텍스트 (``tenant_id`` / ``user_id``) 와 path param (``key``) 을 제외한
+    PATCH body 모델. 라우터는 ``TenantContext`` Depends 로 ``tenant_id`` / ``user_id``
+    를 주입받고, path param ``key`` 와 본 DTO 의 ``value`` / ``workspace_id`` /
+    ``version`` 을 합쳐 upsert 한다.
 
-    멀티테넌트 격리:
+    멀티테넌트 격리 (ADR-0009 §D7):
       본 DTO 에 ``tenant_id`` / ``user_id`` 가 없는 것은 의도. 클라이언트가 임의의
-      tenant/user 로 위장하는 것을 데이터 모델 레벨에서 차단 (ADR-0001 §"멀티테넌트
-      함정" 가드레일).
+      tenant/user 로 위장하는 것을 데이터 모델 레벨에서 차단. ``model_config =
+      ConfigDict(extra="forbid")`` 로 ``tenant_id`` / ``user_id`` / ``key`` 가 들어오면
+      즉시 422 거절.
+
+    낙관적 동시성 (ADR-0009 §D8):
+      ``version`` 이 None 이면 최초 생성 분기 (DB 행 없음). 행이 있는 상태에서 None 또는
+      DB 와 다른 값이 들어오면 409. 정상 갱신 흐름은: GET → 서버가 현재 ``version`` 반환
+      → 클라이언트가 PATCH body 에 echo → 서버가 일치 확인 후 ``version + 1`` 로 저장.
+
+    이 DTO 는 PR #33 의 ``UserPreferenceInput`` 을 PATCH body 형태에 맞춰 재정의한
+    것 — ``key`` 제거 (path param 으로 이동), ``version`` 추가. ``apps/api`` 의
+    ``PreferencePatchRequest`` 는 본 DTO 로 통합 예정 (PR #34 후속 수정).
     """
 
     model_config = ConfigDict(extra="forbid")
 
+    value: dict[str, Any] = Field(
+        ...,
+        description=(
+            "JSONB value. key 에 따라 라우터가 별 Pydantic 모델로 추가 검증 (실패 시 422)."
+        ),
+    )
     workspace_id: EntityId | None = Field(
         default=None,
         description=(
@@ -201,25 +231,13 @@ class UserPreferenceInput(BaseModel):
             "테넌트 전역 옵션은 None."
         ),
     )
-    key: str = Field(
-        ...,
-        max_length=_KEY_MAX_LENGTH,
-        description="환경설정 key (dot-notation). ``UserPreference.key`` 와 같은 규칙.",
-    )
-    value: dict[str, Any] = Field(
-        ...,
+    version: int | None = Field(
+        default=None,
+        ge=1,
         description=(
-            "JSONB value. key 에 따라 라우터가 별 Pydantic 모델로 추가 검증 (실패 시 422)."
+            "낙관적 동시성 버전 (Optional, ADR-0009 §D8). 클라이언트가 직전 GET 응답의 "
+            "``version`` 을 echo. DB 의 현재 버전과 다르면 409 Conflict. 최초 생성 (DB 행 "
+            "없음) 시 None 또는 임의 값 — 행이 없으므로 검사 안 함. ``ge=1`` — 0 또는 "
+            "음수 거절."
         ),
     )
-
-    @field_validator("key")
-    @classmethod
-    def _validate_key_format(cls, value: str) -> str:
-        """``UserPreference._validate_key_format`` 와 동일 규칙."""
-        if not _KEY_PATTERN.match(value):
-            raise ValueError(
-                f"key 는 dot-notation 규칙을 따라야 한다 (예: 'preset.sentence_role'). "
-                f"영문 소문자 + 숫자 + '_' + 최소 2 segment. got: {value!r}"
-            )
-        return value
