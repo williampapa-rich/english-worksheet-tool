@@ -36,12 +36,16 @@ export interface AnnotationChip {
 }
 
 /**
- * LabelEntryKind — 진입 버튼으로 생성되는 mark 종류
+ * LabelEntryKind — 진입 버튼 또는 툴바 버튼으로 생성되는 mark 종류.
+ *
+ * P1-followup-ng-fixes NG 2: note top/bottom 추가 (툴바 자유 메모 버튼).
  */
 export type LabelEntryKind =
   | { markKind: "bottom_label"; category: "sentence_role" }
   | { markKind: "top_label"; category: "phrase" }
-  | { markKind: "top_label"; category: "clause" };
+  | { markKind: "top_label"; category: "clause" }
+  | { markKind: "top_label"; category: "note" }
+  | { markKind: "bottom_label"; category: "note" };
 
 interface AnalysisTableProps {
   chips: AnnotationChip[];
@@ -224,10 +228,19 @@ function AnnotationChipView({ chip, onRemove, onChipClick }: AnnotationChipViewP
   // arrow 는 수정 불가 — 칩 클릭 핸들러 없음
   const isEditable = chip.kind !== "arrow";
 
+  // NG 4: underline 칩은 배경색 gray-200 고정 (밑줄 mark 자체는 색상 없음 — black 고정)
+  // DB colorIndex 저장은 그대로 유지, UI 표시만 회색 강제.
+  const chipStyle =
+    chip.kind === "underline"
+      ? { backgroundColor: "#e5e7eb", borderColor: "#d1d5db" }
+      : colorVar
+        ? { backgroundColor: colorVar, borderColor: colorVar }
+        : undefined;
+
   return (
     <span
       className={`anno-chip${isEditable ? " anno-chip--clickable" : ""}`}
-      style={colorVar ? { backgroundColor: colorVar, borderColor: colorVar } : undefined}
+      style={chipStyle}
       onClick={isEditable && onChipClick ? () => onChipClick(chip) : undefined}
       role={isEditable && onChipClick ? "button" : undefined}
       tabIndex={isEditable && onChipClick ? 0 : undefined}

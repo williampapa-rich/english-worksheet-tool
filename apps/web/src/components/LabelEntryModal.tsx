@@ -13,7 +13,20 @@ import "./LabelEntryModal.css";
 // 타입
 // ---------------------------------------------------------------------------
 
-export type LabelEntryModalKind = "sentence_role" | "phrase" | "clause";
+/**
+ * LabelEntryModalKind:
+ * - "sentence_role" : 성분 라벨 (bottom_label, category=sentence_role)
+ * - "phrase"        : 구 라벨 (top_label, category=phrase)
+ * - "clause"        : 절 라벨 (top_label, category=clause)
+ * - "note_top"      : 상단 자유 메모 (top_label, category=note) — P1-followup-ng-fixes NG 2
+ * - "note_bottom"   : 하단 자유 메모 (bottom_label, category=note) — P1-followup-ng-fixes NG 2
+ */
+export type LabelEntryModalKind =
+  | "sentence_role"
+  | "phrase"
+  | "clause"
+  | "note_top"
+  | "note_bottom";
 
 type BracketOption = "()" | "{}" | "[]" | "⌜⌟" | "<>" | null;
 
@@ -35,12 +48,16 @@ const TITLES: Record<LabelEntryModalKind, string> = {
   sentence_role: "성분 라벨 입력",
   phrase: "구 라벨 입력",
   clause: "절 라벨 입력",
+  note_top: "상단 메모 라벨 입력",
+  note_bottom: "하단 메모 라벨 입력",
 };
 
 const PLACEHOLDERS: Record<LabelEntryModalKind, string> = {
   sentence_role: "S, V, O, OC, SC, M",
   phrase: "명사구, 전치사구, to부정사구",
   clause: "부사절, 관계절, 명사절",
+  note_top: "자유 메모 (예: 주요 표현, 참고)",
+  note_bottom: "자유 메모 (예: 주요 표현, 참고)",
 };
 
 /** sentence_role preset 버튼 목록. "직접입력" = null (preset 없음 상태) */
@@ -88,6 +105,7 @@ export function LabelEntryModal({ open, entryKind, onSubmit, onClose }: LabelEnt
   const inputRef = useRef<HTMLInputElement>(null);
 
   const isSentenceRole = entryKind === "sentence_role";
+  // note_top / note_bottom 은 자유 메모 — preset 없음, 괄호 없음
 
   // 모달 열릴 때 상태 초기화 + autoFocus
   useEffect(() => {
@@ -122,6 +140,7 @@ export function LabelEntryModal({ open, entryKind, onSubmit, onClose }: LabelEnt
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [open, onClose]);
 
+  // 괄호 선택: phrase / clause 만 (note_top / note_bottom / sentence_role 은 없음)
   const showBracket = entryKind === "phrase" || entryKind === "clause";
 
   /** 실제 제출 텍스트 — preset 선택 시 preset 값, 직접입력 모드면 textarea 값 */
