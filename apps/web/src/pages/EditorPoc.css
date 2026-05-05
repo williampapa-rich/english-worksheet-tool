@@ -508,40 +508,38 @@
     margin: 15mm;
   }
 
-  /* 1. 화면 전체를 숨기고, #editor-print-area 만 다시 표시 */
-  body > *,
-  #root > *,
-  #root main > * {
+  /* 1. "특정 요소만 숨김" 패턴 — ancestor chain 은 자연 visible
+   *    (구 패턴: body > *, #root main > * { display:none } + #editor-print-area { display:revert }
+   *     → ancestor none 이면 자식 revert 로 복원 불가 → 빈 페이지. 패턴 폐기.) */
+  [data-print-hide] {
     display: none !important;
   }
 
-  /* 에디터 본문 컨테이너 복원 */
-  #editor-print-area,
-  #editor-print-area * {
-    display: revert !important;
-    visibility: visible !important;
-  }
-
-  /* #root 와 main 을 투명한 wrapper 로 복원 (화면 레이아웃 간섭 없이) */
-  #root,
-  #root main {
-    display: block !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    background: transparent !important;
-    min-height: unset !important;
-  }
-
-  /* 에디터 카드 — overflow 해제, border/shadow 제거 */
-  #editor-print-area {
-    display: block !important;
-    visibility: visible !important;
-    overflow: visible !important;
+  /* 에디터 카드 wrapper — 화면용 border / shadow / overflow / 배경 제거 */
+  [data-print-card] {
     border: none !important;
     box-shadow: none !important;
+    overflow: visible !important;
+    background: transparent !important;
+    border-radius: 0 !important;
     padding: 0 !important;
     margin: 0 !important;
-    width: 100% !important;
+  }
+
+  /* #editor-print-area — overflow 해제 (카드 overflow-hidden cascade 방지) */
+  #editor-print-area {
+    overflow: visible !important;
+    padding: 0 !important;
+  }
+
+  /* body / main 배경·여백 정리 */
+  body,
+  #root,
+  #root main {
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    min-height: unset !important;
   }
 
   /* ProseMirror 본문 — print 시 폰트 / 라인 높이 조정 */
