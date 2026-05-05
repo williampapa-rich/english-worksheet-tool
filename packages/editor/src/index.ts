@@ -27,6 +27,7 @@ export type { InlineNoteOptions } from "./extensions/inlineNote";
 export { ArrowMark } from "./extensions/arrow";
 export type { ArrowOptions } from "./extensions/arrow";
 export { WordSnapExtension } from "./extensions/wordSnap";
+export { HoverPreviewExtension } from "./extensions/hoverPreview";
 
 // Serialization (P1-1 PR 단위 b)
 export {

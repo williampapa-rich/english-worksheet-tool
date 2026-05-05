@@ -3,6 +3,7 @@ import {
   BottomLabelMark,
   BracketMark,
   HighlightMark,
+  HoverPreviewExtension,
   InlineNoteMark,
   TopLabelMark,
   UnderlineMark,
@@ -61,6 +62,7 @@ const EXTENSIONS = [
   InlineNoteMark,
   ArrowMark,
   WordSnapExtension,
+  HoverPreviewExtension,
 ];
 
 const INITIAL_CONTENT =

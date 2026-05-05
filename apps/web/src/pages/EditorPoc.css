@@ -477,6 +477,66 @@
 }
 
 /* ---------------------------------------------------------------------------
+ * hover 가이드 — P1-followup-ng-fixes NG 1b
+ * --------------------------------------------------------------------------- */
+
+/* 해석 A: 선택 미리보기 — HoverPreviewExtension Decoration 클래스 */
+.hover-token-preview {
+  background-color: rgba(107, 114, 128, 0.18); /* gray-500 @ 18% */
+  border-radius: 2px;
+}
+
+/* 해석 B: 적용 annotation hover 강조 — CSS :hover */
+
+/* highlight: 약한 outline */
+[data-annotation-kind="highlight"]:hover {
+  outline: 2px solid rgba(107, 114, 128, 0.5);
+  outline-offset: 1px;
+}
+
+/* underline: 밑줄 굵어짐 */
+[data-annotation-kind="underline"]:hover u,
+u[data-annotation-kind="underline"]:hover {
+  text-decoration-thickness: 3px;
+}
+
+/* top_label: 라벨 밝은 배경 + border-top 강조 */
+[data-annotation-kind="top_label"]:hover {
+  background-color: rgba(30, 58, 95, 0.06);
+}
+
+[data-annotation-kind="top_label"]:hover::before {
+  background-color: rgba(30, 58, 95, 0.12);
+  border-radius: 2px;
+}
+
+/* bottom_label: 라벨 밝은 배경 + border-bottom 강조 */
+[data-annotation-kind="bottom_label"]:hover {
+  background-color: rgba(30, 58, 95, 0.06);
+}
+
+[data-annotation-kind="bottom_label"]:hover::after {
+  background-color: rgba(30, 58, 95, 0.12);
+  border-radius: 2px;
+}
+
+/* bracket: 괄호 색상 밝아짐 */
+[data-annotation-kind="bracket"]:hover {
+  background-color: rgba(107, 114, 128, 0.06);
+}
+
+/* arrow: 점선 border 굵어짐 */
+[data-annotation-kind="arrow"]:hover {
+  border-bottom-width: 3px;
+}
+
+/* inline_note: ::after 텍스트 강조 */
+[data-annotation-kind="inline_note"]:hover::after {
+  color: #1e3a5f;
+  font-weight: 600;
+}
+
+/* ---------------------------------------------------------------------------
  * 에디터 전체 레이아웃 — 라벨 공간 확보
  * --------------------------------------------------------------------------- */
 .ProseMirror p {
