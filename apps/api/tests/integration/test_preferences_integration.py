@@ -207,24 +207,26 @@ async def test_cross_tenant_isolation_get_404(pg_session: Any) -> None:
 
     # Step 1: Tenant A 로 preference 생성
     app.dependency_overrides[get_db] = _get_db
-    app.dependency_overrides[get_tenant_context] = lambda: ctx_a
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        resp = await c.patch(
-            "/preferences/preset.sentence_role",
-            json={"value": {"presets": ["S", "V", "O"]}},
+    try:
+        app.dependency_overrides[get_tenant_context] = lambda: ctx_a
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.patch(
+                "/preferences/preset.sentence_role",
+                json={"value": {"presets": ["S", "V", "O"]}},
+            )
+        assert resp.status_code == 200, resp.text
+
+        # Step 2: Tenant B 로 동일 key 조회 → 404 (격리 확인)
+        app.dependency_overrides[get_tenant_context] = lambda: ctx_b
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.get("/preferences/preset.sentence_role")
+
+        assert resp.status_code == 404, (
+            f"cross-tenant 격리 실패: tenant B 가 tenant A 의 preference 를 볼 수 있음. "
+            f"response: {resp.text}"
         )
-    assert resp.status_code == 200, resp.text
-
-    # Step 2: Tenant B 로 동일 key 조회 → 404 (격리 확인)
-    app.dependency_overrides[get_tenant_context] = lambda: ctx_b
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        resp = await c.get("/preferences/preset.sentence_role")
-    app.dependency_overrides.clear()
-
-    assert resp.status_code == 404, (
-        f"cross-tenant 격리 실패: tenant B 가 tenant A 의 preference 를 볼 수 있음. "
-        f"response: {resp.text}"
-    )
+    finally:
+        app.dependency_overrides.clear()
 
 
 @pytest.mark.asyncio
@@ -247,43 +249,44 @@ async def test_cross_tenant_isolation_patch_separate_rows(pg_session: Any) -> No
         yield pg_session
 
     app.dependency_overrides[get_db] = _get_db
+    try:
+        # 1. Tenant A 생성
+        app.dependency_overrides[get_tenant_context] = lambda: ctx_a
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp_a = await c.patch(
+                "/preferences/preset.sentence_role",
+                json={"value": {"presets": ["S", "V", "O"]}},
+            )
+        assert resp_a.status_code == 200, resp_a.text
 
-    # 1. Tenant A 생성
-    app.dependency_overrides[get_tenant_context] = lambda: ctx_a
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        resp_a = await c.patch(
-            "/preferences/preset.sentence_role",
-            json={"value": {"presets": ["S", "V", "O"]}},
+        # 2. Tenant B 생성 (같은 key)
+        app.dependency_overrides[get_tenant_context] = lambda: ctx_b
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp_b = await c.patch(
+                "/preferences/preset.sentence_role",
+                json={"value": {"presets": ["X", "Y"]}},
+            )
+        assert resp_b.status_code == 200, resp_b.text
+
+        # 3. Tenant A GET — 자신 row
+        app.dependency_overrides[get_tenant_context] = lambda: ctx_a
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.get("/preferences/preset.sentence_role")
+        assert resp.status_code == 200
+        assert resp.json()["value"] == {"presets": ["S", "V", "O"]}, (
+            f"tenant A row 가 tenant B PATCH 로 덮인 것으로 보임: {resp.text}"
         )
-    assert resp_a.status_code == 200, resp_a.text
+        assert resp.json()["version"] == 1, "tenant A row 의 version 이 1 이어야 한다"
 
-    # 2. Tenant B 생성 (같은 key)
-    app.dependency_overrides[get_tenant_context] = lambda: ctx_b
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        resp_b = await c.patch(
-            "/preferences/preset.sentence_role",
-            json={"value": {"presets": ["X", "Y"]}},
+        # 4. Tenant B GET — 자신 row
+        app.dependency_overrides[get_tenant_context] = lambda: ctx_b
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.get("/preferences/preset.sentence_role")
+
+        assert resp.status_code == 200
+        assert resp.json()["value"] == {"presets": ["X", "Y"]}, (
+            f"tenant B row 가 예상과 다름: {resp.text}"
         )
-    assert resp_b.status_code == 200, resp_b.text
-
-    # 3. Tenant A GET — 자신 row
-    app.dependency_overrides[get_tenant_context] = lambda: ctx_a
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        resp = await c.get("/preferences/preset.sentence_role")
-    assert resp.status_code == 200
-    assert resp.json()["value"] == {"presets": ["S", "V", "O"]}, (
-        f"tenant A row 가 tenant B PATCH 로 덮인 것으로 보임: {resp.text}"
-    )
-    assert resp.json()["version"] == 1, "tenant A row 의 version 이 1 이어야 한다"
-
-    # 4. Tenant B GET — 자신 row
-    app.dependency_overrides[get_tenant_context] = lambda: ctx_b
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        resp = await c.get("/preferences/preset.sentence_role")
-    app.dependency_overrides.clear()
-
-    assert resp.status_code == 200
-    assert resp.json()["value"] == {"presets": ["X", "Y"]}, (
-        f"tenant B row 가 예상과 다름: {resp.text}"
-    )
-    assert resp.json()["version"] == 1, "tenant B row 의 version 이 1 이어야 한다 (cross-tenant version 공유 없음)"
+        assert resp.json()["version"] == 1, "tenant B row 의 version 이 1 이어야 한다 (cross-tenant version 공유 없음)"
+    finally:
+        app.dependency_overrides.clear()
