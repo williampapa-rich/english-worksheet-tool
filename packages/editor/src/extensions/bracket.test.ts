@@ -1,19 +1,19 @@
 /**
  * bracket extension 단위 테스트 (vitest)
  *
- * P1-10b: 줄바꿈 분리 fix — CSS 의 display:inline-block + white-space:nowrap 방식.
- * 이 테스트는 bracket mark 의 renderHTML 출력이 올바른 data-* 속성을 포함하는지 검증한다.
- * CSS 레이아웃 동작 (줄바꿈 방지) 은 브라우저 렌더링이 필요하므로 vitest 단위 테스트
- * 범위 밖 — 시각 검증은 dev 환경에서 수행.
+ * - BracketMark 의 addAttributes + renderHTML 이 data-bracket-style, data-bracket-color,
+ *   data-annotation-kind 를 올바르게 출력하는지 직접 attrs 객체로 검증한다.
+ * - Tiptap 에디터 인스턴스 없이 mark spec 의 renderHTML 함수를 직접 호출한다.
  *
- * 테스트 전략:
- *   - BracketMark 의 addAttributes + renderHTML 이 data-bracket-style, data-bracket-color,
- *     data-annotation-kind 를 올바르게 출력하는지 직접 attrs 객체로 검증한다.
- *   - Tiptap 에디터 인스턴스 없이 mark spec 의 renderHTML 함수를 직접 호출한다.
+ * NG-2 fix 관련:
+ *   - bracket 렌더링이 CSS ::before / ::after → Decoration.widget 방식으로 변경됨.
+ *   - BRACKET_CHARS 매핑이 5종 모두 올바른지 검증 (widget 이 올바른 문자를 삽입하기 위해).
+ *   - DOM 렌더링 (Decoration.widget 동작) 은 브라우저 환경이 필요하므로 vitest 범위 밖
+ *     — 시각 검증은 dev 환경에서 수행.
  */
 
 import { describe, expect, it } from "vitest";
-import { BracketMark } from "./bracket";
+import { BracketMark, type BracketStyle } from "./bracket";
 
 // ---------------------------------------------------------------------------
 // 헬퍼 — BracketMark renderHTML 직접 호출
@@ -138,6 +138,42 @@ describe("BracketMark Extension — spec 구조", () => {
     const firstRule = parseRules[0];
     if (firstRule && typeof firstRule === "object" && "tag" in firstRule) {
       expect(firstRule.tag).toBe("span[data-bracket-style]");
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// NG-2 fix: BRACKET_CHARS 매핑 검증 (Decoration.widget 방식)
+//
+// bracket 렌더링이 CSS ::before/::after → Decoration.widget 방식으로 변경됨.
+// BRACKET_CHARS 가 5종 모두 올바른 여는/닫는 문자 쌍을 반환해야 한다.
+// ---------------------------------------------------------------------------
+
+import { BRACKET_CHARS } from "./bracket";
+
+describe("BRACKET_CHARS — Decoration.widget 괄호 문자 매핑 (NG-2 fix)", () => {
+  const EXPECTED: Array<{ style: BracketStyle; open: string; close: string }> = [
+    { style: "()", open: "(", close: ")" },
+    { style: "{}", open: "{", close: "}" },
+    { style: "[]", open: "[", close: "]" },
+    { style: "⌜⌟", open: "⌜", close: "⌟" },
+    { style: "<>", open: "<", close: ">" },
+  ];
+
+  for (const { style, open, close } of EXPECTED) {
+    it(`'${style}' 의 여는 괄호가 '${open}' 이다`, () => {
+      expect(BRACKET_CHARS[style][0]).toBe(open);
+    });
+    it(`'${style}' 의 닫는 괄호가 '${close}' 이다`, () => {
+      expect(BRACKET_CHARS[style][1]).toBe(close);
+    });
+  }
+
+  it("BRACKET_CHARS 가 5종 모두 정의되어 있다", () => {
+    const styles: BracketStyle[] = ["()", "{}", "[]", "⌜⌟", "<>"];
+    for (const style of styles) {
+      expect(BRACKET_CHARS[style]).toBeDefined();
+      expect(BRACKET_CHARS[style]).toHaveLength(2);
     }
   });
 });

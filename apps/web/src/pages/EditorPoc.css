@@ -246,24 +246,23 @@
 }
 
 /* ---------------------------------------------------------------------------
- * bracket — 괄호 (::before + ::after pseudo-element)
- * bracketStyle: "()" | "{}" | "[]"
+ * bracket — 괄호 렌더링 (Decoration.widget 방식, NG-2 fix)
  *
- * P1-10b fix: display:inline-block + white-space:nowrap 으로 여는 괄호 (::before) 글자가
- * 줄 끝에 홀로 남는 문제를 방지한다.
- *   - inline-block: bracket span 이 하나의 레이아웃 단위로 취급됨 → 통째로 다음 줄로 이동.
- *   - white-space: nowrap: bracket span 내에서 줄바꿈 금지 → ::before(여는 괄호)가 본문
- *     텍스트와 분리되지 않음.
- * 트레이드오프: bracket 이 한 줄에 들어가지 않을 만큼 길면 span 전체가 다음 줄로 이동.
- * 구/절 단위 bracket 에서는 허용 가능한 동작 — 와이프 사용 패턴 기준 (Phase 1 baseline).
+ * 기존 CSS ::before / ::after pseudo-element 방식을 폐기하고
+ * ProseMirror Decoration.widget 으로 실제 DOM 에 괄호 글자를 삽입한다.
+ * (bracket.ts addProseMirrorPlugins 참조)
+ *
+ * 이유: highlight/underline mark 와 겹칠 때 ProseMirror 가 bracket span 을
+ * 텍스트 노드 경계마다 분할 → 모든 조각에 ::before / ::after 가 붙어 괄호가 중복됨.
+ * Decoration.widget 은 annotationId 별 from/to 위치에만 widget 을 삽입하므로
+ * mark 분할과 무관하게 항상 양 끝에만 괄호가 렌더된다.
+ *
+ * bracket span 자체는 배경/테두리 색상 표시에만 사용된다.
+ * display / white-space 도 inline (기본값) 으로 복원 — 여는 괄호 widget 자체에
+ * white-space:nowrap 이 적용되어 줄 끝 분리 방지.
  * --------------------------------------------------------------------------- */
 [data-annotation-kind="bracket"] {
   --current-anno-color: var(--anno-color-0);
-  display: inline-block;
-  white-space: nowrap;
-  /* bracket 은 outer mark (EXTENSIONS 배열 등록 순서). inline 괄호 글자는
-     outer span 안에서 layout 점유 → 양옆 텍스트 침범 없음.
-     inner top_label 의 border 는 본문 텍스트 영역만 — 괄호 미포함. */
 }
 
 [data-annotation-kind="bracket"][data-bracket-color="1"] {
@@ -303,58 +302,20 @@
   --current-anno-color: var(--anno-color-12);
 }
 
-/* bracketStyle 별 괄호 문자 */
-[data-annotation-kind="bracket"][data-bracket-style="()"]::before {
-  content: "(";
-  color: var(--current-anno-color);
-  font-weight: 700;
-}
-[data-annotation-kind="bracket"][data-bracket-style="()"]::after {
-  content: ")";
-  color: var(--current-anno-color);
-  font-weight: 700;
-}
-[data-annotation-kind="bracket"][data-bracket-style="{}"]::before {
-  content: "{";
-  color: var(--current-anno-color);
-  font-weight: 700;
-}
-[data-annotation-kind="bracket"][data-bracket-style="{}"]::after {
-  content: "}";
-  color: var(--current-anno-color);
-  font-weight: 700;
-}
-[data-annotation-kind="bracket"][data-bracket-style="[]"]::before {
-  content: "[";
-  color: var(--current-anno-color);
-  font-weight: 700;
-}
-[data-annotation-kind="bracket"][data-bracket-style="[]"]::after {
-  content: "]";
-  color: var(--current-anno-color);
-  font-weight: 700;
+/* bracket Decoration.widget — 여는/닫는 괄호 DOM 요소 */
+[data-bracket-widget="true"] {
+  /* bracket.ts makeBracketWidget 에서 인라인 style 로 color / font-weight / white-space 설정.
+     CSS 에서 덮어쓰지 않도록 선언 없음. */
+  user-select: none;
+  pointer-events: none;
 }
 
-/* P1-10c: ⌜⌟ / <> bracket style — 괄호 글자 */
-[data-annotation-kind="bracket"][data-bracket-style="⌜⌟"]::before {
-  content: "⌜";
-  color: var(--current-anno-color);
-  font-weight: 700;
-}
-[data-annotation-kind="bracket"][data-bracket-style="⌜⌟"]::after {
-  content: "⌟";
-  color: var(--current-anno-color);
-  font-weight: 700;
-}
-[data-annotation-kind="bracket"][data-bracket-style="<>"]::before {
-  content: "<";
-  color: var(--current-anno-color);
-  font-weight: 700;
-}
-[data-annotation-kind="bracket"][data-bracket-style="<>"]::after {
-  content: ">";
-  color: var(--current-anno-color);
-  font-weight: 700;
+/* print 시 bracket widget 도 강제 출력 */
+@media print {
+  [data-bracket-widget="true"] {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
 }
 
 /* ---------------------------------------------------------------------------
@@ -679,36 +640,13 @@ u[data-annotation-kind="underline"]:hover {
     line-height: 1.4 !important;
   }
 
-  /* bracket — ::before / ::after 괄호 문자 */
-  [data-annotation-kind="bracket"][data-bracket-style="()"]::before {
-    content: "(" !important;
-    color: var(--current-anno-color) !important;
-    font-weight: 700 !important;
-  }
-  [data-annotation-kind="bracket"][data-bracket-style="()"]::after {
-    content: ")" !important;
-    color: var(--current-anno-color) !important;
-    font-weight: 700 !important;
-  }
-  [data-annotation-kind="bracket"][data-bracket-style="{}"]::before {
-    content: "{" !important;
-    color: var(--current-anno-color) !important;
-    font-weight: 700 !important;
-  }
-  [data-annotation-kind="bracket"][data-bracket-style="{}"]::after {
-    content: "}" !important;
-    color: var(--current-anno-color) !important;
-    font-weight: 700 !important;
-  }
-  [data-annotation-kind="bracket"][data-bracket-style="[]"]::before {
-    content: "[" !important;
-    color: var(--current-anno-color) !important;
-    font-weight: 700 !important;
-  }
-  [data-annotation-kind="bracket"][data-bracket-style="[]"]::after {
-    content: "]" !important;
-    color: var(--current-anno-color) !important;
-    font-weight: 700 !important;
+  /* bracket — Decoration.widget 방식으로 실제 DOM 글자가 삽입됨 (NG-2 fix).
+     ::before / ::after pseudo-element 규칙은 더 이상 사용하지 않는다.
+     bracket widget 은 bracket.ts makeBracketWidget 에서 인라인 style 적용.
+     print 시 widget 색상 강제 출력은 상단 @media print 의 [data-bracket-widget] 규칙. */
+  [data-annotation-kind="bracket"] {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
   /* arrow — 점선 border-bottom */
