@@ -19,6 +19,7 @@ from worksheet_api.repositories.question import QuestionRepository
 from worksheet_api.repositories.syntax_annotation import SyntaxAnnotationRepository
 from worksheet_api.repositories.tenant_context import TenantContext, get_tenant_context
 from worksheet_api.repositories.translation import TranslationRepository
+from worksheet_api.repositories.user_preference import ConflictError, UserPreferenceRepository
 from worksheet_api.repositories.vocabulary import VocabularyRepository
 
 __all__ = [
@@ -31,4 +32,6 @@ __all__ = [
     "VocabularyRepository",
     "SyntaxAnnotationRepository",
     "LlmUsageLogRepository",
+    "UserPreferenceRepository",
+    "ConflictError",
 ]
