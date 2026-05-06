@@ -1,0 +1,243 @@
+{# ========================================================================
+   Worksheet Template — Style 3: Playful (친근한 학원 핸드아웃 톤)
+   ------------------------------------------------------------------------
+   Required template variables — see README.md for the full contract.
+   Content slot: {{ q.content_html | safe }} — 기존 프로젝트의 구문 분석
+   마크업 HTML을 그대로 주입하면 됩니다.
+   ======================================================================== #}
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>{{ worksheet.title }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.5.0/dist/tabler-icons.min.css" rel="stylesheet">
+<style>
+  {% set is_landscape = (worksheet.orientation | default('portrait')) == 'landscape' %}
+  @page { size: A4 {{ 'landscape' if is_landscape else 'portrait' }}; margin: 0; }
+  *, *::before, *::after { box-sizing: border-box; }
+
+  :root {
+    --theme: {{ academy.theme_color | default('#2563eb') }};
+    --theme-soft: color-mix(in srgb, {{ academy.theme_color | default('#2563eb') }} 8%, white);
+    --theme-mid: color-mix(in srgb, {{ academy.theme_color | default('#2563eb') }} 14%, white);
+    --ink: #1a1a1a;
+    --body: #1f2937;
+    --muted: #64748b;
+    --hint: #94a3b8;
+    --surface: #fafafa;
+    --line: #e5e7eb;
+    --page-side: {{ '28mm' if is_landscape else '18mm' }};
+    --sans: 'Pretendard', 'Apple SD Gothic Neo', -apple-system, sans-serif;
+  }
+
+  html, body {
+    margin: 0; padding: 0;
+    font-family: var(--sans);
+    color: var(--body);
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  @media screen {
+    body { background: #f1f1ef; padding: 24px 12px; }
+    .page { box-shadow: 0 6px 28px rgba(0, 0, 0, 0.10); margin: 0 auto; }
+  }
+
+  .page {
+    width: {{ '297mm' if is_landscape else '210mm' }};
+    min-height: {{ '210mm' if is_landscape else '297mm' }};
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* Banner */
+  .banner {
+    background: var(--theme);
+    color: #fff;
+    padding: {{ '14mm var(--page-side) 10mm' if is_landscape else '18mm var(--page-side) 14mm' }};
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .banner .badge {
+    width: 44px;
+    height: 44px;
+    background: rgba(255, 255, 255, 0.22);
+    border-radius: 11px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    overflow: hidden;
+  }
+  .banner .badge i { font-size: 22px; color: #fff; }
+  .banner .badge img { width: 100%; height: 100%; object-fit: cover; border-radius: 11px; }
+  .banner .heading .title {
+    font-size: 19px;
+    font-weight: 500;
+    line-height: 1.2;
+    margin: 0;
+  }
+  .banner .heading .subtitle {
+    font-size: 12px;
+    opacity: 0.88;
+    margin: 3px 0 0;
+  }
+
+  /* Body */
+  .body {
+    padding: {{ '10mm var(--page-side) 0' if is_landscape else '12mm var(--page-side) 0' }};
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .info {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .info .pill {
+    flex: 1;
+    background: #f1f5f9;
+    border-radius: 22px;
+    padding: 7px 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11.5px;
+  }
+  .info .pill label { color: var(--muted); flex: none; }
+  .info .pill .value {
+    flex: 1;
+    border-bottom: 0.5px dashed var(--hint);
+    min-height: 14px;
+    color: var(--ink);
+    padding-bottom: 1px;
+  }
+
+  .section-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 12px 0 12px;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--theme);
+  }
+  .section-head i { font-size: 15px; }
+
+  .instruction {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.55;
+    margin: 0 0 14px;
+    padding: 10px 14px;
+    background: var(--theme-soft);
+    border-radius: 10px;
+  }
+
+  /* Questions */
+  .questions { flex: 1; }
+  .q {
+    background: var(--surface);
+    border: 0.5px solid var(--line);
+    border-radius: 12px;
+    padding: 14px 16px 13px;
+    margin-bottom: 10px;
+    page-break-inside: avoid;
+  }
+  .q-head {
+    display: flex;
+    align-items: baseline;
+    gap: 9px;
+    margin-bottom: 8px;
+  }
+  .q-num {
+    background: var(--theme);
+    color: #fff;
+    font-size: 10.5px;
+    font-weight: 500;
+    padding: 3px 9px;
+    border-radius: 6px;
+    letter-spacing: 0.02em;
+  }
+  .q-label {
+    font-size: 11.5px;
+    color: var(--muted);
+  }
+  .q-content {
+    font-size: 13px;
+    line-height: 1.85;
+    color: var(--ink);
+  }
+
+  /* Footer */
+  .footer {
+    padding: 10px var(--page-side) {{ '10mm' if is_landscape else '14mm' }};
+    margin-top: auto;
+    font-size: 10.5px;
+    color: var(--hint);
+    display: flex;
+    justify-content: space-between;
+  }
+  .footer .pg { font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="banner">
+    <div class="badge">
+      {% if academy.logo_url %}
+        <img src="{{ academy.logo_url }}" alt="{{ academy.name }}">
+      {% else %}
+        <i class="ti ti-book-2"></i>
+      {% endif %}
+    </div>
+    <div class="heading">
+      <h1 class="title">{{ worksheet.title }}</h1>
+      <p class="subtitle">{{ academy.name }}{% if worksheet.subtitle %} · {{ worksheet.subtitle }}{% endif %}</p>
+    </div>
+  </header>
+
+  <div class="body">
+    <div class="info">
+      <div class="pill"><label>이름</label><span class="value">{{ student.name | default('') }}</span></div>
+      <div class="pill"><label>반</label><span class="value">{{ student.class_name | default('') }}</span></div>
+      <div class="pill"><label>날짜</label><span class="value">{{ student.date | default('') }}</span></div>
+    </div>
+
+    {% if instruction %}
+    <p class="instruction">{{ instruction }}</p>
+    {% endif %}
+
+    <div class="section-head">
+      <i class="ti ti-target-arrow"></i>
+      <span>오늘의 도전 문장</span>
+    </div>
+
+    <main class="questions">
+      {% for q in questions %}
+      <div class="q">
+        <div class="q-head">
+          <span class="q-num">Q{{ q.number }}</span>
+          {% if q.label %}<span class="q-label">{{ q.label }}</span>{% endif %}
+        </div>
+        <div class="q-content">{{ q.content_html | safe }}</div>
+      </div>
+      {% endfor %}
+    </main>
+  </div>
+
+  <footer class="footer">
+    <span>{{ academy.name }}</span>
+    <span class="pg">{{ worksheet.page_number }} / {{ worksheet.total_pages }}</span>
+  </footer>
+</div>
+</body>
+</html>
