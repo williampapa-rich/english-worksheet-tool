@@ -57,15 +57,6 @@ class Branding(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    academy_name: str | None = Field(
-        default=None,
-        max_length=255,
-        description=(
-            "학원/기관 표시명 (출력물 헤더). 템플릿 변수 ``academy.name`` 매핑. "
-            "ADR-0010 §D3 — Workspace.name (운영용 라벨) 과 분리해 customer-facing "
-            "표시 목적으로 Branding 에 둠."
-        ),
-    )
     logo_url: str | None = Field(
         default=None,
         description="로고 이미지 URL 또는 storage ref. 템플릿 변수 ``academy.logo_url`` 매핑.",
@@ -82,6 +73,15 @@ class Branding(BaseModel):
             "``--theme-mid`` 는 ``color-mix(in srgb, ...)`` 로 자동 생성하므로 본 필드를 "
             "참조하지 않는다. WeasyPrint 등 ``color-mix`` 미지원 PDF 엔진으로 전환 시 "
             "fallback 으로 활성화 가능."
+        ),
+    )
+    academy_name: str | None = Field(
+        default=None,
+        max_length=255,
+        description=(
+            "학원/기관 표시명 (출력물 헤더). 템플릿 변수 ``academy.name`` 매핑. "
+            "ADR-0010 §D3 — Workspace.name (운영용 라벨) 과 분리해 customer-facing "
+            "표시 목적으로 Branding 에 둠."
         ),
     )
 
