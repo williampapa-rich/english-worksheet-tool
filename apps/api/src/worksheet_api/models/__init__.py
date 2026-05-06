@@ -33,6 +33,7 @@ from worksheet_api.models.tenant import Tenant, Workspace
 from worksheet_api.models.translation import TranslationORM
 from worksheet_api.models.user_preference import UserPreferenceORM
 from worksheet_api.models.vocabulary import VocabularyORM
+from worksheet_api.models.worksheet import WorksheetItemORM, WorksheetORM
 
 # Base.metadata 의 tenants / workspaces 를 SQLModel.metadata 에도 attach.
 # import 부수 효과 — 본 모듈을 import 하면 자동으로 cross-metadata FK 가 해소됨.
@@ -54,4 +55,6 @@ __all__ = [
     "SyntaxAnnotationORM",
     "LlmUsageLogORM",
     "UserPreferenceORM",
+    "WorksheetORM",
+    "WorksheetItemORM",
 ]
