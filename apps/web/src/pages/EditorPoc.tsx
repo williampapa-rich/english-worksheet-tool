@@ -700,9 +700,9 @@ export function EditorPoc() {
    * attrs 를 새 값으로 교체한다.
    * bracket mark (top_label 과 annotationId 공유) 처리:
    *   - bracketStyle 이 null 로 변경 → bracket mark 범위 unset
-   *   - bracketStyle 이 값이 있을 때 bracket range 가 없으면 새로 set 불가
-   *     (selection 정보가 없으므로). 이 케이스는 현재 수정 불가 — 원래 괄호 없이
-   *     저장된 top_label 에 추후 괄호 추가는 별도 케이스.
+   *   - bracketStyle 이 값으로 변경, bracket range 있음 → bracket mark attrs 갱신
+   *   - bracketStyle 이 값으로 변경, bracket range 없음 (없음 → 있음 전환, NG-1 fix):
+   *     topLabel range 를 재사용해 동일 span 에 bracket mark 를 새로 추가한다.
    */
   const handleChipEditSave = useCallback(
     (params: {
@@ -733,6 +733,29 @@ export function EditorPoc() {
       });
 
       let chain = editor.chain();
+
+      // NG-1 fix: bracketStyle 이 값이고 bracket range 가 없으면 (없음 → 있음 전환)
+      // topLabel range 를 찾아서 동일 span 에 bracket mark 를 새로 추가한다.
+      //
+      // NOTE: bottomLabel-only 칩 (top_label 없음) 에서는 ChipEditModal.hasBracket = false 이므로
+      // bracketStyle 편집 UI 자체가 표시되지 않아 이 분기에 도달하지 않는다.
+      // 즉 "없음 → 있음" 전환 시 topLabel range 전제는 UI 레벨에서 보장된다 (#3 확인).
+      const hasBracketRange = ranges.some((r) => r.markName === "bracket");
+      if (params.bracketStyle !== null && !hasBracketRange) {
+        // topLabel range 에서 from/to 를 찾아 bracket mark 추가
+        const topLabelRange = ranges.find((r) => r.markName === "topLabel");
+        if (topLabelRange) {
+          const preservedCategory = categoryByMark.get("topLabel") ?? null;
+          chain = chain
+            .setTextSelection({ from: topLabelRange.from, to: topLabelRange.to })
+            .setBracket({
+              bracketStyle: params.bracketStyle,
+              colorIndex: params.colorIndex ?? 1,
+              category: preservedCategory,
+              annotationId: params.annotationId,
+            });
+        }
+      }
 
       for (const r of ranges) {
         // 기존 mark attrs 를 유지하면서 새 값으로 교체
