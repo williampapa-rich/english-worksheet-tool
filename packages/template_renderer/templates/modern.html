@@ -1,0 +1,218 @@
+{# ========================================================================
+   Worksheet Template — Style 2: Modern (모던 미니멀 톤)
+   ------------------------------------------------------------------------
+   Required template variables — see README.md for the full contract.
+   Content slot: {{ q.content_html | safe }} — 기존 프로젝트의 구문 분석
+   마크업 HTML을 그대로 주입하면 됩니다.
+   ======================================================================== #}
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>{{ worksheet.title }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500&display=swap" rel="stylesheet">
+<style>
+  {% set is_landscape = (worksheet.orientation | default('portrait')) == 'landscape' %}
+  @page { size: A4 {{ 'landscape' if is_landscape else 'portrait' }}; margin: 0; }
+  *, *::before, *::after { box-sizing: border-box; }
+
+  :root {
+    --theme: {{ academy.theme_color | default('#2563eb') }};
+    --ink: #111111;
+    --body: #1a1a1a;
+    --muted: #6b6b6b;
+    --hint: #999999;
+    --line: #e6e6e6;
+    --line-strong: #cccccc;
+    --sans: 'Pretendard', 'Apple SD Gothic Neo', -apple-system, sans-serif;
+    --display: 'Fraunces', 'Pretendard', serif;
+  }
+
+  html, body {
+    margin: 0; padding: 0;
+    font-family: var(--sans);
+    color: var(--body);
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    font-feature-settings: 'tnum' on, 'lnum' on;
+  }
+
+  @media screen {
+    body { background: #efeeec; padding: 24px 12px; }
+    .page { box-shadow: 0 4px 24px rgba(0, 0, 0, 0.10); margin: 0 auto; }
+  }
+
+  .page {
+    width: {{ '297mm' if is_landscape else '210mm' }};
+    min-height: {{ '210mm' if is_landscape else '297mm' }};
+    background: #fff;
+    padding: {{ '16mm 30mm 12mm' if is_landscape else '22mm 22mm 18mm' }};
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Header */
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 28px;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand .logo {
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--theme);
+    color: var(--theme);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: 6px;
+    flex: none;
+  }
+  .brand .logo img { width: 100%; height: 100%; object-fit: contain; border-radius: 5px; }
+  .brand .academy-name {
+    font-size: 12px;
+    color: var(--muted);
+    letter-spacing: 0.02em;
+  }
+  .meta {
+    font-size: 11px;
+    color: var(--hint);
+    text-align: right;
+    line-height: 1.5;
+  }
+
+  /* Title */
+  .title-block { margin: 4px 0 18px; }
+  .title-block .title {
+    margin: 0;
+    font-size: 28px;
+    font-weight: 400;
+    letter-spacing: -0.015em;
+    color: var(--ink);
+    font-family: var(--display);
+    line-height: 1.1;
+  }
+  .title-block .subtitle {
+    margin: 6px 0 0;
+    font-size: 12px;
+    color: var(--hint);
+    letter-spacing: 0.02em;
+  }
+  .divider {
+    border: none;
+    border-top: 0.5px solid var(--line);
+    margin: 0 0 20px;
+  }
+
+  .instruction {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.55;
+    margin: 0 0 20px;
+    padding: 12px 14px;
+    background: #fafafa;
+    border-left: 2px solid var(--theme);
+  }
+
+  /* Questions */
+  .questions { flex: 1; }
+  .q {
+    display: flex;
+    gap: 22px;
+    margin-bottom: 22px;
+    align-items: flex-start;
+    page-break-inside: avoid;
+  }
+  .q-num {
+    flex: none;
+    font-size: 26px;
+    font-weight: 500;
+    color: var(--theme);
+    line-height: 1;
+    width: 38px;
+    font-variant-numeric: tabular-nums;
+    margin-top: 4px;
+    font-family: var(--display);
+  }
+  .q-body { flex: 1; min-width: 0; }
+  .q-label {
+    font-size: 11px;
+    color: var(--hint);
+    margin: 0 0 6px;
+    letter-spacing: 0.02em;
+  }
+  .q-content {
+    font-size: 13.5px;
+    line-height: 1.75;
+    color: var(--ink);
+  }
+
+  /* Footer */
+  .footer {
+    margin-top: auto;
+    padding-top: 14px;
+    border-top: 0.5px solid var(--line);
+    display: flex;
+    justify-content: space-between;
+    font-size: 10.5px;
+    color: var(--hint);
+    letter-spacing: 0.04em;
+  }
+  .footer .pg { font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="header">
+    <div class="brand">
+      <div class="logo">
+        {% if academy.logo_url %}
+          <img src="{{ academy.logo_url }}" alt="{{ academy.name }}">
+        {% else %}
+          {{ academy.name[:1] }}
+        {% endif %}
+      </div>
+      <div class="academy-name">{{ academy.name }}</div>
+    </div>
+    <div class="meta">
+      {{ student.date | default('') }}<br>
+      {{ student.class_name | default('') }}{% if student.name %} · {{ student.name }}{% endif %}
+    </div>
+  </header>
+
+  <div class="title-block">
+    <h1 class="title">{{ worksheet.title }}</h1>
+    {% if worksheet.subtitle %}<p class="subtitle">{{ worksheet.subtitle }}</p>{% endif %}
+  </div>
+  <hr class="divider">
+
+  {% if instruction %}
+  <p class="instruction">{{ instruction }}</p>
+  {% endif %}
+
+  <main class="questions">
+    {% for q in questions %}
+    <div class="q">
+      <div class="q-num">{{ '%02d' % q.number }}</div>
+      <div class="q-body">
+        {% if q.label %}<p class="q-label">{{ q.label }}</p>{% endif %}
+        <div class="q-content">{{ q.content_html | safe }}</div>
+      </div>
+    </div>
+    {% endfor %}
+  </main>
+
+  <footer class="footer">
+    <span>{{ academy.name }}</span>
+    <span class="pg">{{ '%02d' % worksheet.page_number }} / {{ '%02d' % worksheet.total_pages }}</span>
+  </footer>
+</div>
+</body>
+</html>

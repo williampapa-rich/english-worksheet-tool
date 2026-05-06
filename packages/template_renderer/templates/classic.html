@@ -1,0 +1,197 @@
+{# ========================================================================
+   Worksheet Template — Style 1: Classic (수능 모의고사 톤)
+   ------------------------------------------------------------------------
+   Required template variables — see README.md for the full contract.
+   Content slot: {{ q.content_html | safe }} — 기존 프로젝트의 구문 분석
+   마크업 HTML을 그대로 주입하면 됩니다. 본 템플릿은 syntax markup CSS를
+   포함하지 않으므로, 별도 stylesheet로 로드하거나 content_html에 인라인
+   스타일로 포함해주세요.
+   ======================================================================== #}
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>{{ worksheet.title }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" rel="stylesheet">
+<style>
+  {% set is_landscape = (worksheet.orientation | default('portrait')) == 'landscape' %}
+  @page { size: A4 {{ 'landscape' if is_landscape else 'portrait' }}; margin: 0; }
+  *, *::before, *::after { box-sizing: border-box; }
+
+  :root {
+    --theme: {{ academy.theme_color | default('#2563eb') }};
+    --ink: #1a1a1a;
+    --rule: #1a1a1a;
+    --muted: #555;
+    --hint: #888;
+    --line: #ddd;
+    --serif: 'Iowan Old Style', 'Noto Serif KR', Georgia, 'Times New Roman', serif;
+    --sans: 'Pretendard', 'Apple SD Gothic Neo', -apple-system, sans-serif;
+    --label: 'Helvetica Neue', Arial, sans-serif;
+  }
+
+  html, body {
+    margin: 0; padding: 0;
+    font-family: var(--serif);
+    color: var(--ink);
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  @media screen {
+    body { background: #e8e8e8; padding: 24px 12px; }
+    .page { box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12); margin: 0 auto; }
+  }
+
+  .page {
+    width: {{ '297mm' if is_landscape else '210mm' }};
+    min-height: {{ '210mm' if is_landscape else '297mm' }};
+    background: #fff;
+    padding: {{ '14mm 26mm 12mm' if is_landscape else '20mm 18mm 18mm' }};
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Header */
+  .header {
+    border-top: 3px solid var(--theme);
+    border-bottom: 0.5px solid var(--rule);
+    padding: 8px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 16px;
+    margin-bottom: 14px;
+  }
+  .brand .academy-name {
+    font-size: 10.5px;
+    letter-spacing: 0.18em;
+    color: var(--muted);
+    font-family: var(--label);
+    font-weight: 500;
+    text-transform: uppercase;
+  }
+  .brand .worksheet-title {
+    font-size: 18px;
+    font-weight: 500;
+    margin-top: 4px;
+    line-height: 1.2;
+  }
+
+  .meta { display: flex; font-size: 10.5px; font-family: var(--label); }
+  .meta .cell {
+    border: 0.5px solid var(--rule);
+    padding: 4px 10px;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .meta .cell + .cell { border-left: none; }
+  .meta .cell label { color: #666; font-size: 9.5px; }
+  .meta .cell span {
+    display: inline-block;
+    min-width: 38px;
+    border-bottom: 0.5px solid #999;
+    padding-bottom: 1px;
+    font-family: var(--sans);
+    font-size: 11px;
+  }
+
+  /* Instruction */
+  .instruction {
+    font-size: 11.5px;
+    color: #444;
+    margin: 4px 0 18px;
+    font-family: var(--sans);
+    line-height: 1.4;
+  }
+
+  /* Questions */
+  .questions { flex: 1; }
+  .q {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 18px;
+    page-break-inside: avoid;
+  }
+  .q-num {
+    flex: none;
+    width: 18px;
+    height: 18px;
+    background: var(--ink);
+    color: #fff;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 500;
+    margin-top: 3px;
+    font-family: var(--label);
+  }
+  .q-body { flex: 1; min-width: 0; }
+  .q-label {
+    font-size: 10.5px;
+    color: var(--muted);
+    margin: 0 0 6px;
+    font-family: var(--sans);
+  }
+  .q-content {
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  /* Footer */
+  .footer {
+    margin-top: auto;
+    padding-top: 10px;
+    border-top: 0.5px solid var(--line);
+    display: flex;
+    justify-content: space-between;
+    font-size: 9.5px;
+    color: var(--hint);
+    font-family: var(--label);
+    letter-spacing: 0.05em;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="header">
+    <div class="brand">
+      <div class="academy-name">{{ academy.name }}</div>
+      <div class="worksheet-title">{{ worksheet.title }}</div>
+    </div>
+    <div class="meta">
+      <div class="cell"><label>이름</label><span>{{ student.name | default('') }}</span></div>
+      <div class="cell"><label>반</label><span>{{ student.class_name | default('') }}</span></div>
+      <div class="cell"><label>날짜</label><span>{{ student.date | default('') }}</span></div>
+    </div>
+  </header>
+
+  {% if instruction %}
+  <p class="instruction">※ {{ instruction }}</p>
+  {% endif %}
+
+  <main class="questions">
+    {% for q in questions %}
+    <div class="q">
+      <div class="q-num">{{ q.number }}</div>
+      <div class="q-body">
+        {% if q.label %}<p class="q-label">{{ q.label }}</p>{% endif %}
+        <div class="q-content">{{ q.content_html | safe }}</div>
+      </div>
+    </div>
+    {% endfor %}
+  </main>
+
+  <footer class="footer">
+    <span>{{ academy.name | upper }}</span>
+    <span>Page {{ worksheet.page_number }} / {{ worksheet.total_pages }}</span>
+  </footer>
+</div>
+</body>
+</html>
