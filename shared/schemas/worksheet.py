@@ -33,25 +33,56 @@ class WorksheetKind(StrEnum):
     VARIANT_SET = "variant_set"
 
 
+class WorksheetOrientation(StrEnum):
+    """Worksheet 출력 방향 — A4 페이지 회전.
+
+    - ``PORTRAIT``: 210mm × 297mm (세로). 일반 워크시트 default.
+    - ``LANDSCAPE``: 297mm × 210mm (가로). 좌우 비교 / 긴 영어 문장 유지에 유리.
+
+    템플릿 렌더 시 CSS ``@page size`` 분기 + Playwright ``landscape`` 파라미터의
+    source. ADR-0010 §D2.
+    """
+
+    PORTRAIT = "portrait"
+    LANDSCAPE = "landscape"
+
+
 class Branding(BaseModel):
-    """Worksheet 의 브랜딩 (로고, 컬러).
+    """Worksheet 의 브랜딩 (학원명, 로고, 컬러).
 
     Phase 2 학생용 템플릿의 컬러/로고 프리셋 변경 (CLAUDE.md Phase 2 DoD).
+    템플릿 (``packages/template_renderer/templates/``) 의 ``academy.*`` 변수와 매핑된다
+    (ADR-0010 §D3, §D6).
     """
 
     model_config = ConfigDict(extra="forbid")
 
+    academy_name: str | None = Field(
+        default=None,
+        max_length=255,
+        description=(
+            "학원/기관 표시명 (출력물 헤더). 템플릿 변수 ``academy.name`` 매핑. "
+            "ADR-0010 §D3 — Workspace.name (운영용 라벨) 과 분리해 customer-facing "
+            "표시 목적으로 Branding 에 둠."
+        ),
+    )
     logo_url: str | None = Field(
         default=None,
-        description="로고 이미지 URL 또는 storage ref.",
+        description="로고 이미지 URL 또는 storage ref. 템플릿 변수 ``academy.logo_url`` 매핑.",
     )
     primary_color: str | None = Field(
         default=None,
-        description="기본 색상 (HEX, 예: '#1F4E79').",
+        description=("기본 색상 (HEX, 예: '#1F4E79'). 템플릿 변수 ``academy.theme_color`` 매핑."),
     )
     secondary_color: str | None = Field(
         default=None,
-        description="보조 색상 (HEX).",
+        description=(
+            "보조 색상 (HEX). **현 템플릿 (classic / modern / playful) 미사용 — Phase 2 "
+            "디자인 확장용 보관 (ADR-0010 §D6).** playful 의 ``--theme-soft`` / "
+            "``--theme-mid`` 는 ``color-mix(in srgb, ...)`` 로 자동 생성하므로 본 필드를 "
+            "참조하지 않는다. WeasyPrint 등 ``color-mix`` 미지원 PDF 엔진으로 전환 시 "
+            "fallback 으로 활성화 가능."
+        ),
     )
 
 
@@ -71,6 +102,17 @@ class WorksheetItem(BaseModel):
         ...,
         ge=0,
         description="Worksheet 안의 노출 순서 (0-based).",
+    )
+    label: str | None = Field(
+        default=None,
+        max_length=255,
+        description=(
+            "항목 라벨 (예: '관계절이 포함된 문장', '빈칸 추론 — 주제'). 템플릿 변수 "
+            "``questions[].label`` 매핑. ADR-0010 §D1 #4. kind 별 의미: STUDENT 분류 / "
+            "TEACHER 출제 의도 / SYNTAX_ANALYSIS 분석 포커스 / VARIANT_SET 변형 유형 "
+            "displayed text (``VariantQuestion.variant_kind`` enum 과 별도 — 어댑터에서 "
+            "파생할지 후속 결정)."
+        ),
     )
 
     # ─── kind 별 옵션 ────────────────────────────────────────────────────
@@ -111,6 +153,14 @@ class Worksheet(WorkspaceScopedEntity):
         max_length=255,
         description="Worksheet 제목 (예: '2025 1학기 중간 영어 자료').",
     )
+    subtitle: str | None = Field(
+        default=None,
+        max_length=255,
+        description=(
+            "Worksheet 부제 (예: 'Week 04', 'Mock Exam #2'). 템플릿 변수 "
+            "``worksheet.subtitle`` 매핑 (ADR-0010 §D1 #1). 모든 kind 에서 의미 있음."
+        ),
+    )
     kind: WorksheetKind = Field(
         ...,
         description="Worksheet 유형 (학생용/교사용/구문분석/변형문제집).",
@@ -120,6 +170,23 @@ class Worksheet(WorkspaceScopedEntity):
         description=(
             "템플릿 식별자 (예: 'student_v0_1', 'syntax_v0_1'). 템플릿 카탈로그는 "
             "후속 PR 에서 packages/hwpx_renderer 가 정의."
+        ),
+    )
+    orientation: WorksheetOrientation = Field(
+        default=WorksheetOrientation.PORTRAIT,
+        description=(
+            "출력 방향 (portrait/landscape). 템플릿 변수 ``worksheet.orientation`` 매핑 "
+            "(ADR-0010 §D1 #2, §D2). CSS ``@page size`` 분기 + Playwright ``landscape`` "
+            "파라미터의 source. default=portrait — 한국 영어 학원 워크시트 디폴트."
+        ),
+    )
+    instruction: str | None = Field(
+        default=None,
+        max_length=2000,
+        description=(
+            "워크시트 지시문 (예: '다음 문장을 읽고 어법상 어색한 부분을 고치시오.'). "
+            "템플릿 변수 ``instruction`` 매핑 (ADR-0010 §D1 #3). SYNTAX_ANALYSIS 에서는 "
+            "보통 빈 값."
         ),
     )
 

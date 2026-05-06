@@ -49,6 +49,11 @@ print 렌더링)** 로 전환했다. 받은 템플릿은 정확히 이 결정을
 
 ### 2.2 `shared/schemas/worksheet.py` 와의 갭
 
+> **Stage 1 갱신 (2026-05-07)**: 본 표의 갭은 **ADR-0010** (`docs/adr/0010-worksheet-output-parameters.md`)
+> 에서 schema 변경 결정 — `Worksheet.{subtitle, orientation, instruction}` +
+> `WorksheetItem.label` + `Branding.academy_name` 추가, `student.*` 와 `page_number`/
+> `total_pages` 는 schema 외.
+
 받은 템플릿의 데이터 계약 vs 현재 schema:
 
 | 템플릿 변수 | 현재 schema 필드 | 갭 |
