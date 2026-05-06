@@ -25,6 +25,7 @@
 import { Mark, mergeAttributes } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import { colorVar } from "./colorUtils";
 
 export interface BottomLabelOptions {
   HTMLAttributes: Record<string, unknown>;
@@ -48,12 +49,6 @@ declare module "@tiptap/core" {
       unsetBottomLabel: () => ReturnType;
     };
   }
-}
-
-/** colorIndex → CSS 변수명 (EditorPoc.css --anno-color-N 과 동기화) */
-function colorVar(colorIndex: number | null): string {
-  if (colorIndex == null || colorIndex < 1 || colorIndex > 12) return "var(--anno-color-0)";
-  return `var(--anno-color-${colorIndex})`;
 }
 
 const bottomLabelPluginKey = new PluginKey("bottomLabelDecorations");
@@ -236,26 +231,34 @@ export const BottomLabelMark = Mark.create<BottomLabelOptions>({
 
             const decorations: Decoration[] = [];
 
-            function addLabelDecoration(entry: {
-              to: number;
-              text: string;
-              colorIndex: number | null;
-            }) {
+            // anonLabels 는 annotationId 가 없으므로 위치 기반 index 로 key 생성
+            let anonIndex = 0;
+
+            function addLabelDecoration(
+              entry: {
+                to: number;
+                text: string;
+                colorIndex: number | null;
+              },
+              annotationId: string | null
+            ) {
               if (!entry.text) return;
               const el = makeBottomLabelWidget(entry.text, entry.colorIndex);
+              // annotationId 포함으로 동일 위치 겹침 시 key 충돌 방지 (#1 fix)
+              const idSegment = annotationId ?? `anon-${anonIndex++}`;
               decorations.push(
                 Decoration.widget(entry.to, el, {
                   side: 1,
-                  key: `bottom-label-${entry.to}`,
+                  key: `bottom-label-${idSegment}-${entry.to}`,
                 })
               );
             }
 
-            for (const entry of labelMap.values()) {
-              addLabelDecoration(entry);
+            for (const [annId, entry] of labelMap.entries()) {
+              addLabelDecoration(entry, annId);
             }
             for (const entry of anonLabels) {
-              addLabelDecoration(entry);
+              addLabelDecoration(entry, null);
             }
 
             return DecorationSet.create(doc, decorations);

@@ -23,6 +23,7 @@
 import { Mark, mergeAttributes } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import { colorVar } from "./colorUtils";
 
 // P1-10c: ⌜⌟ / <> 추가 — Decoration.widget 방식으로 실제 DOM 에 삽입
 export type BracketStyle = "()" | "{}" | "[]" | "⌜⌟" | "<>";
@@ -39,12 +40,6 @@ export const BRACKET_CHARS: Record<BracketStyle, [string, string]> = {
   "⌜⌟": ["⌜", "⌟"],
   "<>": ["<", ">"],
 };
-
-/** colorIndex → CSS 변수명 (EditorPoc.css --anno-color-N 과 동기화) */
-function colorVar(colorIndex: number | null): string {
-  if (colorIndex == null || colorIndex < 1 || colorIndex > 12) return "var(--anno-color-0)";
-  return `var(--anno-color-${colorIndex})`;
-}
 
 /** bracket Decoration.widget 용 DOM 요소 생성 */
 function makeBracketWidget(char: string, colorIndex: number | null): HTMLElement {
@@ -234,33 +229,41 @@ export const BracketMark = Mark.create<BracketOptions>({
 
             const decorations: Decoration[] = [];
 
-            function addBracketDecorations(entry: {
-              from: number;
-              to: number;
-              bracketStyle: BracketStyle;
-              colorIndex: number | null;
-            }) {
+            // anonBrackets 는 annotationId 가 없으므로 위치 기반 index 로 key 생성
+            let anonIndex = 0;
+
+            function addBracketDecorations(
+              entry: {
+                from: number;
+                to: number;
+                bracketStyle: BracketStyle;
+                colorIndex: number | null;
+              },
+              annotationId: string | null
+            ) {
               const chars = BRACKET_CHARS[entry.bracketStyle] ?? ["(", ")"];
               const openEl = makeBracketWidget(chars[0], entry.colorIndex);
               const closeEl = makeBracketWidget(chars[1], entry.colorIndex);
+              // annotationId 포함으로 중첩 bracket 또는 동일 위치 겹침 시 key 충돌 방지 (#1 fix)
+              const idSegment = annotationId ?? `anon-${anonIndex++}`;
               // side: -1 → 커서가 양 끝에 있을 때 widget 바깥쪽 우선
               decorations.push(
                 Decoration.widget(entry.from, openEl, {
                   side: -1,
-                  key: `bracket-open-${entry.from}`,
+                  key: `bracket-open-${idSegment}-${entry.from}`,
                 }),
                 Decoration.widget(entry.to, closeEl, {
                   side: 1,
-                  key: `bracket-close-${entry.to}`,
+                  key: `bracket-close-${idSegment}-${entry.to}`,
                 })
               );
             }
 
-            for (const entry of bracketMap.values()) {
-              addBracketDecorations(entry);
+            for (const [annId, entry] of bracketMap.entries()) {
+              addBracketDecorations(entry, annId);
             }
             for (const entry of anonBrackets) {
-              addBracketDecorations(entry);
+              addBracketDecorations(entry, null);
             }
 
             return DecorationSet.create(doc, decorations);

@@ -736,6 +736,10 @@ export function EditorPoc() {
 
       // NG-1 fix: bracketStyle 이 값이고 bracket range 가 없으면 (없음 → 있음 전환)
       // topLabel range 를 찾아서 동일 span 에 bracket mark 를 새로 추가한다.
+      //
+      // NOTE: bottomLabel-only 칩 (top_label 없음) 에서는 ChipEditModal.hasBracket = false 이므로
+      // bracketStyle 편집 UI 자체가 표시되지 않아 이 분기에 도달하지 않는다.
+      // 즉 "없음 → 있음" 전환 시 topLabel range 전제는 UI 레벨에서 보장된다 (#3 확인).
       const hasBracketRange = ranges.some((r) => r.markName === "bracket");
       if (params.bracketStyle !== null && !hasBracketRange) {
         // topLabel range 에서 from/to 를 찾아 bracket mark 추가
