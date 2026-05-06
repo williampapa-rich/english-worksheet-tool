@@ -8,7 +8,7 @@ Worksheet HTML 템플릿 + (예정) Jinja2 렌더 + Playwright PDF 변환 파이
 - **관련 문서**:
   - `docs/template-rendering-analysis.md` (도입 분석 + PM 결정 5건)
   - `docs/adr/0008-phase-1-output-format.md` (HWPX → HTML/PDF 전환)
-  - `docs/adr/0010-split-mark-pseudo-element-rendering.md` (annotation HTML 산출)
+  - annotation split-mark 렌더링 ADR (향후 ADR — 번호 확정 시 갱신)
   - 향후 ADR-0011 (Worksheet HTML 템플릿 + Playwright PDF 파이프라인) — Stage 1 진입 시
     승격
 
@@ -54,7 +54,7 @@ packages/template_renderer/
         {
             "number": int,
             "label": str | None,
-            "content_html": str, # ADR-0010 split-mark 산출 HTML 주입
+            "content_html": str, # annotation split-mark 렌더러 산출 HTML 주입 (ADR 번호 확정 후 갱신)
         },
         ...
     ],

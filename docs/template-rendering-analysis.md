@@ -42,12 +42,17 @@ print 렌더링)** 로 전환했다. 받은 템플릿은 정확히 이 결정을
 - ✅ HTML + CSS print stylesheet
 - ✅ A4 페이지 사이즈 / 마진 / 가로세로 모드
 - ✅ Playwright headless 렌더 가이드
-- ✅ `q.content_html | safe` 로 ADR-0010 (split-mark pseudo-element) 산출 HTML 그대로 주입 가능
+- ✅ `q.content_html | safe` 로 annotation split-mark 렌더링 ADR (번호 미확정, 향후 작성) 산출 HTML 그대로 주입 가능
 
 → **재구현 불필요**. CLAUDE.md §3.6 "No Reinventing the Wheel" 원칙에 따라 **이 템플릿
 세트를 채택** 하는 게 올바름.
 
 ### 2.2 `shared/schemas/worksheet.py` 와의 갭
+
+> **Stage 1 갱신 (2026-05-07)**: 본 표의 갭은 **ADR-0010** (`docs/adr/0010-worksheet-output-parameters.md`)
+> 에서 schema 변경 결정 — `Worksheet.{subtitle, orientation, instruction}` +
+> `WorksheetItem.label` + `Branding.academy_name` 추가, `student.*` 와 `page_number`/
+> `total_pages` 는 schema 외.
 
 받은 템플릿의 데이터 계약 vs 현재 schema:
 
@@ -107,8 +112,8 @@ shared.schemas.worksheet.Branding         → 템플릿 academy
 
 ### 3.3 Phase 1 → Phase 2 의 자연스러운 연결고리
 
-받은 템플릿이 `q.content_html | safe` 슬롯을 가지고 있고, 이게 **에디터의 ADR-0010 split
-mark 산출 HTML 과 정확히 같은 자리** 다. 즉:
+받은 템플릿이 `q.content_html | safe` 슬롯을 가지고 있고, 이게 **에디터의 annotation
+split-mark 렌더링 ADR (번호 미확정, 향후 작성) 산출 HTML 과 정확히 같은 자리** 다. 즉:
 
 ```
 [Phase 1 산출]                                [Phase 2 템플릿]

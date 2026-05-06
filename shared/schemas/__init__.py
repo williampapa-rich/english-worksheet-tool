@@ -74,6 +74,7 @@ from shared.schemas.worksheet import (
     Worksheet,
     WorksheetItem,
     WorksheetKind,
+    WorksheetOrientation,
 )
 
 __all__ = [
@@ -130,4 +131,5 @@ __all__ = [
     "Worksheet",
     "WorksheetItem",
     "WorksheetKind",
+    "WorksheetOrientation",
 ]
