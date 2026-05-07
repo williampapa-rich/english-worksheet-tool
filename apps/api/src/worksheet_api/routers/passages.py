@@ -16,10 +16,15 @@ PM-3: force_vision 은 kind=pdf 에서만 의미.
 PM-5: extractor 가 자료에 보이는 translation / vocabulary 포함.
 PM-6: 비어있어도 정상 (translation=None, vocabulary=[]).
 
-translation / vocabulary 영속화 결정 (옵션 A 채택):
-  Phase 0 DoD 는 "DB 에 Passage 저장/조회" 만 명시.
-  translation / vocabulary 는 본 PR 범위 외 — ExtractResponse 에 포함은 OK
-  (도메인 정합성), DB 영속화는 Phase 2 에서 본격 도입.
+translation / vocabulary 영속화 결정 (B1 — 옵션 A → 옵션 B 전환, 2026-05-07):
+  Phase 2 진입에 맞춰 옵션 B (extract 시점 영속화) 로 전환. 기존 옵션 A (in-memory
+  만 유지) 는 GET /{id} 응답에서 translation / vocabulary 가 항상 비어있는 가짜
+  관계가 발생해 보강 라우트 (B3 — POST /passages/{id}/translation 등) 와 정합 깨짐.
+  옵션 B 로 전환 시:
+    - extract 결과의 translation 이 비어있지 않으면 같은 트랜잭션에 저장 (1:1).
+    - vocabulary list 도 같은 트랜잭션에 저장 (passage_id FK).
+    - GET /{id} 도 translation / vocabulary 를 함께 조회해 응답.
+  PM-6 가정 그대로 — 실유저 입력 default 는 비어있음. 비어있으면 저장 skip 만.
 
 base64 결정:
   request body 에 binary 를 base64 str 로 받는다.
@@ -66,6 +71,8 @@ from worksheet_api.repositories import (
     QuestionRepository,
     SyntaxAnnotationRepository,
     TenantContext,
+    TranslationRepository,
+    VocabularyRepository,
     get_tenant_context,
 )
 
@@ -110,19 +117,21 @@ class ExtractRequest(BaseModel):
 class PassageWithRelations(BaseModel):
     """Passage + 연관 도메인 모델 컨테이너.
 
-    translation / vocabulary 는 Phase 0 에서 extractor 추출 결과를 in-memory 로 포함.
-    DB 영속화는 Phase 2 에서 도입 (옵션 A 채택 — Phase 0 DoD 충실).
+    B1 (2026-05-07) 부터 translation / vocabulary 도 DB 영속화 (옵션 B).
+    POST /passages/extract 은 추출 시점에 같은 트랜잭션으로 저장하고,
+    GET /passages/{id} 는 DB 에서 함께 조회해 반환한다. 비어있는 경우는
+    PM-6 가정 그대로 (translation=None, vocabulary=[]).
     """
 
     passage: Passage
     questions: list[Question] = Field(default_factory=list)
     translation: Translation | None = Field(
         default=None,
-        description="자료에 보이는 한글 해석. extractor 결과 in-memory (Phase 0). DB 영속화는 Phase 2.",
+        description="한글 해석. extract 결과가 채워져 있으면 DB 영속화 (1:1). 없으면 None.",
     )
     vocabulary: list[Vocabulary] = Field(
         default_factory=list,
-        description="자료에 보이는 어휘. extractor 결과 in-memory (Phase 0). DB 영속화는 Phase 2.",
+        description="어휘 박스 항목. extract 결과가 채워져 있으면 DB 영속화. 없으면 빈 list.",
     )
 
 
@@ -189,6 +198,8 @@ async def extract_passages(
     async with session.begin():
         passage_repo = PassageRepository(session, tenant_ctx)
         question_repo = QuestionRepository(session, tenant_ctx)
+        translation_repo = TranslationRepository(session, tenant_ctx)
+        vocabulary_repo = VocabularyRepository(session, tenant_ctx)
 
         for result in extraction_results:
             # ADR-0003 §D-3.6: sentinel UUID → 실제 tenant_id / workspace_id 교체
@@ -212,15 +223,37 @@ async def extract_passages(
                 saved_q = await question_repo.create(q_with_ids)
                 saved_questions.append(saved_q)
 
-            # translation / vocabulary 는 Phase 0 에서 in-memory 만 보존
-            # DB 영속화는 Phase 2 에서 TranslationRepository / VocabularyRepository
-            # write 메서드 활성화와 함께 도입 (옵션 A 채택).
+            # B1 — translation / vocabulary 영속화 (옵션 B).
+            # PM-6 가정: 비어있을 수 있음 — 비어있으면 저장 skip.
+            saved_translation: Translation | None = None
+            if result.translation is not None:
+                t_with_ids = result.translation.model_copy(
+                    update={
+                        "tenant_id": tenant_ctx.tenant_id,
+                        "workspace_id": tenant_ctx.workspace_id,
+                        "passage_id": saved_passage.id,
+                    }
+                )
+                saved_translation = await translation_repo.create(t_with_ids)
+
+            saved_vocabulary: list[Vocabulary] = []
+            for vocab in result.vocabulary:
+                v_with_ids = vocab.model_copy(
+                    update={
+                        "tenant_id": tenant_ctx.tenant_id,
+                        "workspace_id": tenant_ctx.workspace_id,
+                        "passage_id": saved_passage.id,
+                    }
+                )
+                saved_v = await vocabulary_repo.create(v_with_ids)
+                saved_vocabulary.append(saved_v)
+
             saved.append(
                 PassageWithRelations(
                     passage=saved_passage,
                     questions=saved_questions,
-                    translation=result.translation,  # in-memory, DB 저장 안 함
-                    vocabulary=result.vocabulary,  # in-memory, DB 저장 안 함
+                    translation=saved_translation,
+                    vocabulary=saved_vocabulary,
                 )
             )
 
@@ -248,6 +281,8 @@ async def get_passage(
     """
     passage_repo = PassageRepository(session, tenant_ctx)
     question_repo = QuestionRepository(session, tenant_ctx)
+    translation_repo = TranslationRepository(session, tenant_ctx)
+    vocabulary_repo = VocabularyRepository(session, tenant_ctx)
 
     passage = await passage_repo.get(passage_id)
     if passage is None:
@@ -257,7 +292,16 @@ async def get_passage(
         )
 
     questions = await question_repo.list_by_passage(passage_id)
-    return PassageWithRelations(passage=passage, questions=questions)
+    # B1 — translation / vocabulary 도 함께 조회. tenant_ctx 기반 repo 라
+    # cross-tenant 누수 방지.
+    translation = await translation_repo.get_by_passage(passage_id)
+    vocabulary = await vocabulary_repo.list_by_passage(passage_id)
+    return PassageWithRelations(
+        passage=passage,
+        questions=questions,
+        translation=translation,
+        vocabulary=vocabulary,
+    )
 
 
 @router.get("/{passage_id}/hwpx", status_code=200)

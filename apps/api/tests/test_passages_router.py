@@ -37,6 +37,8 @@ from worksheet_api.repositories.tenant_context import TenantContext, get_tenant_
 
 from shared.schemas.extraction import ExtractionMetaRef, ExtractionResult
 from shared.schemas.passage import Passage, SourceMeta, SourceProvider, TargetGrade
+from shared.schemas.translation import Translation, TranslationCreatedBy
+from shared.schemas.vocabulary import Vocabulary, VocabularySelectedBy
 
 # ─── 테스트용 고정 UUID ──────────────────────────────────────────────────────
 
@@ -83,19 +85,87 @@ def _make_sentinel_passage(body_text: str = "The economy is growing steadily.") 
     )
 
 
-def _make_extraction_result(passage: Passage) -> ExtractionResult:
+def _make_extraction_result(
+    passage: Passage,
+    *,
+    translation: Translation | None = None,
+    vocabulary: list[Vocabulary] | None = None,
+) -> ExtractionResult:
     """ExtractionResult 헬퍼."""
     return ExtractionResult(
         passage=passage,
         questions=[],
-        translation=None,
-        vocabulary=[],
+        translation=translation,
+        vocabulary=vocabulary or [],
         extraction_meta=ExtractionMetaRef(
             request_id=uuid.uuid4(),
             model="claude-sonnet-4-20250514",
             prompt_template_id="extract-text-v0",
             extracted_at=datetime(2026, 5, 1, 0, 0, 0, tzinfo=UTC),
         ),
+    )
+
+
+def _make_sentinel_translation(
+    text: str = "경제는 꾸준히 성장하고 있다.",
+) -> Translation:
+    """sentinel UUID 로 채워진 Translation (extractor 출력 시뮬레이션)."""
+    return Translation(
+        tenant_id=SENTINEL_UUID,
+        workspace_id=SENTINEL_UUID,
+        passage_id=SENTINEL_UUID,
+        text=text,
+        created_by=TranslationCreatedBy.LLM,
+    )
+
+
+def _make_saved_translation(
+    passage_id: uuid.UUID = PASSAGE_ID_1,
+    text: str = "경제는 꾸준히 성장하고 있다.",
+) -> Translation:
+    """repository.create() 반환값 시뮬레이션."""
+    return Translation(
+        id=uuid.uuid4(),
+        tenant_id=TENANT_A,
+        workspace_id=WORKSPACE_A,
+        passage_id=passage_id,
+        text=text,
+        created_by=TranslationCreatedBy.LLM,
+        created_at=datetime(2026, 5, 1, 0, 0, 0, tzinfo=UTC),
+        updated_at=datetime(2026, 5, 1, 0, 0, 0, tzinfo=UTC),
+    )
+
+
+def _make_sentinel_vocabulary(word: str = "economy", meaning: str = "경제") -> Vocabulary:
+    """sentinel UUID 로 채워진 Vocabulary (extractor 출력 시뮬레이션)."""
+    return Vocabulary(
+        tenant_id=SENTINEL_UUID,
+        workspace_id=SENTINEL_UUID,
+        passage_id=SENTINEL_UUID,
+        word=word,
+        headword_normalized=word.lower(),
+        meaning_ko=meaning,
+        selected_by=VocabularySelectedBy.LLM,
+    )
+
+
+def _make_saved_vocabulary(
+    passage_id: uuid.UUID = PASSAGE_ID_1,
+    word: str = "economy",
+    meaning: str = "경제",
+) -> Vocabulary:
+    """repository.create() 반환값 시뮬레이션."""
+    return Vocabulary(
+        id=uuid.uuid4(),
+        tenant_id=TENANT_A,
+        workspace_id=WORKSPACE_A,
+        passage_id=passage_id,
+        word=word,
+        headword_normalized=word.lower(),
+        meaning_ko=meaning,
+        selected_by=VocabularySelectedBy.LLM,
+        created_at=datetime(2026, 5, 1, 0, 0, 0, tzinfo=UTC),
+        updated_at=datetime(2026, 5, 1, 0, 0, 0, tzinfo=UTC),
     )
 
 
@@ -418,11 +488,15 @@ async def test_get_passage_ok(async_client: AsyncClient) -> None:
     with (
         patch("worksheet_api.routers.passages.PassageRepository") as mock_prepo,
         patch("worksheet_api.routers.passages.QuestionRepository") as mock_qrepo,
+        patch("worksheet_api.routers.passages.TranslationRepository") as mock_trepo,
+        patch("worksheet_api.routers.passages.VocabularyRepository") as mock_vrepo,
     ):
         prepo_instance = mock_prepo.return_value
         prepo_instance.get = AsyncMock(return_value=saved)
         qrepo_instance = mock_qrepo.return_value
         qrepo_instance.list_by_passage = AsyncMock(return_value=[])
+        mock_trepo.return_value.get_by_passage = AsyncMock(return_value=None)
+        mock_vrepo.return_value.list_by_passage = AsyncMock(return_value=[])
 
         resp = await async_client.get(f"/passages/{PASSAGE_ID_1}")
 
@@ -438,6 +512,8 @@ async def test_get_passage_not_found_404(async_client: AsyncClient) -> None:
     with (
         patch("worksheet_api.routers.passages.PassageRepository") as mock_prepo,
         patch("worksheet_api.routers.passages.QuestionRepository"),
+        patch("worksheet_api.routers.passages.TranslationRepository"),
+        patch("worksheet_api.routers.passages.VocabularyRepository"),
     ):
         mock_prepo.return_value.get = AsyncMock(return_value=None)
 
@@ -460,6 +536,8 @@ async def test_get_passage_other_tenant_404(async_client: AsyncClient) -> None:
     with (
         patch("worksheet_api.routers.passages.PassageRepository") as mock_prepo,
         patch("worksheet_api.routers.passages.QuestionRepository"),
+        patch("worksheet_api.routers.passages.TranslationRepository"),
+        patch("worksheet_api.routers.passages.VocabularyRepository"),
     ):
         # repository 가 tenant 필터 후 None 반환 (다른 tenant 소유)
         mock_prepo.return_value.get = AsyncMock(return_value=None)
@@ -528,3 +606,202 @@ async def test_download_passage_hwpx_other_tenant_404(async_client: AsyncClient)
         resp = await async_client.get(f"/passages/{PASSAGE_ID_2}/hwpx")
 
     assert resp.status_code == 404
+
+
+# ─── B1 — Translation / Vocabulary 영속화 (옵션 B) 테스트 ────────────────────
+
+
+@pytest.mark.asyncio
+async def test_extract_persists_translation_when_present(async_client: AsyncClient) -> None:
+    """extract 결과에 translation 이 있으면 TranslationRepository.create() 호출."""
+    saved_passage = _make_saved_passage()
+    saved_translation = _make_saved_translation(passage_id=saved_passage.id)
+    sentinel_translation = _make_sentinel_translation()
+
+    with (
+        patch("worksheet_api.routers.passages.extract_from_text") as mock_ext,
+        patch("worksheet_api.routers.passages.PassageRepository") as mock_prepo,
+        patch("worksheet_api.routers.passages.QuestionRepository"),
+        patch("worksheet_api.routers.passages.TranslationRepository") as mock_trepo,
+        patch("worksheet_api.routers.passages.VocabularyRepository") as mock_vrepo,
+    ):
+        mock_ext.return_value = [
+            _make_extraction_result(_make_sentinel_passage(), translation=sentinel_translation)
+        ]
+        mock_prepo.return_value.create = AsyncMock(return_value=saved_passage)
+        mock_trepo.return_value.create = AsyncMock(return_value=saved_translation)
+        mock_vrepo.return_value.create = AsyncMock()
+
+        resp = await async_client.post(
+            "/passages/extract",
+            json={"kind": "text", "payload": "The economy is growing steadily."},
+        )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    # translation 응답 본문에 saved tenant/workspace + passage_id 채워짐
+    assert body["results"][0]["translation"] is not None
+    assert body["results"][0]["translation"]["tenant_id"] == str(TENANT_A)
+    assert body["results"][0]["translation"]["passage_id"] == str(saved_passage.id)
+    # repository.create() 가 정확히 한 번 호출됨 + sentinel 누수 없이 실제 tenant_id 주입
+    mock_trepo.return_value.create.assert_awaited_once()
+    create_arg = mock_trepo.return_value.create.await_args.args[0]
+    assert create_arg.tenant_id == TENANT_A
+    assert create_arg.workspace_id == WORKSPACE_A
+    assert create_arg.passage_id == saved_passage.id
+
+
+@pytest.mark.asyncio
+async def test_extract_skips_translation_when_none(async_client: AsyncClient) -> None:
+    """extract 결과에 translation 이 없으면 TranslationRepository.create() 미호출 (PM-6)."""
+    saved_passage = _make_saved_passage()
+
+    with (
+        patch("worksheet_api.routers.passages.extract_from_text") as mock_ext,
+        patch("worksheet_api.routers.passages.PassageRepository") as mock_prepo,
+        patch("worksheet_api.routers.passages.QuestionRepository"),
+        patch("worksheet_api.routers.passages.TranslationRepository") as mock_trepo,
+        patch("worksheet_api.routers.passages.VocabularyRepository") as mock_vrepo,
+    ):
+        mock_ext.return_value = [_make_extraction_result(_make_sentinel_passage())]
+        mock_prepo.return_value.create = AsyncMock(return_value=saved_passage)
+        mock_trepo.return_value.create = AsyncMock()
+        mock_vrepo.return_value.create = AsyncMock()
+
+        resp = await async_client.post(
+            "/passages/extract",
+            json={"kind": "text", "payload": "The economy is growing steadily."},
+        )
+
+    assert resp.status_code == 200
+    assert resp.json()["results"][0]["translation"] is None
+    mock_trepo.return_value.create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_extract_persists_vocabulary_list(async_client: AsyncClient) -> None:
+    """extract 결과의 vocabulary list 가 모두 VocabularyRepository.create() 로 저장."""
+    saved_passage = _make_saved_passage()
+    sentinel_vocab_1 = _make_sentinel_vocabulary("economy", "경제")
+    sentinel_vocab_2 = _make_sentinel_vocabulary("growing", "성장하는")
+    saved_vocab_1 = _make_saved_vocabulary(saved_passage.id, "economy", "경제")
+    saved_vocab_2 = _make_saved_vocabulary(saved_passage.id, "growing", "성장하는")
+
+    with (
+        patch("worksheet_api.routers.passages.extract_from_text") as mock_ext,
+        patch("worksheet_api.routers.passages.PassageRepository") as mock_prepo,
+        patch("worksheet_api.routers.passages.QuestionRepository"),
+        patch("worksheet_api.routers.passages.TranslationRepository"),
+        patch("worksheet_api.routers.passages.VocabularyRepository") as mock_vrepo,
+    ):
+        mock_ext.return_value = [
+            _make_extraction_result(
+                _make_sentinel_passage(),
+                vocabulary=[sentinel_vocab_1, sentinel_vocab_2],
+            )
+        ]
+        mock_prepo.return_value.create = AsyncMock(return_value=saved_passage)
+        mock_vrepo.return_value.create = AsyncMock(side_effect=[saved_vocab_1, saved_vocab_2])
+
+        resp = await async_client.post(
+            "/passages/extract",
+            json={"kind": "text", "payload": "The economy is growing steadily."},
+        )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body["results"][0]["vocabulary"]) == 2
+    assert mock_vrepo.return_value.create.await_count == 2
+    # 두 호출 모두 실제 tenant_id / passage_id 주입 확인
+    for call in mock_vrepo.return_value.create.await_args_list:
+        v = call.args[0]
+        assert v.tenant_id == TENANT_A
+        assert v.workspace_id == WORKSPACE_A
+        assert v.passage_id == saved_passage.id
+
+
+@pytest.mark.asyncio
+async def test_extract_skips_vocabulary_when_empty(async_client: AsyncClient) -> None:
+    """extract 결과의 vocabulary 가 빈 list 면 VocabularyRepository.create() 미호출 (PM-6)."""
+    saved_passage = _make_saved_passage()
+
+    with (
+        patch("worksheet_api.routers.passages.extract_from_text") as mock_ext,
+        patch("worksheet_api.routers.passages.PassageRepository") as mock_prepo,
+        patch("worksheet_api.routers.passages.QuestionRepository"),
+        patch("worksheet_api.routers.passages.TranslationRepository"),
+        patch("worksheet_api.routers.passages.VocabularyRepository") as mock_vrepo,
+    ):
+        mock_ext.return_value = [_make_extraction_result(_make_sentinel_passage())]
+        mock_prepo.return_value.create = AsyncMock(return_value=saved_passage)
+        mock_vrepo.return_value.create = AsyncMock()
+
+        resp = await async_client.post(
+            "/passages/extract",
+            json={"kind": "text", "payload": "The economy is growing steadily."},
+        )
+
+    assert resp.status_code == 200
+    assert resp.json()["results"][0]["vocabulary"] == []
+    mock_vrepo.return_value.create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_get_passage_returns_translation_and_vocabulary(
+    async_client: AsyncClient,
+) -> None:
+    """GET /{id} 가 DB 의 translation / vocabulary 를 함께 조회해 응답."""
+    saved_passage = _make_saved_passage()
+    saved_translation = _make_saved_translation(passage_id=saved_passage.id)
+    saved_vocab_1 = _make_saved_vocabulary(saved_passage.id, "economy", "경제")
+    saved_vocab_2 = _make_saved_vocabulary(saved_passage.id, "growing", "성장하는")
+
+    with (
+        patch("worksheet_api.routers.passages.PassageRepository") as mock_prepo,
+        patch("worksheet_api.routers.passages.QuestionRepository") as mock_qrepo,
+        patch("worksheet_api.routers.passages.TranslationRepository") as mock_trepo,
+        patch("worksheet_api.routers.passages.VocabularyRepository") as mock_vrepo,
+    ):
+        mock_prepo.return_value.get = AsyncMock(return_value=saved_passage)
+        mock_qrepo.return_value.list_by_passage = AsyncMock(return_value=[])
+        mock_trepo.return_value.get_by_passage = AsyncMock(return_value=saved_translation)
+        mock_vrepo.return_value.list_by_passage = AsyncMock(
+            return_value=[saved_vocab_1, saved_vocab_2]
+        )
+
+        resp = await async_client.get(f"/passages/{PASSAGE_ID_1}")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["translation"]["text"] == saved_translation.text
+    assert body["translation"]["passage_id"] == str(saved_passage.id)
+    assert len(body["vocabulary"]) == 2
+    # tenant_ctx 기반 repo 호출 확인 — cross-tenant 방어
+    mock_trepo.return_value.get_by_passage.assert_awaited_once_with(PASSAGE_ID_1)
+    mock_vrepo.return_value.list_by_passage.assert_awaited_once_with(PASSAGE_ID_1)
+
+
+@pytest.mark.asyncio
+async def test_get_passage_empty_relations_when_no_translation(
+    async_client: AsyncClient,
+) -> None:
+    """translation 이 DB 에 없으면 None, vocabulary 가 없으면 빈 list 반환 (PM-6)."""
+    saved_passage = _make_saved_passage()
+
+    with (
+        patch("worksheet_api.routers.passages.PassageRepository") as mock_prepo,
+        patch("worksheet_api.routers.passages.QuestionRepository") as mock_qrepo,
+        patch("worksheet_api.routers.passages.TranslationRepository") as mock_trepo,
+        patch("worksheet_api.routers.passages.VocabularyRepository") as mock_vrepo,
+    ):
+        mock_prepo.return_value.get = AsyncMock(return_value=saved_passage)
+        mock_qrepo.return_value.list_by_passage = AsyncMock(return_value=[])
+        mock_trepo.return_value.get_by_passage = AsyncMock(return_value=None)
+        mock_vrepo.return_value.list_by_passage = AsyncMock(return_value=[])
+
+        resp = await async_client.get(f"/passages/{PASSAGE_ID_1}")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["translation"] is None
+    assert body["vocabulary"] == []
