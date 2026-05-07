@@ -68,7 +68,7 @@ from shared.schemas.extraction import ExtractionResult
 from shared.schemas.passage import Passage
 from shared.schemas.question import Question
 from shared.schemas.translation import Translation, TranslationCreatedBy
-from shared.schemas.vocabulary import Vocabulary
+from shared.schemas.vocabulary import Vocabulary, VocabularySelectedBy
 from worksheet_api.db import get_db
 from worksheet_api.llm_setup import get_llm_client
 from worksheet_api.repositories import (
@@ -716,6 +716,85 @@ async def augment_passage_vocabulary(
         # 응답: 보강 후 전체 list
         final_list = await vocabulary_repo.list_by_passage(passage_id)
         return VocabularyAugmentResponse(vocabulary=final_list)
+
+
+# ─── E1-c — POST /passages/{id}/vocabulary/manual (사용자 직접 추가) ─────────
+
+
+class VocabularyManualCreateRequest(BaseModel):
+    """POST /passages/{passage_id}/vocabulary/manual request body.
+
+    ADR-0015 Stage E1-c — 사용자가 어휘 행을 LLM 보강 외 직접 추가.
+    ``selected_by=USER``, ``user_edited=False`` 로 영속화 (ADR-0013 의 USER
+    항목 — LLM 보강 시 ``skip_if_user_edited`` mode 가 보존, ``replace`` mode
+    도 USER 항목은 DELETE 안 함).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    word: str = Field(..., min_length=1, max_length=255)
+    meaning_ko: str = Field(..., min_length=1, max_length=500)
+    pos: str | None = Field(default=None, max_length=64)
+    level_label: str | None = Field(default=None, max_length=64)
+    headword_normalized: str | None = Field(
+        default=None,
+        max_length=255,
+        description="None 이면 word.lower() 자동 계산. 글로벌 dedup 정합 위해 명시 권장.",
+    )
+
+
+@router.post(
+    "/{passage_id}/vocabulary/manual",
+    response_model=Vocabulary,
+    status_code=201,
+)
+async def create_passage_vocabulary_manual(
+    passage_id: UUID,
+    body: VocabularyManualCreateRequest,
+    tenant_ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> Vocabulary:
+    """Vocabulary 사용자 직접 추가 (ADR-0015 Stage E1-c).
+
+    selected_by=USER 로 영속화 — ADR-0013 의 LLM 보강 모드와 정합:
+      - skip_if_user_edited (default): selected_by=USER 항목은 LLM 결과의
+        headword 충돌 시 skip 되어 사용자 입력 보존.
+      - replace: USER 항목 / user_edited=True 항목은 DELETE 대상에서 제외.
+
+    ``headword_normalized`` 가 None 이면 ``word.lower()`` 로 자동 계산
+    (Phase 2 v0.1 단순 정책 — VocabularyMaster 글로벌 dedup 별 ADR 시 lemmatizer
+    재계산).
+
+    Raises:
+        HTTPException 404: passage 없음 / cross-tenant.
+    """
+    from uuid import uuid4
+
+    async with session.begin():
+        passage_repo = PassageRepository(session, tenant_ctx)
+        vocabulary_repo = VocabularyRepository(session, tenant_ctx)
+
+        passage = await passage_repo.get(passage_id)
+        if passage is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Passage {passage_id} 를 찾을 수 없습니다.",
+            )
+
+        new_vocab = Vocabulary(
+            id=uuid4(),
+            tenant_id=tenant_ctx.tenant_id,
+            workspace_id=tenant_ctx.workspace_id,
+            passage_id=passage_id,
+            word=body.word,
+            headword_normalized=body.headword_normalized or body.word.lower(),
+            meaning_ko=body.meaning_ko,
+            pos=body.pos,
+            level_label=body.level_label,
+            selected_by=VocabularySelectedBy.USER,
+            user_edited=False,
+        )
+        return await vocabulary_repo.create(new_vocab)
 
 
 # ─── E1-b — PATCH /passages/{id}/vocabulary/{vid} ───────────────────────────
