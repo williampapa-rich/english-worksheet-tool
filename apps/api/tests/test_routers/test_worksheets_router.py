@@ -789,11 +789,12 @@ WORKSHEET_ID_3 = uuid.UUID("44444444-4444-4444-4444-444444444444")
 
 @pytest.mark.asyncio
 async def test_list_worksheets_ok(async_client: AsyncClient) -> None:
-    """정상 — items + total + limit + offset 응답.
+    """정상 — worksheets + total + limit + offset 응답.
 
     list_with_pagination 이 worksheets 리스트와 total 을 반환하면
     라우터는 200 + WorksheetListResponse 를 반환해야 한다.
     각 worksheet 의 items 는 빈 리스트 (목록 응답 정책).
+    응답 필드명은 ``worksheets`` (R-3) — Worksheet.items 와 중첩 혼동 회피.
     """
     ws1 = _make_worksheet(worksheet_id=WORKSHEET_ID_1).model_copy(update={"items": []})
     ws2 = _make_worksheet(worksheet_id=WORKSHEET_ID_2).model_copy(update={"items": []})
@@ -806,7 +807,7 @@ async def test_list_worksheets_ok(async_client: AsyncClient) -> None:
 
     assert resp.status_code == 200
     body = resp.json()
-    assert len(body["items"]) == 2
+    assert len(body["worksheets"]) == 2
     assert body["total"] == 2
     assert body["limit"] == 20
     assert body["offset"] == 0
@@ -858,7 +859,7 @@ async def test_list_worksheets_empty_result(async_client: AsyncClient) -> None:
 
     assert resp.status_code == 200
     body = resp.json()
-    assert body["items"] == []
+    assert body["worksheets"] == []
     assert body["total"] == 0
     assert body["limit"] == 20
     assert body["offset"] == 0

@@ -15,7 +15,8 @@
     → 422 passage_id 가 DB 에 없음 (IntegrityError)
 
   GET /worksheets
-    → 200 application/json (WorksheetListResponse — items 빈 리스트, total + limit + offset)
+    → 200 application/json (WorksheetListResponse — worksheets[] + total + limit + offset).
+      각 Worksheet 의 items 는 빈 리스트 (단건 조회로 별도 가져옴, N+1 회피).
     쿼리 파라미터: limit (1~100, default 20), offset (ge=0, default 0), kind (WorksheetKind | None)
 
   GET /worksheets/{id}
@@ -89,11 +90,17 @@ _MVP_ALLOWED_STYLES: frozenset[str] = frozenset({"playful"})
 class WorksheetListResponse(BaseModel):
     """GET /worksheets 응답 — pagination 메타 포함.
 
-    items 안의 각 Worksheet 는 WorksheetItem 리스트를 포함하지 않는다
-    (목록은 메타만 — N+1 회피). 단건 조회 (GET /worksheets/{id}) 로 items 를 가져온다.
+    각 Worksheet 는 WorksheetItem 리스트를 포함하지 않는다 (목록은 메타만 — N+1 회피).
+    단건 조회 (GET /worksheets/{id}) 로 items 를 가져온다.
+
+    필드명 ``worksheets`` (R-3): ``Worksheet.items`` 와의 중첩 혼동을 피한다
+    (예: ``response.worksheets[0].items`` vs 잘못된 ``response.items[0].items``).
+    AnnotationListResponse.annotations 선례와 동일한 도메인명 복수형 패턴.
     """
 
-    items: list[Worksheet] = Field(description="Worksheet 목록 (items 는 빈 리스트).")
+    worksheets: list[Worksheet] = Field(
+        description="Worksheet 목록 (각 Worksheet 의 items 는 빈 리스트).",
+    )
     total: int = Field(description="전체 개수 (현재 tenant + 필터 기준).")
     limit: int = Field(description="요청 limit (echo).")
     offset: int = Field(description="요청 offset (echo).")
@@ -251,7 +258,7 @@ async def list_worksheets(
         kind: WorksheetKind 필터 (optional).
 
     Returns:
-        WorksheetListResponse: items + total + limit + offset.
+        WorksheetListResponse: worksheets + total + limit + offset.
     """
     worksheet_repo = WorksheetRepository(session, tenant_ctx)
     worksheets, total = await worksheet_repo.list_with_pagination(
@@ -260,7 +267,7 @@ async def list_worksheets(
         kind=kind.value if kind is not None else None,
     )
     return WorksheetListResponse(
-        items=worksheets,
+        worksheets=worksheets,
         total=total,
         limit=limit,
         offset=offset,

@@ -428,13 +428,15 @@ class TestWorksheetRepositoryIntegration:
         ws_a3 = uuid.UUID("aabbcc01-0000-0000-0000-000000000003")
         ws_b1 = uuid.UUID("aabbcc02-0000-0000-0000-000000000001")
 
+        # W-1: 문자열 리터럴 대신 WorksheetKind enum 의 .value 사용 — enum 값 변경 시
+        # 컴파일 시점에 추적 가능 (raw SQL bind 라 문자열은 필요).
         async with AsyncSession(pg_session.bind) as ins:
             async with ins.begin():
                 for ws_id, t_id, w_id, kind in [
-                    (ws_a1, TENANT_A, WORKSPACE_A, "student"),
-                    (ws_a2, TENANT_A, WORKSPACE_A, "student"),
-                    (ws_a3, TENANT_A, WORKSPACE_A, "syntax_analysis"),
-                    (ws_b1, TENANT_B, WORKSPACE_B, "student"),
+                    (ws_a1, TENANT_A, WORKSPACE_A, WorksheetKind.STUDENT.value),
+                    (ws_a2, TENANT_A, WORKSPACE_A, WorksheetKind.STUDENT.value),
+                    (ws_a3, TENANT_A, WORKSPACE_A, WorksheetKind.SYNTAX_ANALYSIS.value),
+                    (ws_b1, TENANT_B, WORKSPACE_B, WorksheetKind.STUDENT.value),
                 ]:
                     await ins.execute(
                         sa_text(
@@ -458,12 +460,14 @@ class TestWorksheetRepositoryIntegration:
         repo_a = WorksheetRepository(pg_session, _ctx_a())
 
         # tenant A, kind=student, limit=1 → 1건, total=2
-        wss, total = await repo_a.list_with_pagination(limit=1, offset=0, kind="student")
+        wss, total = await repo_a.list_with_pagination(
+            limit=1, offset=0, kind=WorksheetKind.STUDENT.value
+        )
         assert total == 2
         assert len(wss) == 1
 
         # tenant A, kind=syntax_analysis → 1건
-        wss, total = await repo_a.list_with_pagination(kind="syntax_analysis")
+        wss, total = await repo_a.list_with_pagination(kind=WorksheetKind.SYNTAX_ANALYSIS.value)
         assert total == 1
         assert len(wss) == 1
 

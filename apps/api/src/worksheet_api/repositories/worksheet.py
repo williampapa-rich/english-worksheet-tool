@@ -250,6 +250,11 @@ class WorksheetRepository(BaseRepository[WorksheetORM, Worksheet]):
         WorksheetItemORM 단독 SELECT 를 허용하지 않는 이 패턴이
         cross-tenant item 노출을 구조적으로 차단한다.
 
+        성능 비용 (R-2): caller 가 이미 ``self.get(worksheet_id)`` 로 존재를 확인한
+        경우에도 본 메서드 내부에서 부모 worksheet 를 재조회한다 (round-trip 2회).
+        W-2 가드 일관성을 위한 의도적 비용 — Phase 2 / 3 에서 필요 시 caller 가
+        검증 통과한 parent 를 넘기는 오버로드를 별 ADR 로 도입 검토.
+
         Args:
             worksheet_id: item 을 조회할 Worksheet UUID.
 
