@@ -882,3 +882,58 @@ async def update_passage_vocabulary(
                 detail="Vocabulary update 중 row 가 사라졌습니다 (race).",
             )
         return updated
+
+
+# ─── E1-d — DELETE /passages/{id}/vocabulary/{vid} ──────────────────────────
+
+
+@router.delete(
+    "/{passage_id}/vocabulary/{vocabulary_id}",
+    status_code=204,
+)
+async def delete_passage_vocabulary(
+    passage_id: UUID,
+    vocabulary_id: UUID,
+    tenant_ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> Response:
+    """Vocabulary 행 사용자 삭제 (ADR-0015 Stage E1-d, D3 (b) 채택).
+
+    ``selected_by`` / ``user_edited`` 무관 — 모든 항목 삭제 허용 (PM 결정
+    2026-05-07: 사용자 의도 명시적, ADR-0013 replace mode 가 LLM 산출 재생성).
+
+    Cross-passage 가드: vocabulary.passage_id != URL passage_id 면 404.
+
+    Raises:
+        HTTPException 404: passage 없음 / vocabulary 없음 / cross-passage /
+            cross-tenant.
+    """
+    async with session.begin():
+        passage_repo = PassageRepository(session, tenant_ctx)
+        vocabulary_repo = VocabularyRepository(session, tenant_ctx)
+
+        passage = await passage_repo.get(passage_id)
+        if passage is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Passage {passage_id} 를 찾을 수 없습니다.",
+            )
+
+        existing = await vocabulary_repo.get(vocabulary_id)
+        if existing is None or existing.passage_id != passage_id:
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    f"Vocabulary {vocabulary_id} 를 찾을 수 없습니다 "
+                    f"(passage {passage_id})."
+                ),
+            )
+
+        deleted = await vocabulary_repo.delete_by_id(vocabulary_id)
+        if not deleted:
+            # race
+            raise HTTPException(
+                status_code=500,
+                detail="Vocabulary delete 중 row 가 사라졌습니다 (race).",
+            )
+        return Response(status_code=204)
