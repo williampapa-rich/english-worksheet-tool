@@ -5,6 +5,18 @@ description = "Worksheet HTML 템플릿 렌더링 패키지 (Jinja2 + Playwright
 requires-python = ">=3.12"
 dependencies = [
   "pydantic>=2.0.0",
+  # Jinja2 — HTML 템플릿 렌더링 엔진.
+  # 대안 검토: chevron (Mustache) — logic-less 로 조건/루프 표현 제한.
+  #            Mako — 성능 우수하지만 Python-embedding 문법이 templates/ HTML 에 이미 적용된
+  #                   Jinja2 문법({%if%}, |safe, |default()) 과 호환 불가.
+  #            str.format() — 반복/조건 없어 다중 questions 목록 불가.
+  # 선택 이유: templates/*.html 이 이미 Jinja2 문법을 사용하고 있어 다른 엔진 전환 시
+  #            템플릿 전면 재작성 필요. FastAPI 의존 스택과도 친숙.
+  # 사용 범위: template_renderer.render.render_worksheet_html() 전용.
+  "jinja2>=3.1.0",
+  # MarkupSafe — XSS 방어 위한 escape() 직접 사용 (adapters.py:worksheet_to_template_context).
+  # Jinja2 의 transitive dep 이지만 직접 import 하므로 명시 (§3.6 / §8.4 의존성 명시 원칙).
+  "markupsafe>=2.1",
   # workspace 멤버 패키지
   "shared",
 ]
