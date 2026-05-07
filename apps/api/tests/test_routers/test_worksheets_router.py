@@ -90,6 +90,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -101,7 +102,14 @@ from worksheet_api.db import get_db
 from worksheet_api.main import app
 from worksheet_api.repositories.tenant_context import TenantContext, get_tenant_context
 
+from shared.schemas.annotation import (
+    AnnotationKind,
+    CharacterOffsetV1Span,
+    SyntaxAnnotation,
+)
 from shared.schemas.passage import Passage, SourceMeta, SourceProvider, TargetGrade
+from shared.schemas.translation import Translation, TranslationCreatedBy
+from shared.schemas.vocabulary import Vocabulary, VocabularySelectedBy
 from shared.schemas.worksheet import (
     Branding,
     Worksheet,
@@ -172,12 +180,18 @@ def _make_item_orm(
     worksheet_id: uuid.UUID = WORKSHEET_ID_1,
     passage_id: uuid.UUID = PASSAGE_ID_1,
 ) -> MagicMock:
-    """WorksheetItemORM mock."""
+    """WorksheetItemORM mock — WorksheetItem 변환에 필요한 모든 attr 포함."""
     item = MagicMock()
+    item.id = uuid.uuid4()
     item.worksheet_id = worksheet_id
     item.passage_id = passage_id
     item.order = 0
     item.label = "독해 연습"
+    item.include_translation = False
+    item.include_vocabulary = False
+    item.include_syntax_annotations = False
+    item.include_questions = False
+    item.include_variants = False
     return item
 
 
@@ -246,7 +260,13 @@ async def test_preview_worksheet_ok(async_client: AsyncClient) -> None:
     with (
         patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls,
         patch("worksheet_api.routers.worksheets.PassageRepository") as mock_passage_repo_cls,
+        patch("worksheet_api.routers.worksheets.SyntaxAnnotationRepository") as mock_ann_repo_cls,
+        patch("worksheet_api.routers.worksheets.TranslationRepository") as mock_trans_repo_cls,
+        patch("worksheet_api.routers.worksheets.VocabularyRepository") as mock_vocab_repo_cls,
     ):
+        mock_ann_repo_cls.return_value.list_by_passage = AsyncMock(return_value=[])
+        mock_trans_repo_cls.return_value.get_by_passage = AsyncMock(return_value=None)
+        mock_vocab_repo_cls.return_value.list_by_passage = AsyncMock(return_value=[])
         mock_ws_repo = mock_ws_repo_cls.return_value
         mock_ws_repo.get = AsyncMock(return_value=worksheet)
         mock_ws_repo.list_items_for_worksheet = AsyncMock(return_value=[item_orm])
@@ -391,7 +411,13 @@ async def test_preview_worksheet_xss_escape(async_client: AsyncClient) -> None:
     with (
         patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls,
         patch("worksheet_api.routers.worksheets.PassageRepository") as mock_passage_repo_cls,
+        patch("worksheet_api.routers.worksheets.SyntaxAnnotationRepository") as mock_ann_repo_cls,
+        patch("worksheet_api.routers.worksheets.TranslationRepository") as mock_trans_repo_cls,
+        patch("worksheet_api.routers.worksheets.VocabularyRepository") as mock_vocab_repo_cls,
     ):
+        mock_ann_repo_cls.return_value.list_by_passage = AsyncMock(return_value=[])
+        mock_trans_repo_cls.return_value.get_by_passage = AsyncMock(return_value=None)
+        mock_vocab_repo_cls.return_value.list_by_passage = AsyncMock(return_value=[])
         mock_ws_repo = mock_ws_repo_cls.return_value
         mock_ws_repo.get = AsyncMock(return_value=worksheet)
         mock_ws_repo.list_items_for_worksheet = AsyncMock(return_value=[item_orm])
@@ -431,11 +457,17 @@ async def test_export_pdf_ok(async_client: AsyncClient) -> None:
     with (
         patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls,
         patch("worksheet_api.routers.worksheets.PassageRepository") as mock_passage_repo_cls,
+        patch("worksheet_api.routers.worksheets.SyntaxAnnotationRepository") as mock_ann_repo_cls,
+        patch("worksheet_api.routers.worksheets.TranslationRepository") as mock_trans_repo_cls,
+        patch("worksheet_api.routers.worksheets.VocabularyRepository") as mock_vocab_repo_cls,
         patch(
             "worksheet_api.routers.worksheets.render_worksheet_pdf",
             new=AsyncMock(return_value=_MOCK_PDF_BYTES),
         ),
     ):
+        mock_ann_repo_cls.return_value.list_by_passage = AsyncMock(return_value=[])
+        mock_trans_repo_cls.return_value.get_by_passage = AsyncMock(return_value=None)
+        mock_vocab_repo_cls.return_value.list_by_passage = AsyncMock(return_value=[])
         mock_ws_repo = mock_ws_repo_cls.return_value
         mock_ws_repo.get = AsyncMock(return_value=worksheet)
         mock_ws_repo.list_items_for_worksheet = AsyncMock(return_value=[item_orm])
@@ -463,11 +495,17 @@ async def test_export_pdf_content_disposition(async_client: AsyncClient) -> None
     with (
         patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls,
         patch("worksheet_api.routers.worksheets.PassageRepository") as mock_passage_repo_cls,
+        patch("worksheet_api.routers.worksheets.SyntaxAnnotationRepository") as mock_ann_repo_cls,
+        patch("worksheet_api.routers.worksheets.TranslationRepository") as mock_trans_repo_cls,
+        patch("worksheet_api.routers.worksheets.VocabularyRepository") as mock_vocab_repo_cls,
         patch(
             "worksheet_api.routers.worksheets.render_worksheet_pdf",
             new=AsyncMock(return_value=_MOCK_PDF_BYTES),
         ),
     ):
+        mock_ann_repo_cls.return_value.list_by_passage = AsyncMock(return_value=[])
+        mock_trans_repo_cls.return_value.get_by_passage = AsyncMock(return_value=None)
+        mock_vocab_repo_cls.return_value.list_by_passage = AsyncMock(return_value=[])
         mock_ws_repo = mock_ws_repo_cls.return_value
         mock_ws_repo.get = AsyncMock(return_value=worksheet)
         mock_ws_repo.list_items_for_worksheet = AsyncMock(return_value=[item_orm])
@@ -500,8 +538,14 @@ async def test_export_pdf_portrait_calls_landscape_false(async_client: AsyncClie
     with (
         patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls,
         patch("worksheet_api.routers.worksheets.PassageRepository") as mock_passage_repo_cls,
+        patch("worksheet_api.routers.worksheets.SyntaxAnnotationRepository") as mock_ann_repo_cls,
+        patch("worksheet_api.routers.worksheets.TranslationRepository") as mock_trans_repo_cls,
+        patch("worksheet_api.routers.worksheets.VocabularyRepository") as mock_vocab_repo_cls,
         patch("worksheet_api.routers.worksheets.render_worksheet_pdf", new=mock_render),
     ):
+        mock_ann_repo_cls.return_value.list_by_passage = AsyncMock(return_value=[])
+        mock_trans_repo_cls.return_value.get_by_passage = AsyncMock(return_value=None)
+        mock_vocab_repo_cls.return_value.list_by_passage = AsyncMock(return_value=[])
         mock_ws_repo = mock_ws_repo_cls.return_value
         mock_ws_repo.get = AsyncMock(return_value=worksheet)
         mock_ws_repo.list_items_for_worksheet = AsyncMock(return_value=[item_orm])
@@ -534,8 +578,14 @@ async def test_export_pdf_landscape_calls_landscape_true(async_client: AsyncClie
     with (
         patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls,
         patch("worksheet_api.routers.worksheets.PassageRepository") as mock_passage_repo_cls,
+        patch("worksheet_api.routers.worksheets.SyntaxAnnotationRepository") as mock_ann_repo_cls,
+        patch("worksheet_api.routers.worksheets.TranslationRepository") as mock_trans_repo_cls,
+        patch("worksheet_api.routers.worksheets.VocabularyRepository") as mock_vocab_repo_cls,
         patch("worksheet_api.routers.worksheets.render_worksheet_pdf", new=mock_render),
     ):
+        mock_ann_repo_cls.return_value.list_by_passage = AsyncMock(return_value=[])
+        mock_trans_repo_cls.return_value.get_by_passage = AsyncMock(return_value=None)
+        mock_vocab_repo_cls.return_value.list_by_passage = AsyncMock(return_value=[])
         mock_ws_repo = mock_ws_repo_cls.return_value
         mock_ws_repo.get = AsyncMock(return_value=landscape_worksheet)
         mock_ws_repo.list_items_for_worksheet = AsyncMock(return_value=[item_orm])
@@ -694,9 +744,7 @@ async def test_create_worksheet_duplicate_passage_id_422(async_client: AsyncClie
     with patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls:
         mock_ws_repo = mock_ws_repo_cls.return_value
         mock_ws_repo.create_with_items = AsyncMock(
-            side_effect=ValueError(
-                "같은 passage_id 를 여러 item 에 중복으로 넣을 수 없습니다."
-            )
+            side_effect=ValueError("같은 passage_id 를 여러 item 에 중복으로 넣을 수 없습니다.")
         )
 
         # 같은 passage_id 를 두 item 에 사용
@@ -1270,9 +1318,7 @@ async def test_add_worksheet_item_cross_tenant_passage_422(async_client: AsyncCl
     """
     with patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls:
         mock_ws_repo_cls.return_value.add_item = AsyncMock(
-            side_effect=ValueError(
-                "passage_id 가 현재 tenant 소유가 아니거나 존재하지 않습니다."
-            )
+            side_effect=ValueError("passage_id 가 현재 tenant 소유가 아니거나 존재하지 않습니다.")
         )
 
         resp = await async_client.post(
@@ -1471,7 +1517,9 @@ async def test_patch_worksheet_item_order_null_422(async_client: AsyncClient) ->
     """
     with patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls:
         mock_ws_repo_cls.return_value.update_item = AsyncMock(
-            side_effect=ValueError("'order' 필드는 null 로 설정할 수 없습니다 (NOT NULL item 필드).")
+            side_effect=ValueError(
+                "'order' 필드는 null 로 설정할 수 없습니다 (NOT NULL item 필드)."
+            )
         )
 
         resp = await async_client.patch(
@@ -1510,9 +1558,7 @@ async def test_delete_worksheet_item_204(async_client: AsyncClient) -> None:
     with patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls:
         mock_ws_repo_cls.return_value.delete_item = AsyncMock(return_value=True)
 
-        resp = await async_client.delete(
-            f"/worksheets/{WORKSHEET_ID_1}/items/{ITEM_ID_1}"
-        )
+        resp = await async_client.delete(f"/worksheets/{WORKSHEET_ID_1}/items/{ITEM_ID_1}")
 
     assert resp.status_code == 204
     assert resp.content == b""
@@ -1529,9 +1575,7 @@ async def test_delete_worksheet_item_worksheet_not_found_404(async_client: Async
     with patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls:
         mock_ws_repo_cls.return_value.delete_item = AsyncMock(return_value=False)
 
-        resp = await async_client.delete(
-            f"/worksheets/{unknown_ws_id}/items/{ITEM_ID_1}"
-        )
+        resp = await async_client.delete(f"/worksheets/{unknown_ws_id}/items/{ITEM_ID_1}")
 
     assert resp.status_code == 404
     assert "찾을 수 없" in resp.json()["detail"]
@@ -1548,8 +1592,210 @@ async def test_delete_worksheet_item_not_found_404(async_client: AsyncClient) ->
     with patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls:
         mock_ws_repo_cls.return_value.delete_item = AsyncMock(return_value=False)
 
-        resp = await async_client.delete(
-            f"/worksheets/{WORKSHEET_ID_1}/items/{unknown_item_id}"
-        )
+        resp = await async_client.delete(f"/worksheets/{WORKSHEET_ID_1}/items/{unknown_item_id}")
 
     assert resp.status_code == 404
+
+
+# ─── B4 — preview 컨텍스트 주입 (annotation / translation / vocabulary) ──────
+
+
+def _make_annotation(
+    passage_id: uuid.UUID,
+    kind: AnnotationKind = AnnotationKind.HIGHLIGHT,
+    start: int = 0,
+    end: int = 5,
+    color_index: int | None = 1,
+) -> SyntaxAnnotation:
+    return SyntaxAnnotation(
+        id=uuid.uuid4(),
+        tenant_id=TENANT_A,
+        workspace_id=WORKSPACE_A,
+        passage_id=passage_id,
+        kind=kind,
+        span=CharacterOffsetV1Span(start=start, end=end),
+        color_index=color_index,
+        created_at=datetime(2026, 5, 1, 0, 0, 0, tzinfo=UTC),
+        updated_at=datetime(2026, 5, 1, 0, 0, 0, tzinfo=UTC),
+    )
+
+
+def _make_b4_translation(passage_id: uuid.UUID) -> Translation:
+    return Translation(
+        id=uuid.uuid4(),
+        tenant_id=TENANT_A,
+        workspace_id=WORKSPACE_A,
+        passage_id=passage_id,
+        text="경제는 꾸준히 성장하고 있다.",
+        created_by=TranslationCreatedBy.LLM,
+        created_at=datetime(2026, 5, 1, 0, 0, 0, tzinfo=UTC),
+        updated_at=datetime(2026, 5, 1, 0, 0, 0, tzinfo=UTC),
+    )
+
+
+def _make_b4_vocabulary(passage_id: uuid.UUID) -> list[Vocabulary]:
+    return [
+        Vocabulary(
+            id=uuid.uuid4(),
+            tenant_id=TENANT_A,
+            workspace_id=WORKSPACE_A,
+            passage_id=passage_id,
+            word="economy",
+            headword_normalized="economy",
+            pos="noun",
+            meaning_ko="경제",
+            level_label="수능 필수",
+            selected_by=VocabularySelectedBy.LLM,
+            created_at=datetime(2026, 5, 1, 0, 0, 0, tzinfo=UTC),
+            updated_at=datetime(2026, 5, 1, 0, 0, 0, tzinfo=UTC),
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_preview_renders_annotations(async_client: AsyncClient) -> None:
+    """annotation 이 있으면 ADR-0014 정밀 렌더 — annot-highlight class 가 HTML 에 등장."""
+    worksheet = _make_worksheet()
+    passage = _make_passage()
+    item_orm = _make_item_orm()
+    annotation = _make_annotation(
+        passage.id, kind=AnnotationKind.HIGHLIGHT, start=4, end=11, color_index=1
+    )
+
+    with (
+        patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls,
+        patch("worksheet_api.routers.worksheets.PassageRepository") as mock_passage_repo_cls,
+        patch("worksheet_api.routers.worksheets.SyntaxAnnotationRepository") as mock_ann_repo_cls,
+        patch("worksheet_api.routers.worksheets.TranslationRepository") as mock_trans_repo_cls,
+        patch("worksheet_api.routers.worksheets.VocabularyRepository") as mock_vocab_repo_cls,
+    ):
+        mock_ws_repo_cls.return_value.get = AsyncMock(return_value=worksheet)
+        mock_ws_repo_cls.return_value.list_items_for_worksheet = AsyncMock(return_value=[item_orm])
+        mock_passage_repo_cls.return_value.get = AsyncMock(return_value=passage)
+        mock_ann_repo_cls.return_value.list_by_passage = AsyncMock(return_value=[annotation])
+        mock_trans_repo_cls.return_value.get_by_passage = AsyncMock(return_value=None)
+        mock_vocab_repo_cls.return_value.list_by_passage = AsyncMock(return_value=[])
+
+        resp = await async_client.get(
+            f"/worksheets/{WORKSHEET_ID_1}/preview", params={"style": "playful"}
+        )
+
+    assert resp.status_code == 200
+    body = resp.text
+    # ADR-0014 D2 — highlight color_index 1 → CSS class
+    assert "annot-highlight--1" in body
+
+
+@pytest.mark.asyncio
+async def test_preview_includes_translation_when_flag_true(
+    async_client: AsyncClient,
+) -> None:
+    """include_translation=True 면 translation block 이 컨텍스트에 주입."""
+    worksheet = _make_worksheet()
+    passage = _make_passage()
+    item_orm = _make_item_orm()
+    item_orm.include_translation = True
+    item_orm.include_vocabulary = False
+    translation = _make_b4_translation(passage.id)
+
+    with (
+        patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls,
+        patch("worksheet_api.routers.worksheets.PassageRepository") as mock_passage_repo_cls,
+        patch("worksheet_api.routers.worksheets.SyntaxAnnotationRepository") as mock_ann_repo_cls,
+        patch("worksheet_api.routers.worksheets.TranslationRepository") as mock_trans_repo_cls,
+        patch("worksheet_api.routers.worksheets.VocabularyRepository") as mock_vocab_repo_cls,
+    ):
+        mock_ws_repo_cls.return_value.get = AsyncMock(return_value=worksheet)
+        mock_ws_repo_cls.return_value.list_items_for_worksheet = AsyncMock(return_value=[item_orm])
+        mock_passage_repo_cls.return_value.get = AsyncMock(return_value=passage)
+        mock_ann_repo_cls.return_value.list_by_passage = AsyncMock(return_value=[])
+        mock_trans_repo_cls.return_value.get_by_passage = AsyncMock(return_value=translation)
+        mock_vocab_repo_cls.return_value.list_by_passage = AsyncMock(return_value=[])
+
+        resp = await async_client.get(
+            f"/worksheets/{WORKSHEET_ID_1}/preview", params={"style": "playful"}
+        )
+
+    assert resp.status_code == 200
+    body = resp.text
+    # 한글 해석 헤딩 + text 가 본문에 포함
+    assert "한글 해석" in body
+    assert translation.text in body
+    # repository.get_by_passage 가 호출됨 (include_translation=True)
+    mock_trans_repo_cls.return_value.get_by_passage.assert_awaited_once_with(passage.id)
+
+
+@pytest.mark.asyncio
+async def test_preview_skips_translation_when_flag_false(
+    async_client: AsyncClient,
+) -> None:
+    """include_translation=False (default) → translation 조회 자체 X (비용 회피)."""
+    worksheet = _make_worksheet()
+    passage = _make_passage()
+    item_orm = _make_item_orm()
+    item_orm.include_translation = False
+    item_orm.include_vocabulary = False
+
+    with (
+        patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls,
+        patch("worksheet_api.routers.worksheets.PassageRepository") as mock_passage_repo_cls,
+        patch("worksheet_api.routers.worksheets.SyntaxAnnotationRepository") as mock_ann_repo_cls,
+        patch("worksheet_api.routers.worksheets.TranslationRepository") as mock_trans_repo_cls,
+        patch("worksheet_api.routers.worksheets.VocabularyRepository") as mock_vocab_repo_cls,
+    ):
+        mock_ws_repo_cls.return_value.get = AsyncMock(return_value=worksheet)
+        mock_ws_repo_cls.return_value.list_items_for_worksheet = AsyncMock(return_value=[item_orm])
+        mock_passage_repo_cls.return_value.get = AsyncMock(return_value=passage)
+        mock_ann_repo_cls.return_value.list_by_passage = AsyncMock(return_value=[])
+        mock_trans_repo_cls.return_value.get_by_passage = AsyncMock(return_value=None)
+        mock_vocab_repo_cls.return_value.list_by_passage = AsyncMock(return_value=[])
+
+        resp = await async_client.get(
+            f"/worksheets/{WORKSHEET_ID_1}/preview", params={"style": "playful"}
+        )
+
+    assert resp.status_code == 200
+    body = resp.text
+    assert "한글 해석" not in body
+    # 비용 회피 — translation 조회 안 함
+    mock_trans_repo_cls.return_value.get_by_passage.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_preview_includes_vocabulary_when_flag_true(
+    async_client: AsyncClient,
+) -> None:
+    """include_vocabulary=True → 어휘 박스 렌더."""
+    worksheet = _make_worksheet()
+    passage = _make_passage()
+    item_orm = _make_item_orm()
+    item_orm.include_translation = False
+    item_orm.include_vocabulary = True
+    vocabulary = _make_b4_vocabulary(passage.id)
+
+    with (
+        patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls,
+        patch("worksheet_api.routers.worksheets.PassageRepository") as mock_passage_repo_cls,
+        patch("worksheet_api.routers.worksheets.SyntaxAnnotationRepository") as mock_ann_repo_cls,
+        patch("worksheet_api.routers.worksheets.TranslationRepository") as mock_trans_repo_cls,
+        patch("worksheet_api.routers.worksheets.VocabularyRepository") as mock_vocab_repo_cls,
+    ):
+        mock_ws_repo_cls.return_value.get = AsyncMock(return_value=worksheet)
+        mock_ws_repo_cls.return_value.list_items_for_worksheet = AsyncMock(return_value=[item_orm])
+        mock_passage_repo_cls.return_value.get = AsyncMock(return_value=passage)
+        mock_ann_repo_cls.return_value.list_by_passage = AsyncMock(return_value=[])
+        mock_trans_repo_cls.return_value.get_by_passage = AsyncMock(return_value=None)
+        mock_vocab_repo_cls.return_value.list_by_passage = AsyncMock(return_value=vocabulary)
+
+        resp = await async_client.get(
+            f"/worksheets/{WORKSHEET_ID_1}/preview", params={"style": "playful"}
+        )
+
+    assert resp.status_code == 200
+    body = resp.text
+    # 어휘 헤딩 + word + meaning_ko + level_label 모두 포함
+    assert "어휘" in body
+    assert "economy" in body
+    assert "경제" in body
+    assert "수능 필수" in body
+    mock_vocab_repo_cls.return_value.list_by_passage.assert_awaited_once_with(passage.id)

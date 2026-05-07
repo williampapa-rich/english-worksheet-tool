@@ -27,10 +27,14 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from markupsafe import escape
+from markupsafe import Markup, escape
 
+from shared.schemas.annotation import SyntaxAnnotation
 from shared.schemas.passage import Passage
+from shared.schemas.translation import Translation
+from shared.schemas.vocabulary import Vocabulary
 from shared.schemas.worksheet import Branding, Worksheet
+from template_renderer.annotation_html import render_annotations_to_html
 
 
 def branding_to_academy_dict(branding: Branding) -> dict[str, str | None]:
@@ -61,36 +65,50 @@ def branding_to_academy_dict(branding: Branding) -> dict[str, str | None]:
 def worksheet_to_template_context(
     worksheet: Worksheet,
     passages: list[Passage],
+    *,
+    annotations_by_passage: dict[uuid.UUID, list[SyntaxAnnotation]] | None = None,
+    translations_by_passage: dict[uuid.UUID, Translation | None] | None = None,
+    vocabulary_by_passage: dict[uuid.UUID, list[Vocabulary]] | None = None,
 ) -> dict:
     """``Worksheet`` + ``Passage`` 목록을 Jinja2 템플릿 컨텍스트 dict 로 변환.
 
     ``packages/template_renderer/README.md`` 데이터 계약의 모든 key 를 채운다.
     passages 는 ``worksheet.items`` 의 passage_id 순서로 join 된 결과를 넘긴다.
 
-    **본 PR 한계 — content_html 정밀도**:
-        현재 ``content_html`` 은 ``passage.body_text`` 를 ``<p>`` 로 단순 wrap 한다.
-        annotation split-mark 렌더러를 통한 정밀 HTML 주입은 별도 ADR 에서 다룬다
-        (``README.md`` §29 참조). 이 한계는 본 PR docstring 과 PR body 에 명시된다.
+    **B4 (2026-05-07)** — annotation / translation / vocabulary 컨텍스트 주입:
+        ``annotations_by_passage`` 가 주어지면 ``content_html`` 은 ADR-0014 의
+        ``render_annotations_to_html`` 로 정밀 렌더. 미주어지면 단순 wrap fallback
+        (후방 호환). ``translations_by_passage`` / ``vocabulary_by_passage`` 도
+        item 별 block 으로 주입 (``WorksheetItem.include_translation`` /
+        ``include_vocabulary`` flag 가 True 일 때만).
 
     Args:
         worksheet: ``shared.schemas.worksheet.Worksheet`` 인스턴스.
         passages: item.passage_id 로 join 된 ``Passage`` 리스트.
             items 의 order 순서와 동일한 순서로 정렬돼 있어야 한다.
+        annotations_by_passage: passage_id → SyntaxAnnotation list. None / 미존재
+            key 는 빈 list (annotation 적용 안 함).
+        translations_by_passage: passage_id → Translation | None. ``include_translation``
+            가 True 인 item 의 ``translation`` 블록 채움.
+        vocabulary_by_passage: passage_id → Vocabulary list. ``include_vocabulary``
+            가 True 인 item 의 ``vocabulary`` 블록 채움.
 
     Returns:
         Jinja2 ``Environment.get_template().render()`` 에 바로 전달할 수 있는 dict.
         keys: ``academy``, ``worksheet``, ``student``, ``instruction``, ``questions``.
+        각 question 은 ``number``, ``label``, ``content_html``, 그리고 옵션으로
+        ``translation`` (str | None), ``vocabulary`` (list[dict] | None) 를 포함.
 
     Note:
         - ``student`` 는 schema 미도입 (PM 결정 #5 — ``README.md`` 참조).
-          렌더 시점에 빈칸 출력만 하므로 항상 ``{"name": "", "class_name": "", "date": ""}`` 반환.
-        - ``page_number`` / ``total_pages`` 는 1/1 default (ADR-0010 §D5 — 다중 페이지는
-          Stage 2 PoC 에서 정밀화).
-        - ``branding`` 이 None 이거나 기본값 ``Branding()`` 이어도 안전하게 동작한다
-          (``branding_to_academy_dict`` 가 None 필드를 그대로 통과).
+        - ``page_number`` / ``total_pages`` 는 1/1 default (ADR-0010 §D5).
+        - ``branding`` 이 None 이거나 기본값 ``Branding()`` 이어도 안전하게 동작.
     """
     # passage_id → Passage 빠른 조회용 매핑
     passage_map: dict[uuid.UUID, Passage] = {p.id: p for p in passages}
+    annotations_by_passage = annotations_by_passage or {}
+    translations_by_passage = translations_by_passage or {}
+    vocabulary_by_passage = vocabulary_by_passage or {}
 
     # items 를 order 기준으로 정렬한 뒤 질문 목록 구성
     sorted_items = sorted(worksheet.items, key=lambda item: item.order)
@@ -98,22 +116,51 @@ def worksheet_to_template_context(
     questions: list[dict[str, Any]] = []
     for idx, item in enumerate(sorted_items, start=1):
         passage = passage_map.get(item.passage_id)
-        # passage 가 없으면 빈 content 로 graceful degradation
-        # (cross-tenant 차단은 라우트 레이어 책임)
-        body_text = passage.body_text if passage is not None else ""
-        # 한계: body_text raw text 를 <p> 로 단순 wrap.
-        # 정밀한 annotation split-mark HTML 주입은 별도 ADR 에서 다룬다.
-        # XSS 방어 (S-1): markupsafe.escape() 로 body_text 의 HTML 특수문자를 escape.
-        # 결과는 Markup 타입 — 템플릿의 `| safe` 와 결합되어도 escape 가 유지된다.
-        # annotation 렌더러 도입 시 신뢰 가능한 HTML 은 명시적으로 Markup(...) 으로 감싸야 함.
-        content_html = f"<p>{escape(body_text)}</p>"
-        questions.append(
-            {
-                "number": idx,
-                "label": item.label,
-                "content_html": content_html,
-            }
-        )
+
+        # B4: content_html — annotations 가 주어지면 ADR-0014 정밀 렌더, 아니면 단순 wrap.
+        # passage 가 None 이면 빈 content (graceful degradation — 라우트 레이어가
+        # cross-tenant 차단 책임).
+        content_html: str | Markup
+        if passage is None:
+            content_html = "<p></p>"
+        else:
+            anns = annotations_by_passage.get(passage.id, [])
+            if anns:
+                content_html = render_annotations_to_html(passage, anns)
+            else:
+                # annotation 없는 경우 단순 wrap (XSS escape).
+                content_html = Markup(f"<p>{escape(passage.body_text)}</p>")
+
+        question: dict[str, Any] = {
+            "number": idx,
+            "label": item.label,
+            "content_html": content_html,
+        }
+
+        # B4: translation / vocabulary 옵션 주입.
+        # WorksheetItem.include_* flag 가 True 인 경우만 컨텍스트에 포함.
+        # (template 은 falsy 값 — None / 빈 list — 을 자연스럽게 skip 처리)
+        if item.include_translation and passage is not None:
+            t = translations_by_passage.get(passage.id)
+            question["translation"] = t.text if t is not None else None
+        else:
+            question["translation"] = None
+
+        if item.include_vocabulary and passage is not None:
+            vocab = vocabulary_by_passage.get(passage.id, [])
+            question["vocabulary"] = [
+                {
+                    "word": v.word,
+                    "pos": v.pos,
+                    "meaning_ko": v.meaning_ko,
+                    "level_label": v.level_label,
+                }
+                for v in vocab
+            ]
+        else:
+            question["vocabulary"] = []
+
+        questions.append(question)
 
     return {
         "academy": branding_to_academy_dict(worksheet.branding),
