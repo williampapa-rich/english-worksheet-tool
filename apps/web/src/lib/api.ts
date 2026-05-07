@@ -383,6 +383,68 @@ export async function getWorksheet(id: string): Promise<Worksheet> {
   return (await response.json()) as Worksheet;
 }
 
+/**
+ * extractPassageText — POST /passages/extract (kind=text)
+ *
+ * 텍스트 1건을 정규화된 Passage 로 변환 + 영속화. 응답의 첫 결과만 반환.
+ */
+export async function extractPassageText(payload: string): Promise<Passage> {
+  const response = await fetch(`${API_BASE_URL}/passages/extract`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind: "text", payload }),
+  });
+  await checkOk(response);
+  const body = (await response.json()) as {
+    results: Array<{ passage: Passage }>;
+  };
+  const first = body.results?.[0];
+  if (!first) {
+    throw new Error("extract 결과가 비어있습니다.");
+  }
+  return first.passage;
+}
+
+export interface WorksheetCreateInput {
+  title: string;
+  subtitle?: string | null;
+  kind: "student" | "teacher" | "variant";
+  template_id: string;
+  orientation?: "portrait" | "landscape";
+  instruction?: string | null;
+  branding?: {
+    academy_name?: string | null;
+    primary_color?: string | null;
+    secondary_color?: string | null;
+    logo_url?: string | null;
+  };
+  items: Array<{
+    passage_id: string;
+    order: number;
+    label?: string | null;
+    include_translation?: boolean;
+    include_vocabulary?: boolean;
+    include_syntax_annotations?: boolean;
+    include_questions?: boolean;
+    include_variants?: boolean;
+  }>;
+}
+
+/**
+ * createWorksheet — POST /worksheets/
+ *
+ * 신규 Worksheet 생성. trailing slash 명시 (FastAPI 307 redirect 회피).
+ */
+export async function createWorksheet(input: WorksheetCreateInput): Promise<Worksheet> {
+  const response = await fetch(`${API_BASE_URL}/worksheets/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  await checkOk(response);
+  return (await response.json()) as Worksheet;
+}
+
 export async function downloadPassageHwpx(passageId: string): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/passages/${passageId}/hwpx`);
   await checkOk(response);
