@@ -259,3 +259,47 @@ CLAUDE.md §3.5 현재 내용:
 | 6 | multi-line arrow Phase 1 제외 여부 | PM | PM 결정 | P1-8c 착수 전. c-1 PoC 결과에 따라 단일 줄 arrow 도 Phase 1 제외 가능 — PoC 후 PM 최종 결정. |
 | 7 | 다중 라벨 충돌 시각 처리 (P1-4) | frontend-dev + domain-expert | 구현 레벨 | P1-8b-1 착수 전 |
 | 8 | CLAUDE.md §3.5 갱신 | PM | PM 결정 | 본 PR 머지 후 별 PR |
+
+---
+
+## 7. HTML 매핑 (ADR-0014, 2026-05-07 추가)
+
+ADR-0014 — `packages/template_renderer/annotation_html.py` 가 본 카탈로그를 single-
+source-of-truth 로 같이 따른다. PM 답변 (구문분석 = HTML→PDF, 변형문제 = HTML +
+HWPX 양방향) 에 따라 두 렌더러는 *대칭*. 매핑 변경 PR 은 4곳 (본 문서 / hwpx_renderer /
+template_renderer/annotation_html / editor) 동시 갱신 필수 (code-reviewer 체크 항목).
+
+### 7-1. 매트릭스 (HTML 출력 형태)
+
+| Annotation kind | HTML 출력 | CSS class | 비고 |
+|---|---|---|---|
+| `highlight` | `<span class="annot-highlight annot-highlight--{idx}">…</span>` | `annot-highlight--1`~`--12` | hwpx charPr id 4~15 와 대칭. 12색 사전 정의 (`_annotation.css`). |
+| `underline` | `<span class="annot-underline">…</span>` | `annot-underline` | 단일 색상 `#000000` (hwpx 와 동일). |
+| `inline_note` | `<span class="annot-inline-note">{본문}<sup class="annot-inline-note__text">{text}</sup></span>` | `annot-inline-note`, `annot-inline-note__text` | 본문 옆에 작은 sup 메모 (hwpx 의 charPr id 3 = 7pt 회색 inline run 과 시각 의미 동일). |
+| `top_label` | `<ruby class="annot-top-label">{본문}<rt>{text}</rt></ruby>` | `annot-top-label` | HTML `<ruby>` 가 본문 *위* 라벨에 자연스럽게 매핑. hwpx 의 3단 단락 구조와 시각 의미 동일. |
+| `bottom_label` | `<span class="annot-bottom-label" data-label="{text}">{본문}</span>` | `annot-bottom-label` | CSS `::after` 가 `data-label` 표시. hwpx 의 3단 단락 (라벨 단락 / 본문 / 라벨 단락) 와 대칭. |
+| `bracket` | `<span class="annot-bracket">{open}</span>{본문}<span class="annot-bracket">{close}</span>` | `annot-bracket` | ADR-0007 — Unicode `[ ] ( ) { } ⌜⌟ <>` inline. hwpx 와 동일. |
+| `arrow` | (skip + 1회 로그) | — | ADR-0014 D4 — v0.1 미지원. P1-8c PoC 후 별 ADR. |
+
+### 7-2. CSS 정의 위치
+
+`packages/template_renderer/templates/_annotation.css` — 3 템플릿 (`classic` /
+`modern` / `playful`) 모두 `render_worksheet_html()` 자동 주입을 통해 inline 으로
+포함 (별 파일 import 없음 — Playwright file:// 컨텍스트 안전).
+
+`:root { --theme: ...; --ink: ...; --muted: ...; }` 변수 (ADR-0011 D10) 와 호환 —
+라벨 색상 등은 템플릿이 정의한 디자인 토큰을 자동 상속.
+
+### 7-3. 중첩 / 충돌 정책 (HWPX 와 동일)
+
+- 텍스트 런 (highlight / underline / inline_note): char-by-char 마지막 적용 우선.
+  multi-attr (highlight + underline 동시) 은 v0.1 범위 밖.
+- 라벨: 같은 span 에 라벨 2개는 v0.1 미지원 (CLAUDE.md §11 Open Questions).
+- bracket: 글자 단위 inline 삽입.
+
+### 7-4. XSS / 보안 (ADR-0014 D6)
+
+- `Passage.body_text` 와 `SyntaxAnnotation.text` 모두 `markupsafe.escape()`.
+- 출력은 한정된 tag set (`span` / `mark` / `ruby` / `rt` / `sup`) 만 — 추가 sanitizer
+  불필요.
+- `data-label` 속성도 escape (HTML attribute injection 방지).

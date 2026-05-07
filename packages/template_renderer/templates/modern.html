@@ -166,6 +166,9 @@
     letter-spacing: 0.04em;
   }
   .footer .pg { font-variant-numeric: tabular-nums; }
+
+  /* ADR-0014 — annotation HTML 시각 표현 (자동 주입) */
+  {{ annotation_css | safe }}
 </style>
 </head>
 <body>
