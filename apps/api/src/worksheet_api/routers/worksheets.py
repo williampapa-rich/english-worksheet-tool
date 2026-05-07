@@ -26,6 +26,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse
 from sqlmodel.ext.asyncio.session import AsyncSession
+from template_renderer.adapters import worksheet_to_template_context
+from template_renderer.render import render_worksheet_html
 
 from shared.schemas.passage import Passage
 from worksheet_api.db import get_db
@@ -109,11 +111,6 @@ async def preview_worksheet(
             passages.append(passage)
 
     # 5. 템플릿 컨텍스트 생성 + 렌더링
-    # import 는 함수 내부에서 — packages/template_renderer 는 apps/api 에서
-    # 선택적으로 의존하므로 top-level import 대신 here-import 사용.
-    from template_renderer.adapters import worksheet_to_template_context
-    from template_renderer.render import render_worksheet_html
-
     context = worksheet_to_template_context(worksheet, passages)
     html_content = render_worksheet_html(context, style=style)
 
