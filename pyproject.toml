@@ -13,6 +13,7 @@ members = [
   "packages/llm",
   "packages/hwpx_renderer",
   "packages/qa_validator",
+  "packages/template_renderer",
   "shared",
 ]
 
