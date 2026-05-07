@@ -1303,3 +1303,125 @@ async def test_augment_vocabulary_count_out_of_range_422(async_client: AsyncClie
     """count > 30 → 422."""
     resp = await async_client.post(f"/passages/{PASSAGE_ID_1}/vocabulary?count=100")
     assert resp.status_code == 422
+
+
+# ─── E1-b — PATCH /passages/{id}/vocabulary/{vid} ───────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_patch_vocabulary_updates_fields_and_sets_user_edited(
+    async_client: AsyncClient,
+) -> None:
+    """E1-b: 필드 부분 수정 + user_edited=True 자동 갱신."""
+    saved_passage = _make_saved_passage()
+    existing = _make_saved_vocabulary(saved_passage.id, "economy", "경제")
+    updated = existing.model_copy(
+        update={"meaning_ko": "사용자 수정 뜻", "user_edited": True}
+    )
+
+    with (
+        patch("worksheet_api.routers.passages.PassageRepository") as mock_prepo,
+        patch("worksheet_api.routers.passages.VocabularyRepository") as mock_vrepo,
+    ):
+        mock_prepo.return_value.get = AsyncMock(return_value=saved_passage)
+        mock_vrepo.return_value.get = AsyncMock(return_value=existing)
+        mock_vrepo.return_value.update_fields = AsyncMock(return_value=updated)
+
+        resp = await async_client.patch(
+            f"/passages/{saved_passage.id}/vocabulary/{existing.id}",
+            json={"meaning_ko": "사용자 수정 뜻"},
+        )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["meaning_ko"] == "사용자 수정 뜻"
+    assert body["user_edited"] is True
+    mock_vrepo.return_value.update_fields.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_patch_vocabulary_404_when_passage_missing(
+    async_client: AsyncClient,
+) -> None:
+    """E1-b: passage 없으면 404."""
+    with (
+        patch("worksheet_api.routers.passages.PassageRepository") as mock_prepo,
+        patch("worksheet_api.routers.passages.VocabularyRepository") as mock_vrepo,
+    ):
+        mock_prepo.return_value.get = AsyncMock(return_value=None)
+        mock_vrepo.return_value.update_fields = AsyncMock()
+
+        resp = await async_client.patch(
+            f"/passages/{uuid.uuid4()}/vocabulary/{uuid.uuid4()}",
+            json={"word": "x"},
+        )
+
+    assert resp.status_code == 404
+    mock_vrepo.return_value.update_fields.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_patch_vocabulary_404_when_vocab_missing(
+    async_client: AsyncClient,
+) -> None:
+    """E1-b: vocabulary 행 없으면 404."""
+    saved_passage = _make_saved_passage()
+
+    with (
+        patch("worksheet_api.routers.passages.PassageRepository") as mock_prepo,
+        patch("worksheet_api.routers.passages.VocabularyRepository") as mock_vrepo,
+    ):
+        mock_prepo.return_value.get = AsyncMock(return_value=saved_passage)
+        mock_vrepo.return_value.get = AsyncMock(return_value=None)
+        mock_vrepo.return_value.update_fields = AsyncMock()
+
+        resp = await async_client.patch(
+            f"/passages/{saved_passage.id}/vocabulary/{uuid.uuid4()}",
+            json={"word": "x"},
+        )
+
+    assert resp.status_code == 404
+    mock_vrepo.return_value.update_fields.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_patch_vocabulary_404_cross_passage(async_client: AsyncClient) -> None:
+    """E1-b: vocabulary 의 passage_id 가 URL passage_id 와 불일치하면 404."""
+    saved_passage = _make_saved_passage()
+    other_passage_id = uuid.uuid4()
+    existing = _make_saved_vocabulary(other_passage_id, "economy", "경제")
+
+    with (
+        patch("worksheet_api.routers.passages.PassageRepository") as mock_prepo,
+        patch("worksheet_api.routers.passages.VocabularyRepository") as mock_vrepo,
+    ):
+        mock_prepo.return_value.get = AsyncMock(return_value=saved_passage)
+        mock_vrepo.return_value.get = AsyncMock(return_value=existing)
+        mock_vrepo.return_value.update_fields = AsyncMock()
+
+        resp = await async_client.patch(
+            f"/passages/{saved_passage.id}/vocabulary/{existing.id}",
+            json={"word": "x"},
+        )
+
+    assert resp.status_code == 404
+    mock_vrepo.return_value.update_fields.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_patch_vocabulary_422_extra_field(async_client: AsyncClient) -> None:
+    """E1-b: extra='forbid' — 정의되지 않은 필드 422."""
+    saved_passage = _make_saved_passage()
+
+    with (
+        patch("worksheet_api.routers.passages.PassageRepository") as mock_prepo,
+        patch("worksheet_api.routers.passages.VocabularyRepository"),
+    ):
+        mock_prepo.return_value.get = AsyncMock(return_value=saved_passage)
+
+        resp = await async_client.patch(
+            f"/passages/{saved_passage.id}/vocabulary/{uuid.uuid4()}",
+            json={"word": "x", "user_edited": False},
+        )
+
+    assert resp.status_code == 422

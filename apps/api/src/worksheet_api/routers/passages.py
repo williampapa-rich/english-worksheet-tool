@@ -716,3 +716,90 @@ async def augment_passage_vocabulary(
         # 응답: 보강 후 전체 list
         final_list = await vocabulary_repo.list_by_passage(passage_id)
         return VocabularyAugmentResponse(vocabulary=final_list)
+
+
+# ─── E1-b — PATCH /passages/{id}/vocabulary/{vid} ───────────────────────────
+
+
+class VocabularyUpdateRequest(BaseModel):
+    """PATCH /passages/{passage_id}/vocabulary/{vid} request body.
+
+    ADR-0015 Stage E1-b — 사용자가 어휘 행 단위 편집. 모든 필드 optional —
+    None 은 "변경 없음". ``user_edited`` 는 라우터가 자동으로 True 갱신.
+    ``selected_by`` 는 변경 안 함 (LLM 산출 → user_edited=True 가 정상 상태).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    word: str | None = Field(default=None, max_length=255)
+    pos: str | None = Field(default=None, max_length=64)
+    meaning_ko: str | None = Field(default=None, max_length=500)
+    level_label: str | None = Field(default=None, max_length=64)
+    headword_normalized: str | None = Field(
+        default=None,
+        max_length=255,
+        description="word 변경 시 함께 보내는 것을 권장 (글로벌 dedup 정합).",
+    )
+
+
+@router.patch(
+    "/{passage_id}/vocabulary/{vocabulary_id}",
+    response_model=Vocabulary,
+    status_code=200,
+)
+async def update_passage_vocabulary(
+    passage_id: UUID,
+    vocabulary_id: UUID,
+    body: VocabularyUpdateRequest,
+    tenant_ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> Vocabulary:
+    """Vocabulary 행 사용자 편집 (ADR-0015 Stage E1-b).
+
+    `user_edited=True` 자동 갱신 — ADR-0013 의 `skip_if_user_edited` default
+    mode 가 이 메타를 1차 입력으로 사용해 LLM 재보강 시 사용자 수정 보존.
+
+    body 가 모두 None 인 경우에도 200 + user_edited=True 갱신 (사용자 명시적
+    편집 의도).
+
+    Raises:
+        HTTPException 404: passage 없음 / vocabulary_id 없음 / 다른 tenant
+            소유 / vocabulary.passage_id 가 URL passage_id 와 불일치.
+    """
+    async with session.begin():
+        passage_repo = PassageRepository(session, tenant_ctx)
+        vocabulary_repo = VocabularyRepository(session, tenant_ctx)
+
+        passage = await passage_repo.get(passage_id)
+        if passage is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Passage {passage_id} 를 찾을 수 없습니다.",
+            )
+
+        # 기존 vocabulary 조회 — passage_id 정합 + tenant 가드
+        existing = await vocabulary_repo.get(vocabulary_id)
+        if existing is None or existing.passage_id != passage_id:
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    f"Vocabulary {vocabulary_id} 를 찾을 수 없습니다 "
+                    f"(passage {passage_id})."
+                ),
+            )
+
+        updated = await vocabulary_repo.update_fields(
+            vocabulary_id,
+            word=body.word,
+            pos=body.pos,
+            meaning_ko=body.meaning_ko,
+            level_label=body.level_label,
+            headword_normalized=body.headword_normalized,
+        )
+        if updated is None:
+            # 위에서 existing 확인했는데 None — race
+            raise HTTPException(
+                status_code=500,
+                detail="Vocabulary update 중 row 가 사라졌습니다 (race).",
+            )
+        return updated
