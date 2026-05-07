@@ -441,13 +441,12 @@ class WorksheetRepository(BaseRepository[WorksheetORM, Worksheet]):
             include_questions=item.include_questions,
             include_variants=item.include_variants,
         )
+        # add_item + parent updated_at 갱신을 단일 flush 로 묶음 (W-1 일관성).
+        # item id 확보를 위해 refresh 가 필요하므로, parent 변경을 add_item flush 전에 설정.
         self._session.add(item_orm)
-        await self._session.flush()
-        await self._session.refresh(item_orm)
-
-        # 5. 부모 worksheet updated_at 갱신 (R-2 (a) — items 변경도 worksheet 갱신으로 본다)
         parent_orm.updated_at = _utc_now()
         await self._session.flush()
+        await self._session.refresh(item_orm)
 
         return WorksheetItem(
             id=item_orm.id,
@@ -582,10 +581,8 @@ class WorksheetRepository(BaseRepository[WorksheetORM, Worksheet]):
             return False
 
         # 3. 삭제
+        # delete_item + parent updated_at 갱신을 단일 flush 로 묶음 (W-1 일관성).
         await self._session.delete(item_orm)
-        await self._session.flush()
-
-        # 4. 부모 worksheet updated_at 갱신 (R-2 (a))
         parent_orm.updated_at = _utc_now()
         await self._session.flush()
 

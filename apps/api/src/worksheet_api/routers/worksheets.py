@@ -519,7 +519,15 @@ class WorksheetItemUpdateRequest(BaseModel):
     passage_id 는 미포함 (변경 금지 — DELETE + POST 사용).
     extra="forbid" 이므로 passage_id 를 포함하면 422 반환.
 
-    null 의미론: None default = 변경 없음. NOT NULL 필드 (order) 에 명시적 null → 422.
+    null 의미론 (W-4 명시): None default = 변경 없음. NOT NULL 필드 (order) 에
+    명시적 null → 422.
+
+    중요: ``order: int | None = Field(default=None, ge=0)`` 의 Pydantic 검증은
+    ``None`` 을 통과시킨다 (int | None 이므로). 따라서 클라이언트가 ``{"order": null}``
+    을 보내면 Pydantic 1차 차단이 아니라 Repository ``_NONNULL_ITEM_FIELDS`` 2차
+    차단으로 422 가 발생한다. 명시적 null = "null 로 설정" 의도이므로 Repository
+    레벨 차단이 의미적으로 더 정확.
+
     "변경하지 않음" 을 표현하려면 요청 body 에서 키를 **제외** 하세요.
     빈 body ({}) → 422 (변경할 필드 없음).
     """

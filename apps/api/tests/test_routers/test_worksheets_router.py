@@ -1336,6 +1336,28 @@ async def test_add_worksheet_item_extra_field_422(async_client: AsyncClient) -> 
     assert resp.status_code == 422
 
 
+@pytest.mark.asyncio
+async def test_add_worksheet_item_integrity_error_422(async_client: AsyncClient) -> None:
+    """W-3 — Repository 가 IntegrityError raise → 라우터 422 매핑.
+
+    passage_id 사전 검증 후에도 race condition 등으로 INSERT 시 FK 위배가
+    발생하면 500 대신 422 로 매핑한다 (create_worksheet / patch_worksheet 와
+    동일한 방어 패턴).
+    """
+    with patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls:
+        mock_ws_repo_cls.return_value.add_item = AsyncMock(
+            side_effect=IntegrityError("FK violation", None, None)
+        )
+
+        resp = await async_client.post(
+            f"/worksheets/{WORKSHEET_ID_1}/items",
+            json=_make_add_item_payload(),
+        )
+
+    assert resp.status_code == 422
+    assert "DB 제약" in resp.json()["detail"] or "passage_id" in resp.json()["detail"]
+
+
 # ─── PATCH /worksheets/{id}/items/{item_id} 테스트 ───────────────────────────
 
 
