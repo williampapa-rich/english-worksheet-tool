@@ -13,6 +13,7 @@ ADR-0005 §D-5.1 boilerplate 패턴.
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from sqlalchemy import desc, func
 from sqlmodel import select
@@ -233,6 +234,92 @@ class WorksheetRepository(BaseRepository[WorksheetORM, Worksheet]):
         worksheets = [self._to_domain(orm) for orm in list_result.all()]
 
         return worksheets, total
+
+    # ─── update ─────────────────────────────────────────────────────────────
+
+    async def update_meta(
+        self,
+        worksheet_id: uuid.UUID,
+        patch: dict[str, Any],
+    ) -> Worksheet | None:
+        """Worksheet 의 메타 필드만 부분 수정. items 는 건드리지 않음.
+
+        허용 패치 필드: title / subtitle / kind / template_id / orientation /
+        instruction / branding / school / grade / exam_date / time_limit.
+        ``patch`` 에 ``items`` 키가 포함되어 있으면 ValueError 로 명시 차단한다.
+
+        흐름:
+          1. ``items`` 키 포함 여부 사전 차단 (도메인 정책 강제).
+          2. BaseRepository.get() 으로 tenant_id + workspace_id 필터를 적용해 조회
+             (cross-tenant 이면 None 반환).
+          3. 허용 필드만 ORM 에 직접 패치 (setattr).
+          4. session.flush() 후 refresh → 최신 상태 반환.
+
+        호출 전제: 호출자가 ``async with session.begin():`` 컨텍스트 안에 있어야 한다.
+        commit 은 caller 책임.
+
+        Args:
+            worksheet_id: 수정할 Worksheet UUID.
+            patch: 수정할 필드 dict (model_dump(exclude_unset=True) 로 set 된 필드만).
+                ``items`` 키 포함 시 ValueError.
+
+        Returns:
+            업데이트된 Worksheet (items 는 빈 리스트 — 단건 GET 라우터에서 별도 join).
+            worksheet_id 가 없거나 cross-tenant 이면 None.
+
+        Raises:
+            ValueError: patch 에 ``items`` 키가 포함된 경우 (명시 차단).
+        """
+        # 1. items 키 사전 차단 (A2-b 별 라우트 정책 강제)
+        if "items" in patch:
+            raise ValueError(
+                "update_meta 는 메타 필드만 수정합니다. "
+                "items 변경은 POST/PATCH/DELETE /worksheets/{id}/items 를 사용하세요 (A2-b 예정)."
+            )
+
+        # 2. tenant 검증 포함 단건 조회 (cross-tenant → None)
+        orm = await self._get_orm(worksheet_id)
+        if orm is None:
+            return None
+
+        # 3. 허용 필드 패치 — branding 은 Pydantic 모델 또는 dict 모두 수용
+        _ALLOWED_META_FIELDS = frozenset({
+            "title", "subtitle", "kind", "template_id", "orientation",
+            "instruction", "branding", "school", "grade", "exam_date", "time_limit",
+        })
+        for field, value in patch.items():
+            if field not in _ALLOWED_META_FIELDS:
+                continue  # 미래 확장 필드는 silently 무시 (items 는 위에서 이미 차단)
+            # branding 이 Pydantic 모델로 넘어온 경우 dict 로 직렬화 (JSONB 컬럼 호환)
+            if field == "branding" and hasattr(value, "model_dump"):
+                value = value.model_dump(mode="python")
+            setattr(orm, field, value)
+
+        # 4. flush + refresh → 최신 DB 상태 반영
+        await self._session.flush()
+        await self._session.refresh(orm)
+        return self._to_domain(orm)
+
+    async def _get_orm(self, worksheet_id: uuid.UUID) -> WorksheetORM | None:
+        """tenant_id + workspace_id 필터를 포함한 WorksheetORM 단건 조회.
+
+        BaseRepository.get() 은 도메인 모델로 변환하지만, update_meta 는
+        ORM 인스턴스에 직접 setattr 해야 하므로 ORM 레벨 조회를 별도 제공한다.
+
+        Args:
+            worksheet_id: 조회할 Worksheet UUID.
+
+        Returns:
+            WorksheetORM 인스턴스 또는 None (not found 또는 cross-tenant).
+        """
+        stmt = (
+            select(WorksheetORM)
+            .where(WorksheetORM.id == worksheet_id)
+            .where(WorksheetORM.tenant_id == self._tenant_ctx.tenant_id)
+            .where(WorksheetORM.workspace_id == self._tenant_ctx.workspace_id)
+        )
+        result = await self._session.exec(stmt)
+        return result.first()
 
     # ─── items 조회 ──────────────────────────────────────────────────────────
 

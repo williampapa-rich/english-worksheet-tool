@@ -1,5 +1,6 @@
 """GET /worksheets + GET /worksheets/{id} + GET /worksheets/{id}/preview
-+ POST /worksheets/{id}/export.pdf + POST /worksheets 라우터 단위 테스트.
++ POST /worksheets/{id}/export.pdf + POST /worksheets
++ PATCH /worksheets/{id} + DELETE /worksheets/{id} 라우터 단위 테스트.
 
 mock session + mock repository 로 실제 DB 없이 실행한다.
 
@@ -43,6 +44,20 @@ mock session + mock repository 로 실제 DB 없이 실행한다.
   - 200 landscape worksheet → landscape=True 로 render_worksheet_pdf 호출 확인
   - 404 — 존재하지 않는 worksheet_id
   - 404 — cross-tenant
+
+커버 케이스 (PATCH /worksheets/{id}):
+  - 200 정상 — title 만 patch → 응답에 title 변경 + 다른 필드 그대로
+  - 200 — branding 통째 교체
+  - 200 — 여러 필드 동시 patch
+  - 404 — 존재하지 않는 worksheet_id (mock update_meta → None)
+  - 404 — cross-tenant
+  - 422 — extra='forbid' — items 키 보내면 차단
+  - 422 — patch body 비어있음 ({})
+  - 422 — kind 가 enum 값 아님
+
+커버 케이스 (DELETE /worksheets/{id}):
+  - 204 정상 — mock delete → True
+  - 404 — mock delete → False (없거나 cross-tenant)
 
 패턴: test_annotations_router.py 와 동일한 mock 패턴 사용.
 """
@@ -887,3 +902,214 @@ async def test_list_worksheets_invalid_kind_422(async_client: AsyncClient) -> No
     resp = await async_client.get("/worksheets/", params={"kind": "invalid_kind_xyz"})
 
     assert resp.status_code == 422
+
+
+# ─── PATCH /worksheets/{id} 테스트 ───────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_patch_worksheet_title_only_200(async_client: AsyncClient) -> None:
+    """title 만 patch → 200 + 응답에 새 title 반영.
+
+    update_meta 가 업데이트된 Worksheet 를, list_items_for_worksheet 가 items_orm 을
+    반환하면 라우터는 200 + 갱신된 Worksheet (items 포함) 를 반환해야 한다.
+    """
+    original = _make_worksheet()
+    updated = original.model_copy(update={"title": "수정된 제목"})
+    item_orm = _make_item_orm()
+    item_orm.id = uuid.UUID("55555555-5555-5555-5555-555555555555")
+    item_orm.include_translation = False
+    item_orm.include_vocabulary = False
+    item_orm.include_syntax_annotations = False
+    item_orm.include_questions = False
+    item_orm.include_variants = False
+
+    with patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls:
+        mock_ws_repo = mock_ws_repo_cls.return_value
+        mock_ws_repo.update_meta = AsyncMock(return_value=updated)
+        mock_ws_repo.list_items_for_worksheet = AsyncMock(return_value=[item_orm])
+
+        resp = await async_client.patch(
+            f"/worksheets/{WORKSHEET_ID_1}",
+            json={"title": "수정된 제목"},
+        )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["title"] == "수정된 제목"
+    # items 가 포함되어야 한다
+    assert len(body["items"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_patch_worksheet_branding_200(async_client: AsyncClient) -> None:
+    """branding 통째 교체 → 200."""
+    new_branding = Branding(academy_name="새 학원", primary_color="#FF0000")
+    updated = _make_worksheet().model_copy(update={"branding": new_branding, "items": []})
+
+    with patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls:
+        mock_ws_repo = mock_ws_repo_cls.return_value
+        mock_ws_repo.update_meta = AsyncMock(return_value=updated)
+        mock_ws_repo.list_items_for_worksheet = AsyncMock(return_value=[])
+
+        resp = await async_client.patch(
+            f"/worksheets/{WORKSHEET_ID_1}",
+            json={"branding": {"academy_name": "새 학원", "primary_color": "#FF0000"}},
+        )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["branding"]["academy_name"] == "새 학원"
+    assert body["branding"]["primary_color"] == "#FF0000"
+
+
+@pytest.mark.asyncio
+async def test_patch_worksheet_multiple_fields_200(async_client: AsyncClient) -> None:
+    """여러 필드 동시 patch → 200."""
+    updated = _make_worksheet().model_copy(
+        update={"title": "새 제목", "subtitle": "새 부제", "grade": "고2", "items": []}
+    )
+
+    with patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls:
+        mock_ws_repo = mock_ws_repo_cls.return_value
+        mock_ws_repo.update_meta = AsyncMock(return_value=updated)
+        mock_ws_repo.list_items_for_worksheet = AsyncMock(return_value=[])
+
+        resp = await async_client.patch(
+            f"/worksheets/{WORKSHEET_ID_1}",
+            json={"title": "새 제목", "subtitle": "새 부제", "grade": "고2"},
+        )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["title"] == "새 제목"
+    assert body["subtitle"] == "새 부제"
+    assert body["grade"] == "고2"
+
+
+@pytest.mark.asyncio
+async def test_patch_worksheet_not_found_404(async_client: AsyncClient) -> None:
+    """존재하지 않는 worksheet_id → 404.
+
+    update_meta 가 None 을 반환하면 라우터는 404 를 반환해야 한다.
+    """
+    unknown_id = uuid.UUID("99999999-9999-9999-9999-999999999999")
+
+    with patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls:
+        mock_ws_repo_cls.return_value.update_meta = AsyncMock(return_value=None)
+
+        resp = await async_client.patch(
+            f"/worksheets/{unknown_id}",
+            json={"title": "없는 워크시트"},
+        )
+
+    assert resp.status_code == 404
+    assert "찾을 수 없" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_patch_worksheet_cross_tenant_404(async_client: AsyncClient) -> None:
+    """cross-tenant: 다른 tenant 의 worksheet_id → 404 (존재 여부 노출 방지).
+
+    update_meta 가 tenant 필터 후 None 을 반환하면 라우터는 404 를 반환해야 한다.
+    """
+    with patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls:
+        mock_ws_repo_cls.return_value.update_meta = AsyncMock(return_value=None)
+
+        resp = await async_client.patch(
+            f"/worksheets/{WORKSHEET_ID_1}",
+            json={"title": "cross-tenant 시도"},
+        )
+
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_patch_worksheet_items_key_422(async_client: AsyncClient) -> None:
+    """items 키 보내면 422 — extra='forbid' (C안 정책 강제).
+
+    WorksheetUpdateRequest.model_config = ConfigDict(extra='forbid') 이므로
+    items 키가 포함된 body 는 Pydantic validation error → 422.
+    """
+    resp = await async_client.patch(
+        f"/worksheets/{WORKSHEET_ID_1}",
+        json={"title": "새 제목", "items": [{"passage_id": str(PASSAGE_ID_1), "order": 0}]},
+    )
+
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_patch_worksheet_empty_body_422(async_client: AsyncClient) -> None:
+    """patch body 가 비어있음 ({}) → 422.
+
+    변경할 필드가 없는 PATCH 는 의미 없으므로 422 반환.
+    """
+    resp = await async_client.patch(
+        f"/worksheets/{WORKSHEET_ID_1}",
+        json={},
+    )
+
+    assert resp.status_code == 422
+    assert "변경할 필드" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_patch_worksheet_invalid_kind_422(async_client: AsyncClient) -> None:
+    """kind 가 WorksheetKind enum 값 아님 → 422 (Pydantic validation)."""
+    resp = await async_client.patch(
+        f"/worksheets/{WORKSHEET_ID_1}",
+        json={"kind": "invalid_kind_xyz"},
+    )
+
+    assert resp.status_code == 422
+
+
+# ─── DELETE /worksheets/{id} 테스트 ──────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_delete_worksheet_204(async_client: AsyncClient) -> None:
+    """정상 삭제 → 204 no content.
+
+    BaseRepository.delete() 가 True 를 반환하면 라우터는 204 를 반환해야 한다.
+    items 는 ON DELETE CASCADE 로 자동 정리 (마이그레이션 보장).
+    """
+    with patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls:
+        mock_ws_repo_cls.return_value.delete = AsyncMock(return_value=True)
+
+        resp = await async_client.delete(f"/worksheets/{WORKSHEET_ID_1}")
+
+    assert resp.status_code == 204
+    assert resp.content == b""
+
+
+@pytest.mark.asyncio
+async def test_delete_worksheet_not_found_404(async_client: AsyncClient) -> None:
+    """존재하지 않는 worksheet_id → 404.
+
+    BaseRepository.delete() 가 False 를 반환하면 라우터는 404 를 반환해야 한다.
+    """
+    unknown_id = uuid.UUID("99999999-9999-9999-9999-999999999999")
+
+    with patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls:
+        mock_ws_repo_cls.return_value.delete = AsyncMock(return_value=False)
+
+        resp = await async_client.delete(f"/worksheets/{unknown_id}")
+
+    assert resp.status_code == 404
+    assert "찾을 수 없" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_delete_worksheet_cross_tenant_404(async_client: AsyncClient) -> None:
+    """cross-tenant: 다른 tenant 의 worksheet_id → 404 (존재 여부 노출 방지).
+
+    BaseRepository.delete() 가 tenant 필터 후 False 를 반환하면 라우터는 404.
+    """
+    with patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls:
+        mock_ws_repo_cls.return_value.delete = AsyncMock(return_value=False)
+
+        resp = await async_client.delete(f"/worksheets/{WORKSHEET_ID_1}")
+
+    assert resp.status_code == 404
