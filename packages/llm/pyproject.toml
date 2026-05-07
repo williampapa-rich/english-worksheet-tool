@@ -1,19 +1,30 @@
 [project]
 name = "llm"
 version = "0.1.0"
-description = "Anthropic SDK 래퍼, 프롬프트 로딩, structured output 검증 패키지"
+description = "Anthropic / Gemini SDK 래퍼, 프롬프트 로딩, structured output 검증 패키지"
 requires-python = ">=3.12"
 dependencies = [
   # Anthropic 공식 Python SDK.
   # 대안 검토:
   #   - 직접 HTTP 호출 (httpx): boilerplate 폭발, 스트리밍/재시도/헤더 관리 직접 구현 필요 → 기각
-  #   - litellm: 멀티 프로바이더 추상화 — 우리는 Anthropic 1종이라 불필요한 복잡도 → 기각
-  #   - instructor: structured output 특화 라이브러리 — Anthropic SDK tool_use 패턴으로 충분
-  #     (ADR-0001 §Alternatives §C, ADR-0003 §D-3.2 기각 기록)
-  # 채택 이유: Anthropic 공식 SDK, exam-generator 검증 패턴 흡수 (CLAUDE.md §3.6)
+  #   - litellm: 멀티 프로바이더 추상화 — 1+ 프로바이더 우리 케이스 (Anthropic + Gemini)
+  #     이지만 의존성 비대화 + 동작 추상화 비용이 직접 SDK 호출 2벌보다 큼 → 기각
+  #   - instructor: structured output 특화 라이브러리 — 각 SDK 의 1급 structured output
+  #     패턴 (Anthropic tool_use, Gemini response_schema) 으로 충분
+  # 채택 이유: Anthropic 공식 SDK, exam-generator 검증 패턴 흡수 (CLAUDE.md §3.6).
   # 사용 범위: packages/llm/src/llm/client.py — AnthropicStructuredLLMClient
   "anthropic>=0.40.0",
-
+  # Google Gemini 공식 Python SDK (`google-genai` — 신규 통합 SDK).
+  # 대안 검토:
+  #   - google-generativeai (legacy): deprecated, google-genai 가 후속.
+  #   - 직접 HTTP (REST API): boilerplate 폭발 → 기각.
+  #   - litellm: 위와 동일 사유로 기각.
+  # 채택 이유: Anthropic 결제 전 비용 회피용 + Gemini Free tier 가 검수 단계에 충분.
+  #   Gemini 2.5 Flash Lite 가 Sonnet 대비 가격/속도 우위 (검수 비용 ~$0).
+  #   structured output: SDK 의 `response_mime_type="application/json"` +
+  #   `response_schema=PydanticModel` 1급 패턴. tool_use 보다 단순.
+  # 사용 범위: packages/llm/src/llm/client.py — GeminiStructuredLLMClient
+  "google-genai>=0.3.0",
   # YAML frontmatter 파싱 (docs/prompts/*.md).
   # 대안 검토:
   #   - tomllib (stdlib): TOML 포맷이라 markdown frontmatter 관습과 불일치 → 기각
@@ -22,7 +33,6 @@ dependencies = [
   #   PyYAML 은 stdlib 수준으로 성숙한 라이브러리. 단순 yaml.safe_load() 만 사용.
   # 사용 범위: packages/llm/src/llm/prompt.py — PromptSpec.load_frontmatter()
   "pyyaml>=6.0",
-
   # Pydantic v2 — structured output 검증 및 PromptSpec 모델
   # (워크스페이스 루트 공유 의존성이지만 명시적으로 선언)
   "pydantic>=2.0",

@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import uuid
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 from llm.client import StructuredLLMClient
 from llm.prompt import PromptSpec
@@ -75,17 +75,17 @@ class TranslationLLMOutput(BaseModel):
 
     시스템 메타 (tenant_id / workspace_id / passage_id / created_by) 는 라우트
     책임. LLM 이 만들면 안 되는 필드라 schema 자체에 포함 안 함.
-    """
 
-    model_config = ConfigDict(extra="forbid")
+    Note: ``extra="forbid"`` 미적용 — Gemini API 가 schema 의 ``additionalProperties:
+    false`` 를 거절 (INVALID_ARGUMENT). LLM 이 추가 필드를 반환하면 무시 (도메인
+    모델 변환 시 필요한 필드만 사용).
+    """
 
     text: str = Field(..., description="전체 한국어 해석.")
 
 
 class VocabularyItemLLMOutput(BaseModel):
     """LLM 이 채울 수 있는 Vocabulary 항목 필드 (subset)."""
-
-    model_config = ConfigDict(extra="forbid")
 
     word: str = Field(..., max_length=255)
     headword_normalized: str = Field(..., max_length=255)
@@ -96,8 +96,6 @@ class VocabularyItemLLMOutput(BaseModel):
 
 class VocabularyLLMOutput(BaseModel):
     """LLM 어휘 보강 응답 컨테이너."""
-
-    model_config = ConfigDict(extra="forbid")
 
     items: list[VocabularyItemLLMOutput] = Field(default_factory=list)
 

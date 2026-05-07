@@ -24,6 +24,7 @@ import logging
 from functools import lru_cache
 
 from llm.client import AnthropicStructuredLLMClient, StructuredLLMClient
+from llm.gemini_client import GeminiStructuredLLMClient
 from llm.sinks import DbUsageSink, JsonlUsageSink, MultiplexUsageSink
 
 logger = logging.getLogger(__name__)
@@ -69,18 +70,35 @@ def get_llm_client() -> StructuredLLMClient:
         ) -> ...:
             result = await client.extract_structured(...)
 
-    anthropic_api_key 가 None 이면 환경변수 ANTHROPIC_API_KEY 를 사용.
-    환경변수도 없으면 실제 LLM 호출 시점에 PermanentLLMError 발생.
+    Provider 선택 — settings.llm_provider:
+      - "anthropic" (기본): AnthropicStructuredLLMClient + ANTHROPIC_API_KEY.
+      - "gemini": GeminiStructuredLLMClient + GOOGLE_API_KEY (또는 GEMINI_API_KEY).
+
+    API 키가 None 이면 환경변수에서 fallback. 환경변수도 없으면 실제 LLM 호출
+    시점에 PermanentLLMError 발생.
 
     Returns:
-        AnthropicStructuredLLMClient: sink 가 주입된 LLM 클라이언트.
+        StructuredLLMClient: sink 가 주입된 LLM 클라이언트 (provider 별 구현).
+
+    Raises:
+        ValueError: settings.llm_provider 가 허용 값 (anthropic / gemini) 외.
     """
     from worksheet_api.config import get_settings
 
     settings = get_settings()
     sink = make_llm_sink()
+    provider = (settings.llm_provider or "anthropic").lower().strip()
 
-    return AnthropicStructuredLLMClient(
-        api_key=settings.anthropic_api_key,
-        sink=sink,
+    if provider == "anthropic":
+        return AnthropicStructuredLLMClient(
+            api_key=settings.anthropic_api_key,
+            sink=sink,
+        )
+    if provider == "gemini":
+        return GeminiStructuredLLMClient(
+            api_key=settings.google_api_key,
+            sink=sink,
+        )
+    raise ValueError(
+        f"LLM_PROVIDER 값이 허용되지 않음: '{provider}'. 허용 값: 'anthropic' (기본) 또는 'gemini'."
     )

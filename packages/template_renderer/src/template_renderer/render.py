@@ -67,3 +67,22 @@ def render_worksheet_html(context: dict, style: str = "playful") -> str:
     if "annotation_css" not in context:
         context = {**context, "annotation_css": _ANNOTATION_CSS}
     return template.render(**context)
+
+
+def render_pdf_footer_html(context: dict) -> str:
+    """Chromium ``footer_template`` 로 주입할 footer HTML 을 렌더한다.
+
+    ``_pdf_footer.html`` 부분 템플릿을 같은 ``context`` 로 렌더 — 학원명 +
+    페이지 번호 (Chromium native ``pageNumber`` / ``totalPages`` variable).
+    인라인 스타일만 적용 (Chromium ``footer_template`` 제약 — 외부 CSS / webfont
+    미지원). ``render_worksheet_pdf(footer_html=...)`` 에 전달.
+
+    Args:
+        context: ``worksheet_to_template_context()`` 가 반환한 dict.
+            ``academy.name`` 만 사용.
+
+    Returns:
+        footer HTML 문자열.
+    """
+    template = _env.get_template("_pdf_footer.html")
+    return template.render(**context)

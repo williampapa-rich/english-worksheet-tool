@@ -38,9 +38,16 @@ class Settings(BaseSettings):
     mvp_user_id: str = "00000000-0000-0000-0000-000000000003"
 
     # ── LLM ─────────────────────────────────────────────────────────────────
-    # None 이면 환경변수 ANTHROPIC_API_KEY 에서 읽음 (AnthropicStructuredLLMClient 기본 동작).
-    # extractor 가 LLM 호출 안 하면 None 도 OK. 실제 사용 시점에 None 이면 PermanentLLMError.
+    # Provider 선택 — "anthropic" (기본) 또는 "gemini".
+    # 검수 / 비용 절감 단계에는 "gemini" + GOOGLE_API_KEY 사용.
+    # 운영 / Phase 3+ 는 "anthropic" + ANTHROPIC_API_KEY.
+    llm_provider: str = "anthropic"
+
+    # None 이면 환경변수 ANTHROPIC_API_KEY 에서 읽음. 실제 사용 시점에 None 이면 PermanentLLMError.
     anthropic_api_key: str | None = None
+
+    # Gemini provider 용. None 이면 환경변수 GOOGLE_API_KEY / GEMINI_API_KEY 에서 읽음.
+    google_api_key: str | None = None
 
     # LLM 사용량 JSONL 백업 로그 경로 (PM-4 jsonl sink).
     # DB sink 실패 시 이 파일이 안전망 역할.

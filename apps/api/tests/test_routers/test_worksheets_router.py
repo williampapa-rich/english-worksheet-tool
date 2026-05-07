@@ -560,6 +560,12 @@ async def test_export_pdf_portrait_calls_landscape_false(async_client: AsyncClie
     mock_render.assert_called_once()
     _args, kwargs = mock_render.call_args
     assert kwargs.get("landscape") is False
+    # v0.2-α — footer_html kwarg 가 빈 문자열이 아니어야 함 (Chromium native
+    # display_header_footer 경로 보장). render_pdf_footer_html 의 실제 출력은
+    # 부분 템플릿 렌더 결과라 정확한 문자열 검증은 부서지기 쉬움 — 비어있지 않음만 확인.
+    assert kwargs.get("footer_html"), (
+        "footer_html 이 비어있으면 v0.2-α D안 (Chromium native footer + margin) 회귀."
+    )
 
 
 @pytest.mark.asyncio
@@ -599,6 +605,11 @@ async def test_export_pdf_landscape_calls_landscape_true(async_client: AsyncClie
     mock_render.assert_called_once()
     _args, kwargs = mock_render.call_args
     assert kwargs.get("landscape") is True
+    # v0.2-α — footer_html kwarg 가 빈 문자열이 아니어야 함 (Chromium native
+    # display_header_footer 경로 보장).
+    assert kwargs.get("footer_html"), (
+        "footer_html 이 비어있으면 v0.2-α D안 (Chromium native footer + margin) 회귀."
+    )
 
 
 @pytest.mark.asyncio
@@ -1793,9 +1804,13 @@ async def test_preview_includes_vocabulary_when_flag_true(
 
     assert resp.status_code == 200
     body = resp.text
-    # 어휘 헤딩 + word + meaning_ko + level_label 모두 포함
+    # 어휘 헤딩 + word + meaning_ko + 표 헤더 (v0.2-α: 표 형태 + 큰 박스 밖 분리).
+    # level_label 은 v0.2-γ Vocabulary schema 확장 (synonyms/antonyms/example_sentences)
+    # 진입 전까지 표 컬럼에 포함 안 됨.
     assert "어휘" in body
     assert "economy" in body
     assert "경제" in body
-    assert "수능 필수" in body
+    # 표 헤더 — v0.2-α 어휘 표 변환 확인.
+    assert "단어 (품사)" in body
+    assert "한글 뜻" in body
     mock_vocab_repo_cls.return_value.list_by_passage.assert_awaited_once_with(passage.id)
