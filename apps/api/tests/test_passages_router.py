@@ -1019,6 +1019,128 @@ async def test_augment_translation_llm_timeout_504(async_client: AsyncClient) ->
     assert resp.status_code == 504
 
 
+# ─── E1-a — PATCH /passages/{id}/translation ────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_patch_translation_updates_text_and_sets_user(
+    async_client: AsyncClient,
+) -> None:
+    """E1-a: PATCH text 호출 시 update_text(created_by=USER) 호출."""
+    saved_passage = _make_saved_passage()
+    updated = Translation(
+        id=uuid.uuid4(),
+        tenant_id=TENANT_A,
+        workspace_id=WORKSPACE_A,
+        passage_id=saved_passage.id,
+        text="사용자 수정 해석",
+        created_by=TranslationCreatedBy.USER,
+        created_at=datetime(2026, 5, 1, 0, 0, 0, tzinfo=UTC),
+        updated_at=datetime(2026, 5, 1, 0, 0, 0, tzinfo=UTC),
+    )
+
+    with (
+        patch("worksheet_api.routers.passages.PassageRepository") as mock_prepo,
+        patch("worksheet_api.routers.passages.TranslationRepository") as mock_trepo,
+    ):
+        mock_prepo.return_value.get = AsyncMock(return_value=saved_passage)
+        mock_trepo.return_value.update_text = AsyncMock(return_value=updated)
+
+        resp = await async_client.patch(
+            f"/passages/{saved_passage.id}/translation",
+            json={"text": "사용자 수정 해석"},
+        )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["text"] == "사용자 수정 해석"
+    assert body["created_by"] == "user"
+    mock_trepo.return_value.update_text.assert_awaited_once()
+    _args, kwargs = mock_trepo.return_value.update_text.call_args
+    assert kwargs.get("created_by") == TranslationCreatedBy.USER
+
+
+@pytest.mark.asyncio
+async def test_patch_translation_404_when_passage_missing(
+    async_client: AsyncClient,
+) -> None:
+    """E1-a: passage 없으면 404."""
+    with (
+        patch("worksheet_api.routers.passages.PassageRepository") as mock_prepo,
+        patch("worksheet_api.routers.passages.TranslationRepository") as mock_trepo,
+    ):
+        mock_prepo.return_value.get = AsyncMock(return_value=None)
+        mock_trepo.return_value.update_text = AsyncMock()
+
+        resp = await async_client.patch(
+            f"/passages/{uuid.uuid4()}/translation",
+            json={"text": "x"},
+        )
+
+    assert resp.status_code == 404
+    mock_trepo.return_value.update_text.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_patch_translation_404_when_translation_missing(
+    async_client: AsyncClient,
+) -> None:
+    """E1-a: passage 는 있지만 translation row 없으면 404 (먼저 POST 로 생성하라는 안내)."""
+    saved_passage = _make_saved_passage()
+
+    with (
+        patch("worksheet_api.routers.passages.PassageRepository") as mock_prepo,
+        patch("worksheet_api.routers.passages.TranslationRepository") as mock_trepo,
+    ):
+        mock_prepo.return_value.get = AsyncMock(return_value=saved_passage)
+        mock_trepo.return_value.update_text = AsyncMock(return_value=None)
+
+        resp = await async_client.patch(
+            f"/passages/{saved_passage.id}/translation",
+            json={"text": "x"},
+        )
+
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_patch_translation_422_extra_field(async_client: AsyncClient) -> None:
+    """E1-a: extra='forbid' — 정의되지 않은 필드 보내면 422."""
+    saved_passage = _make_saved_passage()
+
+    with (
+        patch("worksheet_api.routers.passages.PassageRepository") as mock_prepo,
+        patch("worksheet_api.routers.passages.TranslationRepository"),
+    ):
+        mock_prepo.return_value.get = AsyncMock(return_value=saved_passage)
+
+        resp = await async_client.patch(
+            f"/passages/{saved_passage.id}/translation",
+            json={"text": "x", "created_by": "user"},
+        )
+
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_patch_translation_422_empty_text(async_client: AsyncClient) -> None:
+    """E1-a: 빈 문자열 text 는 422 (min_length=1)."""
+    saved_passage = _make_saved_passage()
+
+    with (
+        patch("worksheet_api.routers.passages.PassageRepository") as mock_prepo,
+        patch("worksheet_api.routers.passages.TranslationRepository"),
+    ):
+        mock_prepo.return_value.get = AsyncMock(return_value=saved_passage)
+
+        resp = await async_client.patch(
+            f"/passages/{saved_passage.id}/translation",
+            json={"text": ""},
+        )
+
+    assert resp.status_code == 422
+
+
 # ─── POST /passages/{id}/vocabulary ─────────────────────────────────────────
 
 

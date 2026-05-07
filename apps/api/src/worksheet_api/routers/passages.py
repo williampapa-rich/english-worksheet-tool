@@ -61,7 +61,7 @@ from llm.errors import (
     LLMTimeoutError,
     PermanentLLMError,
 )
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from shared.schemas.extraction import ExtractionResult
@@ -537,6 +537,75 @@ async def augment_passage_translation(
             raise HTTPException(
                 status_code=500,
                 detail="Translation update 중 row 가 사라졌습니다 (race).",
+            )
+        return updated
+
+
+# ─── E1-a — PATCH /passages/{id}/translation ────────────────────────────────
+
+
+class TranslationUpdateRequest(BaseModel):
+    """PATCH /passages/{passage_id}/translation request body.
+
+    ADR-0015 Stage E1-a — 사용자가 Translation 을 인라인 편집할 때 호출.
+    `text` 만 수정 — `created_by` 는 라우터가 자동으로 ``USER`` 로 갱신
+    (ADR-0013 §사용자 검수 흐름 — `skip_if_user_edited` mode 의 1차 입력).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    text: str = Field(
+        ...,
+        min_length=1,
+        description="사용자 수정 해석 본문. 빈 문자열 불가 (삭제는 별도 정책).",
+    )
+
+
+@router.patch(
+    "/{passage_id}/translation",
+    response_model=Translation,
+    status_code=200,
+)
+async def update_passage_translation(
+    passage_id: UUID,
+    body: TranslationUpdateRequest,
+    tenant_ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> Translation:
+    """Translation 사용자 편집 (ADR-0015 Stage E1-a).
+
+    `created_by=USER` 자동 갱신 — ADR-0013 의 `skip_if_user_edited` default
+    mode 가 이 메타를 1차 입력으로 사용해 LLM 재보강 시 사용자 수정 보존.
+
+    Translation 이 존재하지 않으면 404 — POST /translation 으로 먼저 생성 필요
+    (LLM 보강 / replace mode 또는 향후 manual create 라우트).
+
+    Raises:
+        HTTPException 404: passage 없음 / cross-tenant / Translation row 없음.
+    """
+    async with session.begin():
+        passage_repo = PassageRepository(session, tenant_ctx)
+        translation_repo = TranslationRepository(session, tenant_ctx)
+
+        passage = await passage_repo.get(passage_id)
+        if passage is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Passage {passage_id} 를 찾을 수 없습니다.",
+            )
+
+        updated = await translation_repo.update_text(
+            passage_id,
+            text=body.text,
+            created_by=TranslationCreatedBy.USER,
+        )
+        if updated is None:
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    f"Passage {passage_id} 의 Translation 이 존재하지 않습니다. "
+                    "먼저 POST /passages/{id}/translation 으로 생성하세요."
+                ),
             )
         return updated
 
