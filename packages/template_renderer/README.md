@@ -7,9 +7,11 @@ Worksheet HTML 템플릿 + Jinja2 렌더 + Playwright PDF 변환 파이프라인
 - **관련 문서**:
   - `docs/template-rendering-analysis.md` (도입 분석 + PM 결정 5건)
   - `docs/adr/0008-phase-1-output-format.md` (HWPX → HTML/PDF 전환)
-  - annotation split-mark 렌더링 ADR (향후 ADR — 번호 확정 시 갱신)
-  - 향후 ADR-0011 (Worksheet HTML 템플릿 + Playwright PDF 파이프라인) — Stage 3 진입 시
-    승격
+  - `docs/adr/0010-worksheet-output-parameters.md` (Worksheet 출력 파라미터 schema)
+  - `docs/adr/0011-worksheet-html-pdf-pipeline.md` (본 패키지의 결정 사항 통합 — 사후
+    정리, 2026-05-07)
+  - annotation split-mark 렌더링 ADR (향후 ADR — 번호 확정 시 갱신, ADR-0011 §D8
+    한계 명시)
 
 ## Playwright 설치
 
