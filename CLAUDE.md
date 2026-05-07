@@ -3,9 +3,9 @@
 > 이 문서는 Claude Code CLI가 프로젝트 컨텍스트를 이해하기 위한 헌장(charter)이자, subagent들의 협업 규칙서다.
 > 변경 시 PR로 관리한다. 모든 핵심 의사결정은 여기 반영된다.
 
-**버전**: v0.8.1
+**버전**: v0.9
 **최종 갱신**: 2026-05-07
-**상태**: Phase 1 진행 중 — 구문분석 에디터 베이스 + Worksheet 출력 파이프라인 (Stage 0~2 / ADR-0011 사후 정리) 머지 완료, Phase 1 baseline 와이프 OK 대기. Phase 2 진입 (B 시리즈) 부분 진행 중 (B1 영속화 / B2 ADR-0013 + 보강 프롬프트 — PR #51 / #52 검토 대기)
+**상태**: Phase 2 진입 — B 시리즈 자동 진행 마감 (B1~B4 + ADR-0011/0013/0014 머지 완료, PR #51/52/53/54/55/56). Phase 1 baseline 와이프 OK 대기. B5 (와이프 학생 자료 v0.1 검수) 시작 신호 대기 — 검수 가이드 `docs/phase-2-wife-review-prep.md` 작성됨.
 
 ---
 
@@ -126,16 +126,45 @@ DoD 5개 모두 충족:
 **Phase 1 잔존 / follow-up**:
 - P1-8b — top/bottom label 수평 align pillow 폰트 metric 보정 (현재는 단락 indent 근사).
 - P1-8c — 화살표/곡선 PoC (좌표계 / anchor 정책).
-- annotation split-mark 정밀 렌더 ADR — Worksheet 출력의 `content_html` 정밀화 (현재 PR
-  #44 / #45 는 `<p>{escape(body_text)}</p>` 단순 wrap, 한계 명시).
 - HWPX 텍스트박스 align — §11 Open Questions 잔존.
+
+#### Phase 2 — 진입 (B 시리즈 자동 진행 마감)
+
+**머지된 베이스 (2026-05-07)**:
+- **A 시리즈 — Worksheet CRUD 라우트**:
+  - A1 (PR #48): GET /worksheets/{id} + GET /worksheets (목록).
+  - A2-a (PR #49): PATCH /worksheets/{id} (메타) + DELETE.
+  - A2-b (PR #50): POST/PATCH/DELETE /worksheets/{id}/items.
+- **B 시리즈 — LLM 보강 + 출력 통합**:
+  - B1 (PR #51): extract → Translation/Vocabulary 영속화 (옵션 A → B).
+    GET /passages/{id} 도 두 관계 함께 조회.
+  - B2 (PR #52): ADR-0013 (보강 파이프라인 설계) + 프롬프트 카탈로그 v0.1
+    (augment-translation-v0 / augment-vocabulary-v0). domain-expert 검토 high 5건 반영.
+  - B3 (PR #54): `packages/llm/augment.py` + 보강 라우트 2개 (POST /passages/{id}/translation /
+    /vocabulary). mode=skip_if_user_edited (default) / replace / skip_if_exists / append.
+  - ADR-0014 (PR #55): SyntaxAnnotation → HTML 렌더러 (hwpx_renderer 와 대칭, 변형문제
+    Phase 3 까지 재사용). `packages/template_renderer/annotation_html.py`.
+  - B4 (PR #56): Worksheet preview/PDF 컨텍스트 주입 — annotations 항상 정밀 렌더 +
+    translation/vocabulary block (include_translation/include_vocabulary flag 기반 비용 회피).
+  - ADR-0011 (PR #53): Worksheet HTML/PDF 파이프라인 사후 정리.
+
+**B5 — 와이프 v0.1 검수 (대기)**:
+검수 시나리오 + 11건 결정 항목 정리: `docs/phase-2-wife-review-prep.md`.
+- 학생 배포용 자료 1건 (playful 템플릿) PDF 생성 → 등급 (A~D) 평가.
+- ADR-0013 medium/low 6건 (해석 톤 / 영어 병기 / idiom / 문체 / 학년별 어휘 / count
+  default) + ADR-0014 시각 3건 (`<ruby>` / bottom_label / 12색 highlight 인쇄) 결정.
+- 결과에 따라 v0.2 미세 조정 PR (0~4건) 진행.
 
 #### Stage / Phase 트리거
 
-- **Phase 1 baseline 와이프 OK** → Phase 2 본격 진입 (Worksheet CRUD 라우트 + LLM 해석/어휘
-  보강 파이프라인 + 학생용 템플릿 v0.1 검수).
-- **annotation split-mark ADR** → Worksheet 출력에 에디터 산출 HTML 통합. Phase 1 baseline
-  검증 후 또는 Phase 2 진입과 묶어 진행.
+- **Phase 1 baseline 와이프 OK** → 구문분석 단독 PDF 출력 검수.
+- **B5 와이프 v0.1 검수 OK** → Phase 2 baseline 종료 → Phase 3 (변형문제) 진입 시작.
+  - 검수 결과 D 등급 → ADR-0008 채택안 A (HTML→PDF) 의 다음 단계 한계 → 별 phase 신규.
+  - C 등급 이상 → v0.2 미세 조정 PR 후 종료.
+- **Phase 3 진입 전 별 ADR**:
+  - VocabularyMaster (글로벌 dedup) — Phase 2/3 진입 전.
+  - Question / VariantQuestion 단일 테이블 vs 별 테이블 — Phase 3 진입 전.
+  - 화살표 (annotation arrow) 렌더 — 와이프 요청 트리거 시.
 
 ---
 
@@ -480,12 +509,14 @@ Phase 0를 시작할 수 있는 기반을 깔고, architect + domain-expert의 a
 - [ ] **Vocabulary 글로벌 마스터 도입 시점** — Phase 2/3 진입 전 ADR (`audit §4-3`)
 - [ ] **Question / VariantQuestion 단일 테이블 vs 별 테이블** — Phase 3 진입 전 ADR (`audit §4-5`)
 - [ ] **레퍼런스 프로그램 영상 분석** — `/Users/william/Downloads/ScreenRecording_04-24-2026 15-11-52_1.MP4` 프레임 단위 분석 → UI/기능 설계 입력. 산출물 위치: `docs/reference-program-analysis.md` (작업 #5와 병렬, Phase 1 진입 전 완료 권고)
-- [ ] **annotation split-mark 정밀 렌더 ADR** — Worksheet 출력 (`content_html`) 에 에디터
-  산출 HTML (split-mark 또는 hwpx_renderer 산출 HTML 변환) 을 안전하게 주입하는 방법.
-  현재 PR #44 / #45 는 `<p>{escape(body_text)}</p>` 단순 wrap (한계 명시). Phase 1 baseline
-  검수 후 또는 Phase 2 진입과 묶어 ADR 신규.
-- [ ] **Worksheet CRUD 라우트** — `POST /worksheets` / `PATCH /worksheets/{id}` / `DELETE`
-  / `GET /worksheets/{id}` (current: preview / export.pdf 만 존재). Phase 2 본격 진입 시점.
+- [x] **annotation split-mark 정밀 렌더 ADR** — `docs/adr/0014-annotation-html-renderer.md`
+  (Proposed, 2026-05-07). `packages/template_renderer/annotation_html.py` —
+  hwpx_renderer 와 대칭 구조. ADR-0011 D8 한계 해소. B4 (PR #56) 에서 worksheet
+  preview/PDF 통합.
+- [x] **Worksheet CRUD 라우트** — A1 (PR #48) / A2-a (PR #49) / A2-b (PR #50) 머지 완료.
+  POST /worksheets / GET /{id} / GET / PATCH /{id} / DELETE /{id} + items POST/PATCH/DELETE.
+- [x] **B 시리즈 (Phase 2 진입)** — B1~B4 + ADR-0013 + ADR-0014 머지 완료 (PR #51~56,
+  2026-05-07). B5 와이프 검수 대기 — `docs/phase-2-wife-review-prep.md`.
 - [x] **ADR-0011 사후 작성** — `docs/adr/0011-worksheet-html-pdf-pipeline.md`
   (Accepted, 2026-05-07). Worksheet HTML 템플릿 + Jinja2 + Playwright PDF
   파이프라인 결정 사항을 단일 ADR 로 통합. dangling reference (`README.md`,
@@ -509,3 +540,4 @@ Phase 0를 시작할 수 있는 기반을 깔고, architect + domain-expert의 a
 | v0.7 | 2026-05-03 | §3.5 inline_note "잠정" 표기 제거 — P1-8a (PR #14) 머지로 inline run 후보 A 채택 확정. 12색 highlight 사전 정의 / underline `#000000` 고정 명시. |
 | v0.8 | 2026-05-07 | §2.2 "현재 위치" 전면 갱신 — Phase 1 진행 중 (구문분석 에디터 베이스 + Worksheet 출력 파이프라인 Stage 0~2 머지 완료, baseline 와이프 OK 대기). user_preferences (PR #33~38), Worksheet Stage 0~2 (PR #40~45), bracket / label inline node 전환 (PR #36 / ADR-0011) 흔적 반영. §11 Open Questions 갱신: annotation split-mark 정밀 렌더 ADR / Worksheet CRUD 라우트 / ADR-0011·0012 파일 부재 / AnnotationSpan 영속화 검증 항목 추가. |
 | v0.8.1 | 2026-05-07 | (1) ADR-0011 사후 작성 (`docs/adr/0011-worksheet-html-pdf-pipeline.md`) — Worksheet HTML/PDF 파이프라인 결정 사항 통합. (2) §2.2 "구문분석 에디터" 베이스의 잘못된 ADR-0011 참조 (bracket / label inline node 전환 — v0.8 메모리 가정 오류) 제거. (3) §11 "ADR-0011 / ADR-0012 파일 부재" 항목 닫음 — ADR-0011 작성됨, ADR-0012 는 코드 어디에도 참조 없음 (B2 의 ADR-0013 으로 다음 번호 자연 사용). |
+| v0.9 | 2026-05-07 | Phase 2 진입 — B 시리즈 자동 진행 마감. (1) §2.2 Phase 2 섹션 신설 (B1~B4 + ADR-0013 + ADR-0014 머지 완료, PR #51~56). (2) Stage / Phase 트리거 갱신 (B5 와이프 검수 → Phase 3 진입 트리거 명시). (3) §11 Open Questions 갱신 — annotation split-mark ADR / Worksheet CRUD 라우트 / B 시리즈 항목 close. (4) `docs/phase-2-wife-review-prep.md` 신규 — 검수 시나리오 + 11건 결정 항목. |
