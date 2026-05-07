@@ -18,3 +18,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/template_renderer"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+markers = [
+  "integration: 실제 Playwright 브라우저 실행 필요 (Stage 2~ 도입, CI 별도 환경 필요)",
+]

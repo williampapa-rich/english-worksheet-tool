@@ -92,7 +92,7 @@ class WorksheetORM(WorkspaceScopedORMBase, table=True):
     )
     orientation: str = Field(
         default="portrait",
-        sa_column=Column(String(16), nullable=False, server_default="portrait"),
+        sa_column=Column(String(16), nullable=False, server_default="'portrait'"),
         description="WorksheetOrientation StrEnum 값 → String 저장 (ADR-0010 §D1 #2).",
     )
     instruction: str | None = Field(
@@ -143,6 +143,18 @@ class WorksheetItemORM(SQLModel, table=True):
       WorksheetItem 은 Workspace 에 직접 귀속된 엔티티가 아니라 Worksheet 의
       하위 구성 요소다. tenant_id 격리는 부모 WorksheetORM 을 통해 이뤄진다.
       Repository 에서 WorksheetORM 을 tenant_id 로 조회한 후 그 id 로 item 을 조인.
+
+    ⚠️ 멀티테넌트 격리 함정 (code-reviewer W-2):
+      ``WorksheetItemORM`` 자체는 ``tenant_id`` / ``workspace_id`` 컬럼이 없으므로
+      안전망이 없다. 직접 쿼리 시 다음을 반드시 지킨다:
+        1. ``WorksheetItemORM`` 단독 SELECT 금지 — 항상 ``WorksheetORM`` 을 거쳐
+           ``tenant_id`` 필터를 적용한 후 ``worksheet_id`` 로 조인하거나 IN 쿼리.
+        2. ``passage_id`` FK 가 있어 ``passages`` 와 직접 조인 가능하지만,
+           반드시 부모 ``WorksheetORM.tenant_id == passages.tenant_id`` 도 동시 필터.
+        3. 후속 ``WorksheetRepository`` 가 이 패턴을 강제하는 메서드(``list_items_for_worksheet``)
+           를 제공해야 함 — 외부에서 raw query 금지.
+      이 규칙은 ``packages/llm/.../passage_repo`` 등 다른 Repository 패턴과
+      차별화되는 "파생 엔티티" 케이스이며, ADR-0005 보강 항목으로 검토 중.
     """
 
     __tablename__ = "worksheet_items"
