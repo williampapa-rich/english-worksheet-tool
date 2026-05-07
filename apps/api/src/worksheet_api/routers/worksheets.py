@@ -1,6 +1,17 @@
 """Worksheet API 엔드포인트.
 
+검수 흐름 (2026-05-07~):
+  1. POST /passages/extract → passage_id 1+ 확보
+  2. POST /worksheets {items: [{passage_id, order: 0}, ...]} → worksheet_id 확보
+  3. GET /worksheets/{id}/preview?style=playful → 브라우저로 HTML 확인
+  4. POST /worksheets/{id}/export.pdf → PDF 다운로드 확인
+
 현재 라우트:
+  POST /worksheets
+    → 201 application/json (Worksheet, id 포함)
+    → 422 cross-tenant passage_id / validation error
+    → 422 passage_id 가 DB 에 없음 (IntegrityError)
+
   GET /worksheets/{id}/preview?style=playful
     → 200 text/html
     → 404 worksheet not found / cross-tenant
@@ -31,13 +42,21 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse, Response
+from pydantic import BaseModel, Field
+from sqlalchemy.exc import IntegrityError
 from sqlmodel.ext.asyncio.session import AsyncSession
 from template_renderer.adapters import worksheet_to_template_context
 from template_renderer.pdf import render_worksheet_pdf
 from template_renderer.render import render_worksheet_html
 
 from shared.schemas.passage import Passage
-from shared.schemas.worksheet import Worksheet, WorksheetOrientation
+from shared.schemas.worksheet import (
+    Branding,
+    Worksheet,
+    WorksheetItem,
+    WorksheetKind,
+    WorksheetOrientation,
+)
 from worksheet_api.db import get_db
 from worksheet_api.repositories import (
     PassageRepository,
@@ -52,6 +71,128 @@ router = APIRouter(prefix="/worksheets", tags=["worksheets"])
 
 # MVP 라우트에서 허용하는 style 값 (README §26)
 _MVP_ALLOWED_STYLES: frozenset[str] = frozenset({"playful"})
+
+
+# ─── 요청 스키마 (POST /worksheets) ─────────────────────────────────────────
+
+
+class WorksheetItemCreate(BaseModel):
+    """WorksheetItem 입력 — order/passage_id/옵션."""
+
+    passage_id: uuid.UUID
+    order: int = Field(..., ge=0, description="Worksheet 안의 노출 순서 (0-based).")
+    label: str | None = Field(
+        default=None,
+        max_length=255,
+        description="항목 라벨 (예: '관계절이 포함된 문장').",
+    )
+    include_translation: bool = False
+    include_vocabulary: bool = False
+    include_syntax_annotations: bool = False
+    include_questions: bool = False
+    include_variants: bool = False
+
+
+class WorksheetCreateRequest(BaseModel):
+    """POST /worksheets request body."""
+
+    title: str = Field(..., max_length=255, description="Worksheet 제목.")
+    subtitle: str | None = Field(default=None, max_length=255)
+    kind: WorksheetKind
+    template_id: str = Field(..., description="템플릿 식별자 (예: 'playful').")
+    orientation: WorksheetOrientation = WorksheetOrientation.PORTRAIT
+    instruction: str | None = Field(default=None, max_length=2000)
+    branding: Branding = Field(default_factory=Branding)
+    school: str | None = Field(default=None, max_length=255)
+    grade: str | None = Field(default=None, max_length=64)
+    exam_date: str | None = Field(default=None, max_length=64)
+    time_limit: str | None = Field(default=None, max_length=32)
+    items: list[WorksheetItemCreate] = Field(default_factory=list)
+
+
+# ─── POST /worksheets ────────────────────────────────────────────────────────
+
+
+@router.post("/", response_model=Worksheet, status_code=201)
+async def create_worksheet(
+    body: WorksheetCreateRequest,
+    tenant_ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> Worksheet:
+    """Worksheet 를 생성한다.
+
+    request body 의 items[].passage_id 가 모두 현재 tenant 소속인지 검증한다.
+    cross-tenant passage_id 또는 존재하지 않는 passage_id → 422.
+
+    멀티테넌트: tenant_id / workspace_id 는 TenantContext 에서 채운다.
+    request body 에서 tenant_id / workspace_id 를 받지 않아 크로스-테넌트 쓰기가
+    구조적으로 불가능하다.
+
+    Args:
+        body: WorksheetCreateRequest — 제목/kind/items 등.
+        tenant_ctx: 현재 요청의 테넌트 컨텍스트.
+        session: DB 세션.
+
+    Returns:
+        201 + 저장된 Worksheet (id + items 포함).
+
+    Raises:
+        HTTPException 422: cross-tenant passage_id / validation error /
+            존재하지 않는 passage_id (IntegrityError).
+    """
+    # 1. request → domain Worksheet (tenant_id / workspace_id 는 tenant_ctx 에서 채움)
+    domain_items = [
+        WorksheetItem(
+            passage_id=item.passage_id,
+            order=item.order,
+            label=item.label,
+            include_translation=item.include_translation,
+            include_vocabulary=item.include_vocabulary,
+            include_syntax_annotations=item.include_syntax_annotations,
+            include_questions=item.include_questions,
+            include_variants=item.include_variants,
+        )
+        for item in body.items
+    ]
+
+    worksheet = Worksheet(
+        tenant_id=tenant_ctx.tenant_id,
+        workspace_id=tenant_ctx.workspace_id,
+        title=body.title,
+        subtitle=body.subtitle,
+        kind=body.kind,
+        template_id=body.template_id,
+        orientation=body.orientation,
+        instruction=body.instruction,
+        branding=body.branding,
+        school=body.school,
+        grade=body.grade,
+        exam_date=body.exam_date,
+        time_limit=body.time_limit,
+        items=domain_items,
+    )
+
+    # 2. 영속화 (단일 트랜잭션)
+    worksheet_repo = WorksheetRepository(session, tenant_ctx)
+    try:
+        async with session.begin():
+            saved = await worksheet_repo.create_with_items(worksheet)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=str(exc),
+        ) from exc
+    except IntegrityError as exc:
+        # passage_id FK 위배 (passages.id 미존재) — 422 (보안: 다른 tenant passage 존재 노출 방지)
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "items 의 passage_id 중 하나 이상이 존재하지 않습니다. "
+                "passage_id 를 확인하세요."
+            ),
+        ) from exc
+
+    return saved
 
 
 @router.get("/{worksheet_id}/preview", response_class=HTMLResponse, status_code=200)

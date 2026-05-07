@@ -94,6 +94,13 @@ class WorksheetItem(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    id: EntityId | None = Field(
+        default=None,
+        description=(
+            "WorksheetItem ID (FK 대상). 영속화 전에는 None, Repository.create_with_items "
+            "이후 채워진다. 향후 PATCH/DELETE 라우트가 이 id 로 단건 항목을 식별한다."
+        ),
+    )
     passage_id: EntityId = Field(
         ...,
         description="참조 Passage ID (FK → passages.id).",
