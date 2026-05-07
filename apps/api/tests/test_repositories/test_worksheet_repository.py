@@ -11,6 +11,10 @@ W-2 가드 규칙 (models/worksheet.py):
 create_with_items 테스트:
   - 단위: mock session 으로 sentinel / tenant 검증 + cross-tenant passage_id 검증.
   - 통합: 실제 PostgreSQL 에 worksheet + items 영속화 확인.
+
+add_item / update_item / delete_item 테스트 (A2-b):
+  - 단위: W-2 가드 / passage_id 정책 / NOT NULL 차단 / 허용 필드 setattr.
+  - 통합: 실제 PostgreSQL 에 add → list → delete → cascade 확인.
 """
 
 from __future__ import annotations
@@ -427,6 +431,351 @@ class TestWorksheetRepositoryUnit:
 
         mock_session.exec.assert_not_called()
 
+    # ─── add_item 단위 테스트 ────────────────────────────────────────────────
+
+    @pytest.mark.asyncio
+    async def test_add_item_w2_guard_returns_none_for_foreign_tenant(self) -> None:
+        """W-2 가드: 부모 worksheet 가 없거나 cross-tenant → add_item 이 None 반환.
+
+        _get_orm() 이 None 을 반환하면 add_item 은 passage count 쿼리 없이 None 을 반환한다.
+        exec 는 _get_orm 내부에서 1회 호출되므로 총 1회.
+        """
+        from unittest.mock import MagicMock
+
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.first.return_value = None  # not found / cross-tenant
+        mock_session.exec.return_value = mock_result
+
+        repo = WorksheetRepository(mock_session, _ctx_a())
+        foreign_ws_id = uuid.UUID("ffffffff-ffff-ffff-ffff-ffffffffffff")
+        item = WorksheetItem(
+            passage_id=uuid.UUID("11112222-3333-4444-5555-666677778888"),
+            order=0,
+        )
+
+        result = await repo.add_item(foreign_ws_id, item)
+
+        assert result is None
+        # _get_orm 에서 1회 exec (worksheet 조회) — passage count 는 없어야 한다
+        assert mock_session.exec.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_add_item_cross_tenant_passage_raises(self) -> None:
+        """add_item: passage_id 가 다른 tenant 소유이면 ValueError.
+
+        COUNT IN 쿼리 결과가 0 이면 cross-tenant passage 로 간주해 ValueError.
+        exec 는 _get_orm(worksheet) 1회 + passage count 1회 = 총 2회.
+        """
+        from unittest.mock import MagicMock
+
+        mock_session = AsyncMock()
+        # 첫 번째 exec (_get_orm): worksheet 존재 반환
+        orm_mock = MagicMock()
+        orm_mock.id = uuid.UUID("11111111-1111-1111-1111-111111111111")
+        orm_mock.tenant_id = TENANT_A
+        orm_mock.workspace_id = WORKSPACE_A
+        mock_ws_result = MagicMock()
+        mock_ws_result.first.return_value = orm_mock
+
+        # 두 번째 exec (passage count): 0 반환
+        mock_count_result = MagicMock()
+        mock_count_result.one.return_value = 0
+
+        mock_session.exec.side_effect = [mock_ws_result, mock_count_result]
+
+        repo = WorksheetRepository(mock_session, _ctx_a())
+        item = WorksheetItem(
+            passage_id=uuid.UUID("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"),
+            order=0,
+        )
+
+        with pytest.raises(ValueError, match="cross-tenant passage_id|tenant"):
+            await repo.add_item(
+                uuid.UUID("11111111-1111-1111-1111-111111111111"),
+                item,
+            )
+
+        assert mock_session.exec.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_add_item_duplicate_passage_raises(self) -> None:
+        """add_item: 같은 worksheet 안에 이미 동일 passage_id 가 있으면 ValueError.
+
+        exec 순서: _get_orm(ws) 1회 → passage count 1회 → dup count 1회 = 총 3회.
+        dup count 가 1 이상이면 ValueError ("중복").
+        """
+        from unittest.mock import MagicMock
+
+        mock_session = AsyncMock()
+        passage_id = uuid.UUID("11112222-3333-4444-5555-666677778888")
+
+        orm_mock = MagicMock()
+        orm_mock.id = uuid.UUID("11111111-1111-1111-1111-111111111111")
+        orm_mock.tenant_id = TENANT_A
+        orm_mock.workspace_id = WORKSPACE_A
+        mock_ws_result = MagicMock()
+        mock_ws_result.first.return_value = orm_mock
+
+        # passage count = 1 (exists in tenant)
+        mock_passage_count = MagicMock()
+        mock_passage_count.one.return_value = 1
+
+        # dup count = 1 (already in worksheet)
+        mock_dup_count = MagicMock()
+        mock_dup_count.one.return_value = 1
+
+        mock_session.exec.side_effect = [mock_ws_result, mock_passage_count, mock_dup_count]
+
+        repo = WorksheetRepository(mock_session, _ctx_a())
+        item = WorksheetItem(passage_id=passage_id, order=0)
+
+        with pytest.raises(ValueError, match="중복"):
+            await repo.add_item(
+                uuid.UUID("11111111-1111-1111-1111-111111111111"),
+                item,
+            )
+
+    # ─── update_item 단위 테스트 ─────────────────────────────────────────────
+
+    @pytest.mark.asyncio
+    async def test_update_item_passage_id_key_raises(self) -> None:
+        """update_item: patch 에 passage_id 키 포함 → ValueError (사전 차단).
+
+        _get_orm 호출 전에 차단 — exec 0회.
+        """
+        mock_session = AsyncMock()
+        repo = WorksheetRepository(mock_session, _ctx_a())
+
+        with pytest.raises(ValueError, match="passage_id"):
+            await repo.update_item(
+                uuid.UUID("11111111-1111-1111-1111-111111111111"),
+                uuid.UUID("22222222-2222-2222-2222-222222222222"),
+                {"passage_id": str(uuid.uuid4()), "order": 1},
+            )
+
+        mock_session.exec.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_update_item_order_null_raises(self) -> None:
+        """update_item: order=None → ValueError (NOT NULL 차단 — W-1).
+
+        _get_orm 호출 전에 차단 — exec 0회.
+        """
+        mock_session = AsyncMock()
+        repo = WorksheetRepository(mock_session, _ctx_a())
+
+        with pytest.raises(ValueError, match="null 로 설정할 수 없습니다"):
+            await repo.update_item(
+                uuid.UUID("11111111-1111-1111-1111-111111111111"),
+                uuid.UUID("22222222-2222-2222-2222-222222222222"),
+                {"order": None},
+            )
+
+        mock_session.exec.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_update_item_w2_guard_returns_none(self) -> None:
+        """W-2 가드: 부모 worksheet 없거나 cross-tenant → update_item 이 None 반환.
+
+        _get_orm() 이 None 이면 item 쿼리 없이 None 반환.
+        exec 는 _get_orm 에서 1회만.
+        """
+        from unittest.mock import MagicMock
+
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.first.return_value = None
+        mock_session.exec.return_value = mock_result
+
+        repo = WorksheetRepository(mock_session, _ctx_a())
+
+        result = await repo.update_item(
+            uuid.UUID("ffffffff-ffff-ffff-ffff-ffffffffffff"),
+            uuid.UUID("22222222-2222-2222-2222-222222222222"),
+            {"order": 1},
+        )
+
+        assert result is None
+        assert mock_session.exec.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_update_item_item_not_found_returns_none(self) -> None:
+        """update_item: worksheet 존재 + item 미존재 → None 반환.
+
+        exec 순서: _get_orm(ws) 1회 → item 조회 1회 = 총 2회.
+        item 조회 결과가 None 이면 None 반환.
+        """
+        from unittest.mock import MagicMock
+
+        mock_session = AsyncMock()
+        orm_mock = MagicMock()
+        orm_mock.id = uuid.UUID("11111111-1111-1111-1111-111111111111")
+        orm_mock.tenant_id = TENANT_A
+        orm_mock.workspace_id = WORKSPACE_A
+
+        mock_ws_result = MagicMock()
+        mock_ws_result.first.return_value = orm_mock
+
+        mock_item_result = MagicMock()
+        mock_item_result.first.return_value = None  # item not found
+
+        mock_session.exec.side_effect = [mock_ws_result, mock_item_result]
+
+        repo = WorksheetRepository(mock_session, _ctx_a())
+
+        result = await repo.update_item(
+            uuid.UUID("11111111-1111-1111-1111-111111111111"),
+            uuid.UUID("99999999-9999-9999-9999-999999999999"),  # 없는 item_id
+            {"order": 2},
+        )
+
+        assert result is None
+        assert mock_session.exec.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_update_item_patches_allowed_fields_only(self) -> None:
+        """update_item: 허용 필드만 ORM 에 setattr, updated_at 갱신, flush 호출 확인."""
+        from unittest.mock import MagicMock
+
+        mock_session = AsyncMock()
+
+        ws_orm_mock = MagicMock()
+        ws_orm_mock.id = uuid.UUID("11111111-1111-1111-1111-111111111111")
+        ws_orm_mock.tenant_id = TENANT_A
+        ws_orm_mock.workspace_id = WORKSPACE_A
+        ws_orm_mock.updated_at = None
+
+        item_orm_mock = MagicMock()
+        item_orm_mock.id = uuid.UUID("22222222-2222-2222-2222-222222222222")
+        item_orm_mock.worksheet_id = ws_orm_mock.id
+        item_orm_mock.passage_id = uuid.UUID("33333333-3333-3333-3333-333333333333")
+        item_orm_mock.order = 0
+        item_orm_mock.label = "원래 라벨"
+        item_orm_mock.include_translation = False
+        item_orm_mock.include_vocabulary = False
+        item_orm_mock.include_syntax_annotations = False
+        item_orm_mock.include_questions = False
+        item_orm_mock.include_variants = False
+
+        mock_ws_result = MagicMock()
+        mock_ws_result.first.return_value = ws_orm_mock
+        mock_item_result = MagicMock()
+        mock_item_result.first.return_value = item_orm_mock
+        mock_session.exec.side_effect = [mock_ws_result, mock_item_result]
+
+        repo = WorksheetRepository(mock_session, _ctx_a())
+
+        try:
+            await repo.update_item(
+                uuid.UUID("11111111-1111-1111-1111-111111111111"),
+                uuid.UUID("22222222-2222-2222-2222-222222222222"),
+                {"label": "새 라벨", "order": 3},
+            )
+        except Exception:
+            pass  # refresh 실패 무시 — setattr/flush 호출 여부만 검증
+
+        # label, order 가 ORM 에 setattr 되어야 한다
+        assert item_orm_mock.label == "새 라벨"
+        assert item_orm_mock.order == 3
+        # updated_at 이 부모 worksheet 에 갱신되어야 한다
+        assert ws_orm_mock.updated_at is not None
+        # flush 가 호출되어야 한다
+        mock_session.flush.assert_called()
+
+    # ─── delete_item 단위 테스트 ─────────────────────────────────────────────
+
+    @pytest.mark.asyncio
+    async def test_delete_item_w2_guard_returns_false(self) -> None:
+        """W-2 가드: 부모 worksheet 없거나 cross-tenant → delete_item 이 False 반환.
+
+        _get_orm() 이 None 이면 item 쿼리 없이 False 반환. exec 1회.
+        """
+        from unittest.mock import MagicMock
+
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.first.return_value = None
+        mock_session.exec.return_value = mock_result
+
+        repo = WorksheetRepository(mock_session, _ctx_a())
+
+        result = await repo.delete_item(
+            uuid.UUID("ffffffff-ffff-ffff-ffff-ffffffffffff"),
+            uuid.UUID("22222222-2222-2222-2222-222222222222"),
+        )
+
+        assert result is False
+        assert mock_session.exec.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_delete_item_item_not_found_returns_false(self) -> None:
+        """delete_item: worksheet 존재 + item 미존재 → False 반환.
+
+        exec 순서: _get_orm(ws) 1회 → item 조회 1회 = 총 2회.
+        item 없으면 False 반환, session.delete 호출 없음.
+        """
+        from unittest.mock import MagicMock
+
+        mock_session = AsyncMock()
+        ws_orm_mock = MagicMock()
+        ws_orm_mock.id = uuid.UUID("11111111-1111-1111-1111-111111111111")
+        ws_orm_mock.tenant_id = TENANT_A
+
+        mock_ws_result = MagicMock()
+        mock_ws_result.first.return_value = ws_orm_mock
+        mock_item_result = MagicMock()
+        mock_item_result.first.return_value = None
+
+        mock_session.exec.side_effect = [mock_ws_result, mock_item_result]
+
+        repo = WorksheetRepository(mock_session, _ctx_a())
+
+        result = await repo.delete_item(
+            uuid.UUID("11111111-1111-1111-1111-111111111111"),
+            uuid.UUID("99999999-9999-9999-9999-999999999999"),
+        )
+
+        assert result is False
+        mock_session.delete.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_delete_item_calls_session_delete_and_updates_parent(self) -> None:
+        """delete_item 정상: session.delete 호출 + 부모 updated_at 갱신 + True 반환."""
+        from unittest.mock import MagicMock
+
+        mock_session = AsyncMock()
+
+        ws_orm_mock = MagicMock()
+        ws_orm_mock.id = uuid.UUID("11111111-1111-1111-1111-111111111111")
+        ws_orm_mock.tenant_id = TENANT_A
+        ws_orm_mock.workspace_id = WORKSPACE_A
+        ws_orm_mock.updated_at = None
+
+        item_orm_mock = MagicMock()
+        item_orm_mock.id = uuid.UUID("22222222-2222-2222-2222-222222222222")
+        item_orm_mock.worksheet_id = ws_orm_mock.id
+
+        mock_ws_result = MagicMock()
+        mock_ws_result.first.return_value = ws_orm_mock
+        mock_item_result = MagicMock()
+        mock_item_result.first.return_value = item_orm_mock
+        mock_session.exec.side_effect = [mock_ws_result, mock_item_result]
+        mock_session.delete = AsyncMock()
+
+        repo = WorksheetRepository(mock_session, _ctx_a())
+
+        result = await repo.delete_item(
+            uuid.UUID("11111111-1111-1111-1111-111111111111"),
+            uuid.UUID("22222222-2222-2222-2222-222222222222"),
+        )
+
+        assert result is True
+        mock_session.delete.assert_called_once_with(item_orm_mock)
+        # 부모 worksheet updated_at 이 갱신되어야 한다
+        assert ws_orm_mock.updated_at is not None
+        mock_session.flush.assert_called()
+
 
 # ─── 통합 테스트 (PostgreSQL) ─────────────────────────────────────────────────
 
@@ -753,3 +1102,163 @@ class TestWorksheetRepositoryIntegration:
         with pytest.raises(ValueError, match="cross-tenant passage_id|tenant"):
             async with pg_session.begin():
                 await repo.create_with_items(worksheet)
+
+    @pytest.mark.asyncio
+    async def test_add_item_then_list_then_delete(self, pg_session) -> None:  # type: ignore[no-untyped-def]
+        """add_item → list_items_for_worksheet → delete_item 통합 검증.
+
+        절차:
+          1. Passage INSERT (FK 충족).
+          2. Worksheet INSERT (items 없이).
+          3. add_item → 새 item 추가 → list_items_for_worksheet 로 1건 확인.
+          4. delete_item → True → list_items_for_worksheet → 0건 확인.
+        """
+        from datetime import UTC, datetime
+
+        from sqlalchemy import text as sa_text
+        from sqlmodel.ext.asyncio.session import AsyncSession
+
+        now = datetime.now(UTC)
+        passage_id = uuid.UUID("a1b2c3d4-e5f6-7890-abcd-ef1234567890")
+        ws_id = uuid.UUID("b1c2d3e4-f5a6-7890-bcde-f12345678901")
+
+        # Passage INSERT
+        async with AsyncSession(pg_session.bind) as ins:
+            async with ins.begin():
+                await ins.execute(
+                    sa_text(
+                        "INSERT INTO passages "
+                        "(id, tenant_id, workspace_id, body_text, word_count, target_grade, "
+                        " paragraphs, topic_tags, created_at, updated_at) "
+                        "VALUES (:id, :tenant_id, :workspace_id, :body_text, :word_count, "
+                        "        :target_grade, :paragraphs::jsonb, :topic_tags::jsonb, :now, :now) "
+                        "ON CONFLICT (id) DO NOTHING"
+                    ),
+                    {
+                        "id": str(passage_id),
+                        "tenant_id": str(TENANT_A),
+                        "workspace_id": str(WORKSPACE_A),
+                        "body_text": "Integration add_item test.",
+                        "word_count": 4,
+                        "target_grade": "high_3",
+                        "paragraphs": '["Integration add_item test."]',
+                        "topic_tags": "[]",
+                        "now": now,
+                    },
+                )
+                # Worksheet INSERT (items 없이)
+                await ins.execute(
+                    sa_text(
+                        "INSERT INTO worksheets "
+                        "(id, tenant_id, workspace_id, title, kind, template_id, orientation, created_at, updated_at) "
+                        "VALUES (:id, :tenant_id, :workspace_id, :title, :kind, :template_id, :orientation, :now, :now) "
+                        "ON CONFLICT (id) DO NOTHING"
+                    ),
+                    {
+                        "id": str(ws_id),
+                        "tenant_id": str(TENANT_A),
+                        "workspace_id": str(WORKSPACE_A),
+                        "title": "items CRUD 통합 테스트",
+                        "kind": "student",
+                        "template_id": "playful",
+                        "orientation": "portrait",
+                        "now": now,
+                    },
+                )
+
+        repo = WorksheetRepository(pg_session, _ctx_a())
+
+        # add_item
+        item = WorksheetItem(passage_id=passage_id, order=0, label="통합 테스트 항목")
+        async with pg_session.begin():
+            saved_item = await repo.add_item(ws_id, item)
+
+        assert saved_item is not None
+        assert saved_item.id is not None
+        assert saved_item.passage_id == passage_id
+        assert saved_item.order == 0
+        assert saved_item.label == "통합 테스트 항목"
+
+        # list_items_for_worksheet → 1건
+        items_orm = await repo.list_items_for_worksheet(ws_id)
+        assert len(items_orm) == 1
+        assert items_orm[0].id == saved_item.id
+
+        # delete_item → True
+        async with pg_session.begin():
+            deleted = await repo.delete_item(ws_id, saved_item.id)
+
+        assert deleted is True
+
+        # list_items_for_worksheet → 0건
+        items_orm_after = await repo.list_items_for_worksheet(ws_id)
+        assert items_orm_after == []
+
+    @pytest.mark.asyncio
+    async def test_add_item_cross_tenant_rejected(self, pg_session) -> None:  # type: ignore[no-untyped-def]
+        """add_item: 다른 tenant 소속 passage_id → ValueError.
+
+        절차:
+          1. tenant B 소속 Passage + tenant A Worksheet INSERT.
+          2. tenant A context 로 add_item — passage_id 가 tenant B 소속.
+          3. ValueError 발생 확인.
+        """
+        from datetime import UTC, datetime
+
+        from sqlalchemy import text as sa_text
+        from sqlmodel.ext.asyncio.session import AsyncSession
+
+        now = datetime.now(UTC)
+        foreign_passage_id = uuid.UUID("c1d2e3f4-a5b6-7890-cdef-123456789012")
+        ws_id = uuid.UUID("d1e2f3a4-b5c6-7890-def0-234567890123")
+
+        async with AsyncSession(pg_session.bind) as ins:
+            async with ins.begin():
+                # tenant B passage
+                await ins.execute(
+                    sa_text(
+                        "INSERT INTO passages "
+                        "(id, tenant_id, workspace_id, body_text, word_count, target_grade, "
+                        " paragraphs, topic_tags, created_at, updated_at) "
+                        "VALUES (:id, :tenant_id, :workspace_id, :body_text, :word_count, "
+                        "        :target_grade, :paragraphs::jsonb, :topic_tags::jsonb, :now, :now) "
+                        "ON CONFLICT (id) DO NOTHING"
+                    ),
+                    {
+                        "id": str(foreign_passage_id),
+                        "tenant_id": str(TENANT_B),
+                        "workspace_id": str(WORKSPACE_B),
+                        "body_text": "Cross-tenant passage.",
+                        "word_count": 2,
+                        "target_grade": "high_3",
+                        "paragraphs": '["Cross-tenant passage."]',
+                        "topic_tags": "[]",
+                        "now": now,
+                    },
+                )
+                # tenant A worksheet
+                await ins.execute(
+                    sa_text(
+                        "INSERT INTO worksheets "
+                        "(id, tenant_id, workspace_id, title, kind, template_id, orientation, created_at, updated_at) "
+                        "VALUES (:id, :tenant_id, :workspace_id, :title, :kind, :template_id, :orientation, :now, :now) "
+                        "ON CONFLICT (id) DO NOTHING"
+                    ),
+                    {
+                        "id": str(ws_id),
+                        "tenant_id": str(TENANT_A),
+                        "workspace_id": str(WORKSPACE_A),
+                        "title": "cross-tenant add_item 테스트",
+                        "kind": "student",
+                        "template_id": "playful",
+                        "orientation": "portrait",
+                        "now": now,
+                    },
+                )
+
+        repo = WorksheetRepository(pg_session, _ctx_a())
+        item = WorksheetItem(passage_id=foreign_passage_id, order=0)
+
+        with pytest.raises(ValueError, match="cross-tenant passage_id|tenant"):
+            async with pg_session.begin():
+                await repo.add_item(ws_id, item)

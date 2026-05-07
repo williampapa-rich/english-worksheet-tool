@@ -8,6 +8,8 @@ ADR-0005 §D-5.1 boilerplate 패턴.
     반드시 ``WorksheetORM`` 을 통해 tenant_id 를 검증한 후 worksheet_id 로 item 을 조회한다.
   - ``list_items_for_worksheet()`` 가 이 패턴을 강제 — 외부에서 raw WorksheetItemORM
     SELECT 를 허용하지 않는다.
+  - ``add_item()`` / ``update_item()`` / ``delete_item()`` 도 W-2 가드를 동일하게 적용한다
+    (A2-b — POST/PATCH/DELETE /worksheets/{id}/items/... 라우트 지원).
 """
 
 from __future__ import annotations
@@ -37,6 +39,18 @@ _ALLOWED_META_FIELDS: frozenset[str] = frozenset({
 _NONNULL_META_FIELDS: frozenset[str] = frozenset({
     "title", "kind", "template_id", "orientation",
 })
+
+# update_item 허용 필드 (A2-b — passage_id 는 의도적으로 제외).
+# passage_id 변경은 DELETE + POST 사용 정책 (WorksheetItemUpdateRequest 과 동기화).
+_ALLOWED_ITEM_FIELDS: frozenset[str] = frozenset({
+    "order", "label",
+    "include_translation", "include_vocabulary",
+    "include_syntax_annotations", "include_questions", "include_variants",
+})
+
+# WorksheetItemORM 에서 nullable=False 인 item 필드 (W-1 — null patch 차단 대상).
+# WorksheetItemORM.order 는 Integer nullable=False — null 시도 시 IntegrityError 500 회피.
+_NONNULL_ITEM_FIELDS: frozenset[str] = frozenset({"order"})
 
 
 class WorksheetRepository(BaseRepository[WorksheetORM, Worksheet]):
@@ -352,6 +366,227 @@ class WorksheetRepository(BaseRepository[WorksheetORM, Worksheet]):
         return result.first()
 
     # ─── items 조회 ──────────────────────────────────────────────────────────
+
+    # ─── items CRUD (A2-b) ──────────────────────────────────────────────────
+
+    async def add_item(
+        self,
+        worksheet_id: uuid.UUID,
+        item: WorksheetItem,
+    ) -> WorksheetItem | None:
+        """WorksheetItem 1개를 기존 Worksheet 에 추가한다.
+
+        W-2 가드: 부모 WorksheetORM tenant 검증 → 없으면 None 반환 (404 결정은 caller).
+        passage_id cross-tenant 검증: create_with_items 와 동일 패턴 (COUNT IN 쿼리).
+        중복 passage_id 검증: 이미 같은 worksheet 안에 같은 passage_id 가 있으면 ValueError.
+        추가 후 부모 worksheet.updated_at 갱신 (R-2 (a) 일관).
+
+        호출 전제: 호출자가 ``async with session.begin():`` 컨텍스트 안에 있어야 한다.
+
+        Args:
+            worksheet_id: item 을 추가할 Worksheet UUID.
+            item: 추가할 WorksheetItem (id 는 None 이어도 됨 — ORM 이 생성).
+
+        Returns:
+            id 가 채워진 WorksheetItem.
+            worksheet_id 가 없거나 cross-tenant 이면 None.
+
+        Raises:
+            ValueError: cross-tenant passage_id 또는 같은 worksheet 안에 passage_id 중복.
+        """
+        # 1. W-2 가드 — 부모 worksheet tenant 검증 (부모 없으면 None)
+        parent_orm = await self._get_orm(worksheet_id)
+        if parent_orm is None:
+            return None
+
+        # 2. passage_id cross-tenant 검증 (create_with_items §3 동일 패턴)
+        count_stmt = (
+            select(func.count())
+            .select_from(PassageORM)
+            .where(PassageORM.id == item.passage_id)  # type: ignore[attr-defined]
+            .where(PassageORM.tenant_id == self._tenant_ctx.tenant_id)
+        )
+        count_result = await self._session.exec(count_stmt)
+        count = count_result.one()
+        if count == 0:
+            raise ValueError(
+                f"passage_id({item.passage_id}) 가 현재 tenant({self._tenant_ctx.tenant_id}) "
+                "소유가 아니거나 존재하지 않습니다. cross-tenant passage_id 또는 삭제된 passage."
+            )
+
+        # 3. 중복 passage_id 검증 — 같은 worksheet 안에 이미 동일 passage_id 가 있으면 차단
+        dup_stmt = (
+            select(func.count())
+            .select_from(WorksheetItemORM)
+            .where(WorksheetItemORM.worksheet_id == worksheet_id)
+            .where(WorksheetItemORM.passage_id == item.passage_id)  # type: ignore[attr-defined]
+        )
+        dup_result = await self._session.exec(dup_stmt)
+        dup_count = dup_result.one()
+        if dup_count > 0:
+            raise ValueError(
+                f"같은 worksheet 안에 동일 passage_id({item.passage_id}) 중복. "
+                "다른 passage_id 를 사용하거나 기존 item 을 먼저 삭제하세요."
+            )
+
+        # 4. WorksheetItemORM insert
+        item_orm = WorksheetItemORM(
+            worksheet_id=worksheet_id,
+            passage_id=item.passage_id,
+            order=item.order,
+            label=item.label,
+            include_translation=item.include_translation,
+            include_vocabulary=item.include_vocabulary,
+            include_syntax_annotations=item.include_syntax_annotations,
+            include_questions=item.include_questions,
+            include_variants=item.include_variants,
+        )
+        # add_item + parent updated_at 갱신을 단일 flush 로 묶음 (W-1 일관성).
+        # item id 확보를 위해 refresh 가 필요하므로, parent 변경을 add_item flush 전에 설정.
+        self._session.add(item_orm)
+        parent_orm.updated_at = _utc_now()
+        await self._session.flush()
+        await self._session.refresh(item_orm)
+
+        return WorksheetItem(
+            id=item_orm.id,
+            passage_id=item_orm.passage_id,
+            order=item_orm.order,
+            label=item_orm.label,
+            include_translation=item_orm.include_translation,
+            include_vocabulary=item_orm.include_vocabulary,
+            include_syntax_annotations=item_orm.include_syntax_annotations,
+            include_questions=item_orm.include_questions,
+            include_variants=item_orm.include_variants,
+        )
+
+    async def update_item(
+        self,
+        worksheet_id: uuid.UUID,
+        item_id: uuid.UUID,
+        patch: dict[str, Any],
+    ) -> WorksheetItem | None:
+        """WorksheetItem 의 허용 필드를 부분 수정한다.
+
+        W-2 가드: 부모 WorksheetORM tenant 검증 → 없으면 None 반환.
+        item 조회: worksheet_id + item_id 동시 매칭 (item 단독 SELECT 금지 — W-2 가드).
+        passage_id 변경 금지: patch 에 passage_id 키 포함 시 ValueError.
+        NOT NULL 필드 null 차단: order=None 시도 → ValueError.
+        부모 worksheet updated_at 갱신 (R-2 (a)).
+
+        호출 전제: 호출자가 ``async with session.begin():`` 컨텍스트 안에 있어야 한다.
+
+        Args:
+            worksheet_id: 부모 Worksheet UUID.
+            item_id: 수정할 WorksheetItem UUID.
+            patch: 수정할 필드 dict (model_dump(exclude_unset=True) 로 set 된 필드만).
+
+        Returns:
+            업데이트된 WorksheetItem.
+            worksheet_id / item_id 가 없거나 cross-tenant 이면 None.
+
+        Raises:
+            ValueError: passage_id 키 포함 (변경 금지) 또는 NOT NULL 필드에 None 시도.
+        """
+        # 1. passage_id 변경 금지 (사전 차단 — _get_orm 호출 전)
+        if "passage_id" in patch:
+            raise ValueError(
+                "passage_id 는 변경할 수 없습니다. "
+                "passage 를 교체하려면 item 을 DELETE 후 POST 로 새 item 을 추가하세요."
+            )
+
+        # 2. NOT NULL item 필드 null 차단 (W-1 — _get_orm 호출 전)
+        for field in _NONNULL_ITEM_FIELDS:
+            if field in patch and patch[field] is None:
+                raise ValueError(
+                    f"'{field}' 필드는 null 로 설정할 수 없습니다 (NOT NULL item 필드). "
+                    "변경하지 않으려면 요청 body 에서 키를 제외하세요."
+                )
+
+        # 3. W-2 가드 — 부모 worksheet tenant 검증
+        parent_orm = await self._get_orm(worksheet_id)
+        if parent_orm is None:
+            return None
+
+        # 4. item 조회 (worksheet_id + item_id 동시 매칭 — W-2 가드)
+        item_stmt = (
+            select(WorksheetItemORM)
+            .where(WorksheetItemORM.worksheet_id == worksheet_id)
+            .where(WorksheetItemORM.id == item_id)
+        )
+        item_result = await self._session.exec(item_stmt)
+        item_orm = item_result.first()
+        if item_orm is None:
+            return None
+
+        # 5. 허용 필드 패치 (passage_id 는 _ALLOWED_ITEM_FIELDS 에 없으므로 자동 제외)
+        for field, value in patch.items():
+            if field not in _ALLOWED_ITEM_FIELDS:
+                continue
+            setattr(item_orm, field, value)
+
+        # 6. 부모 worksheet updated_at 갱신 (R-2 (a))
+        parent_orm.updated_at = _utc_now()
+
+        # 7. flush + refresh → 최신 DB 상태 반영
+        await self._session.flush()
+        await self._session.refresh(item_orm)
+
+        return WorksheetItem(
+            id=item_orm.id,
+            passage_id=item_orm.passage_id,
+            order=item_orm.order,
+            label=item_orm.label,
+            include_translation=item_orm.include_translation,
+            include_vocabulary=item_orm.include_vocabulary,
+            include_syntax_annotations=item_orm.include_syntax_annotations,
+            include_questions=item_orm.include_questions,
+            include_variants=item_orm.include_variants,
+        )
+
+    async def delete_item(
+        self,
+        worksheet_id: uuid.UUID,
+        item_id: uuid.UUID,
+    ) -> bool:
+        """WorksheetItem 1개를 삭제한다.
+
+        W-2 가드: 부모 WorksheetORM tenant 검증 → 없으면 False 반환 (404).
+        item 조회: worksheet_id + item_id 동시 매칭.
+        부모 worksheet updated_at 갱신 (R-2 (a)).
+
+        호출 전제: 호출자가 ``async with session.begin():`` 컨텍스트 안에 있어야 한다.
+
+        Args:
+            worksheet_id: 부모 Worksheet UUID.
+            item_id: 삭제할 WorksheetItem UUID.
+
+        Returns:
+            True (성공). worksheet_id / item_id 가 없거나 cross-tenant 이면 False.
+        """
+        # 1. W-2 가드 — 부모 worksheet tenant 검증
+        parent_orm = await self._get_orm(worksheet_id)
+        if parent_orm is None:
+            return False
+
+        # 2. item 조회 (worksheet_id + item_id 동시 매칭)
+        item_stmt = (
+            select(WorksheetItemORM)
+            .where(WorksheetItemORM.worksheet_id == worksheet_id)
+            .where(WorksheetItemORM.id == item_id)
+        )
+        item_result = await self._session.exec(item_stmt)
+        item_orm = item_result.first()
+        if item_orm is None:
+            return False
+
+        # 3. 삭제
+        # delete_item + parent updated_at 갱신을 단일 flush 로 묶음 (W-1 일관성).
+        await self._session.delete(item_orm)
+        parent_orm.updated_at = _utc_now()
+        await self._session.flush()
+
+        return True
 
     async def list_items_for_worksheet(
         self,
