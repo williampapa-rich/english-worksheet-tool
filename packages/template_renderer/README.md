@@ -104,34 +104,29 @@ schema 마이그레이션 + 어댑터로 해소.
 | `questions[].label` | ❌ | `WorksheetItem.label` 신규 |
 | `student.*` | ❌ | **도입 안 함** (PM 결정 #5) |
 
-## PDF 렌더 (Stage 2 — 미구현)
+## PDF 렌더 (Stage 2 — 완료)
 
-Playwright (headless Chromium) 채택 (PM 결정 #2). Stage 2 시작 시 `pyproject.toml` +
-렌더 함수 추가.
+Playwright (headless Chromium) 채택 (PM 결정 #2). 구현은
+`template_renderer.pdf.render_worksheet_pdf()` 참조.
 
 ```python
-from playwright.async_api import async_playwright
+from template_renderer.pdf import render_worksheet_pdf
 
-async def render_pdf(html: str, output_path: str, landscape: bool = False) -> None:
-    async with async_playwright() as p:
-        browser = await p.chromium.launch()
-        page = await browser.new_page()
-        await page.set_content(html, wait_until="networkidle")
-        await page.pdf(
-            path=output_path,
-            format="A4",
-            landscape=landscape,
-            print_background=True,
-            margin={"top": "0", "right": "0", "bottom": "0", "left": "0"},
-        )
-        await browser.close()
+pdf_bytes: bytes = await render_worksheet_pdf(
+    html,
+    landscape=False,        # worksheet.orientation 기반
+    print_background=True,  # 컬러 배너 보존
+)
 ```
 
-**주의**:
+**설계 주의**:
 - `@page size` 와 `landscape` 파라미터가 일치해야 함 (둘 다 `worksheet.orientation`
-  한 값에서 파생).
+  한 값에서 파생) — 라우터에서 일관 전달.
 - `print_background=True` 가 빠지면 playful 의 컬러 배너가 PDF 에서 사라짐.
-- `margin` 모두 0 — `.page` 요소가 자체 패딩 (20mm) 을 가지므로 이중 들여쓰기 회피.
+- 템플릿의 `@page { margin: 0 }` 정의를 그대로 사용 — `.page` 요소가 자체 패딩
+  (20mm) 을 가지므로 이중 들여쓰기 회피. `prefer_css_page_size=True` 로 CSS 우선.
+- 매 호출마다 Chromium launch — Stage 2 PoC 단계의 의도적 단순화. 운영 단계의
+  process-wide pool 도입은 별도 ADR 에서 다룬다.
 
 ## 폰트 / CDN 정책 (PM 결정 #3)
 
