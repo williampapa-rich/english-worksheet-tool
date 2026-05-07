@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 import worksheet_api.models  # noqa: F401  # Alembic autogenerate용 모델 메타데이터 등록
 from worksheet_api.config import get_settings
-from worksheet_api.routers import annotations, health, passages, preferences
+from worksheet_api.routers import annotations, health, passages, preferences, worksheets
 
 
 # FastAPI 앱 인스턴스
@@ -39,6 +39,7 @@ def create_app() -> FastAPI:
     application.include_router(passages.router)
     application.include_router(annotations.router)
     application.include_router(preferences.router)
+    application.include_router(worksheets.router)
     return application
 
 

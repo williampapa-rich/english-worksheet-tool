@@ -21,6 +21,7 @@ from worksheet_api.repositories.tenant_context import TenantContext, get_tenant_
 from worksheet_api.repositories.translation import TranslationRepository
 from worksheet_api.repositories.user_preference import ConflictError, UserPreferenceRepository
 from worksheet_api.repositories.vocabulary import VocabularyRepository
+from worksheet_api.repositories.worksheet import WorksheetRepository
 
 __all__ = [
     "BaseRepository",
@@ -34,4 +35,5 @@ __all__ = [
     "LlmUsageLogRepository",
     "UserPreferenceRepository",
     "ConflictError",
+    "WorksheetRepository",
 ]
