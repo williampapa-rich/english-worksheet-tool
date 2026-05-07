@@ -937,3 +937,84 @@ async def delete_passage_vocabulary(
                 detail="Vocabulary delete 중 row 가 사라졌습니다 (race).",
             )
         return Response(status_code=204)
+
+
+# ─── E1-e — PATCH /passages/{id} (body 수정 + annotation 강제 삭제) ─────────
+
+
+class PassageBodyUpdateRequest(BaseModel):
+    """PATCH /passages/{passage_id} request body.
+
+    ADR-0015 Stage E1-e — 사용자가 본문 텍스트 + paragraph 분할 직접 수정.
+    body_text / paragraphs 를 *동시에* 받아 정합 보장 (paragraphs 가 body_text
+    의 분할 형태여야 함 — 검증은 클라이언트 책임).
+
+    D4 (b) 채택 — Passage 메타 (`body_user_edited` 등) 추가 없음. UI 가
+    PATCH 만 허용하므로 LLM 덮어쓰기 위험 없음.
+
+    **annotation 처리**: body_text 변경 시 character offset 이 깨져 기존
+    SyntaxAnnotation 이 무효화 — 라우터가 동일 트랜잭션에서 annotation 전체
+    삭제. 클라이언트는 body 수정 후 annotation 을 다시 만들어야 함 (Phase 1
+    에디터 모드와 분리, ADR-0015 §Stage E3 명시).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    body_text: str = Field(..., min_length=1, description="새 본문 텍스트.")
+    paragraphs: list[str] = Field(
+        default_factory=list,
+        description=(
+            "새 paragraph 분할. 빈 리스트는 body_text 를 단일 paragraph 로 본다는 "
+            "의도. 클라이언트는 paragraphs 가 body_text 의 분할 형태인지 검증."
+        ),
+    )
+
+
+@router.patch(
+    "/{passage_id}",
+    response_model=Passage,
+    status_code=200,
+)
+async def update_passage_body(
+    passage_id: UUID,
+    body: PassageBodyUpdateRequest,
+    tenant_ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> Passage:
+    """Passage body_text + paragraphs 사용자 편집 (ADR-0015 Stage E1-e).
+
+    body_text 변경은 character offset 무효화 → 동일 트랜잭션에서 기존
+    SyntaxAnnotation 전체 삭제 (`SyntaxAnnotationRepository.replace_all` 빈
+    리스트 호출). 정밀 offset 재계산 보존은 별 ADR (Phase 3 진입 시 검토).
+
+    Raises:
+        HTTPException 404: passage 없음 / cross-tenant.
+        HTTPException 422: body_text 빈 문자열 / extra field.
+    """
+    async with session.begin():
+        passage_repo = PassageRepository(session, tenant_ctx)
+        annotation_repo = SyntaxAnnotationRepository(session, tenant_ctx)
+
+        existing = await passage_repo.get(passage_id)
+        if existing is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Passage {passage_id} 를 찾을 수 없습니다.",
+            )
+
+        # 1. annotation 전체 삭제 (offset 깨짐 회피).
+        await annotation_repo.replace_all(passage_id, [])
+
+        # 2. body 갱신.
+        updated = await passage_repo.update_body(
+            passage_id,
+            body_text=body.body_text,
+            paragraphs=body.paragraphs,
+        )
+        if updated is None:
+            # race
+            raise HTTPException(
+                status_code=500,
+                detail="Passage update 중 row 가 사라졌습니다 (race).",
+            )
+        return updated

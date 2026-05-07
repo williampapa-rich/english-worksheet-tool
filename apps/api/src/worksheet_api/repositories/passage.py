@@ -83,3 +83,52 @@ class PassageRepository(BaseRepository[PassageORM, Passage]):
             Passage 인스턴스 또는 None.
         """
         return await self.get(passage_id)
+
+    async def update_body(
+        self,
+        passage_id: uuid.UUID,
+        *,
+        body_text: str,
+        paragraphs: list[str],
+    ) -> Passage | None:
+        """Passage 의 body_text + paragraphs in-place 갱신 (E1-e).
+
+        ADR-0015 D4 (b) 채택 — Passage 자체에 ``user_edited`` 메타 추가하지 않음.
+        UI 가 PATCH 만 허용하므로 LLM 덮어쓰기 충돌 위험 없음.
+
+        body_text 변경 시 character offset 이 깨져 기존 SyntaxAnnotation 이
+        무효화 — 라우터에서 annotation 전체 삭제 후 본 메서드 호출 (또는 동일
+        트랜잭션 안에서 처리).
+
+        Args:
+            passage_id: 갱신 대상 Passage UUID.
+            body_text: 새 본문 텍스트.
+            paragraphs: 새 paragraph 분할 (빈 리스트 가능 — body_text 단일 paragraph
+                의도).
+
+        Returns:
+            갱신된 Passage 인스턴스. id 가 없거나 다른 tenant 면 None.
+        """
+        from sqlmodel import select
+
+        from shared.schemas.common import utc_now
+
+        stmt = (
+            select(self._orm_class)
+            .where(self._orm_class.id == passage_id)
+            .where(self._orm_class.tenant_id == self._tenant_ctx.tenant_id)
+            .where(self._orm_class.workspace_id == self._tenant_ctx.workspace_id)
+        )
+        result = await self._session.exec(stmt)
+        orm = result.first()
+        if orm is None:
+            return None
+        orm.body_text = body_text
+        orm.paragraphs = list(paragraphs)
+        # word_count 자동 재계산 (Passage schema 정합 — 사용자가 수정한 본문 기준)
+        orm.word_count = len(body_text.split())
+        orm.updated_at = utc_now()
+        self._session.add(orm)
+        await self._session.flush()
+        await self._session.refresh(orm)
+        return self._to_domain(orm)

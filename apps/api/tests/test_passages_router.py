@@ -1687,3 +1687,132 @@ async def test_delete_vocabulary_404_cross_passage(async_client: AsyncClient) ->
 
     assert resp.status_code == 404
     mock_vrepo.return_value.delete_by_id.assert_not_awaited()
+
+
+# ─── E1-e — PATCH /passages/{id} (body + paragraphs + annotation 삭제) ──────
+
+
+@pytest.mark.asyncio
+async def test_patch_passage_updates_body_and_clears_annotations(
+    async_client: AsyncClient,
+) -> None:
+    """E1-e: body_text + paragraphs 수정 + annotation 전체 삭제."""
+    saved_passage = _make_saved_passage()
+    updated_passage = saved_passage.model_copy(
+        update={
+            "body_text": "New body.",
+            "paragraphs": ["New body."],
+            "word_count": 2,
+        }
+    )
+
+    with (
+        patch("worksheet_api.routers.passages.PassageRepository") as mock_prepo,
+        patch(
+            "worksheet_api.routers.passages.SyntaxAnnotationRepository"
+        ) as mock_annrepo,
+    ):
+        mock_prepo.return_value.get = AsyncMock(return_value=saved_passage)
+        mock_prepo.return_value.update_body = AsyncMock(return_value=updated_passage)
+        mock_annrepo.return_value.replace_all = AsyncMock(return_value=[])
+
+        resp = await async_client.patch(
+            f"/passages/{saved_passage.id}",
+            json={
+                "body_text": "New body.",
+                "paragraphs": ["New body."],
+            },
+        )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["body_text"] == "New body."
+    assert body["paragraphs"] == ["New body."]
+    # annotation replace_all 빈 리스트 호출 검증
+    mock_annrepo.return_value.replace_all.assert_awaited_once_with(
+        saved_passage.id, []
+    )
+    mock_prepo.return_value.update_body.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_patch_passage_404_when_missing(async_client: AsyncClient) -> None:
+    """E1-e: passage 없으면 404 + annotation 삭제 호출 안 됨."""
+    with (
+        patch("worksheet_api.routers.passages.PassageRepository") as mock_prepo,
+        patch(
+            "worksheet_api.routers.passages.SyntaxAnnotationRepository"
+        ) as mock_annrepo,
+    ):
+        mock_prepo.return_value.get = AsyncMock(return_value=None)
+        mock_annrepo.return_value.replace_all = AsyncMock()
+        mock_prepo.return_value.update_body = AsyncMock()
+
+        resp = await async_client.patch(
+            f"/passages/{uuid.uuid4()}",
+            json={"body_text": "x", "paragraphs": []},
+        )
+
+    assert resp.status_code == 404
+    mock_annrepo.return_value.replace_all.assert_not_awaited()
+    mock_prepo.return_value.update_body.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_patch_passage_422_empty_body(async_client: AsyncClient) -> None:
+    """E1-e: body_text 빈 문자열 → 422 (min_length=1)."""
+    saved_passage = _make_saved_passage()
+
+    with patch("worksheet_api.routers.passages.PassageRepository"):
+        resp = await async_client.patch(
+            f"/passages/{saved_passage.id}",
+            json={"body_text": "", "paragraphs": []},
+        )
+
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_patch_passage_422_extra_field(async_client: AsyncClient) -> None:
+    """E1-e: extra='forbid' — 정의되지 않은 필드 422."""
+    saved_passage = _make_saved_passage()
+
+    with patch("worksheet_api.routers.passages.PassageRepository"):
+        resp = await async_client.patch(
+            f"/passages/{saved_passage.id}",
+            json={
+                "body_text": "x",
+                "paragraphs": [],
+                "title": "should not exist",
+            },
+        )
+
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_patch_passage_paragraphs_optional_default_empty(
+    async_client: AsyncClient,
+) -> None:
+    """E1-e: paragraphs 누락 시 default 빈 리스트 → 200."""
+    saved_passage = _make_saved_passage()
+    updated_passage = saved_passage.model_copy(
+        update={"body_text": "x", "paragraphs": [], "word_count": 1}
+    )
+
+    with (
+        patch("worksheet_api.routers.passages.PassageRepository") as mock_prepo,
+        patch(
+            "worksheet_api.routers.passages.SyntaxAnnotationRepository"
+        ) as mock_annrepo,
+    ):
+        mock_prepo.return_value.get = AsyncMock(return_value=saved_passage)
+        mock_prepo.return_value.update_body = AsyncMock(return_value=updated_passage)
+        mock_annrepo.return_value.replace_all = AsyncMock(return_value=[])
+
+        resp = await async_client.patch(
+            f"/passages/{saved_passage.id}",
+            json={"body_text": "x"},
+        )
+
+    assert resp.status_code == 200
