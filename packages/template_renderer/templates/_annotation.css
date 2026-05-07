@@ -1,0 +1,113 @@
+/* ADR-0014 D2 — SyntaxAnnotation HTML 출력의 시각 표현.
+ *
+ * 3 템플릿 (classic / modern / playful) 이 모두 import 한다.
+ * `--theme` / `--ink` / `--muted` 등 ADR-0011 D10 의 CSS 변수와 호환.
+ *
+ * 매핑 single-source-of-truth: docs/annotation-hwpx-mapping.md
+ * 변경 시 hwpx_renderer / annotation_html.py / 본 파일 동시 갱신.
+ */
+
+/* ─── 본문 wrap ─────────────────────────────────────────────────────────── */
+
+.annot-passage {
+  /* 본문 paragraph — 템플릿이 정의한 폰트 / 행간 그대로 상속. 추가 스타일 없음. */
+}
+
+/* ─── highlight (12색) ──────────────────────────────────────────────────── */
+
+/* color_index 1~12. hwpx_renderer 의 charPr id 4~15 와 대칭.
+ * 색상은 docs/annotation-hwpx-mapping.md §2-1 의 12색 사전 정의.
+ * 본문 폰트 위에 배경색만 — 텍스트는 그대로. */
+
+.annot-highlight {
+  /* 공통 — 폰트 / 색상 / 행간 그대로. 배경만 변경. */
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.annot-highlight--1 { background-color: #ffeb3b; }
+.annot-highlight--2 { background-color: #ffc107; }
+.annot-highlight--3 { background-color: #ff9800; }
+.annot-highlight--4 { background-color: #ff5722; }
+.annot-highlight--5 { background-color: #f44336; }
+.annot-highlight--6 { background-color: #e91e63; }
+.annot-highlight--7 { background-color: #9c27b0; }
+.annot-highlight--8 { background-color: #673ab7; }
+.annot-highlight--9 { background-color: #3f51b5; }
+.annot-highlight--10 { background-color: #2196f3; }
+.annot-highlight--11 { background-color: #4caf50; }
+.annot-highlight--12 { background-color: #cddc39; }
+
+/* ─── underline (단일 색상) ────────────────────────────────────────────── */
+
+.annot-underline {
+  text-decoration: underline;
+  text-decoration-color: #000000;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+/* ─── inline_note (작은 폰트 메모) ────────────────────────────────────── */
+
+.annot-inline-note {
+  /* 본문 자체는 그대로, 옆에 작은 sup 메모 */
+  position: relative;
+}
+
+.annot-inline-note__text {
+  font-size: 0.65em;
+  color: var(--muted, #666);
+  font-weight: normal;
+  margin-left: 2px;
+  vertical-align: baseline;
+  line-height: 1;
+}
+
+/* ─── top_label (본문 위 라벨 — <ruby>) ─────────────────────────────── */
+
+.annot-top-label {
+  ruby-position: over;
+  ruby-align: center;
+}
+
+.annot-top-label rt {
+  font-size: 0.55em;
+  color: var(--theme, #2563eb);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+/* ─── bottom_label (본문 아래 라벨 — CSS ::after) ─────────────────── */
+
+.annot-bottom-label {
+  position: relative;
+  display: inline-block;
+}
+
+.annot-bottom-label::after {
+  content: attr(data-label);
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1.4em;
+  font-size: 0.55em;
+  color: var(--theme, #2563eb);
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.2;
+  white-space: nowrap;
+  letter-spacing: -0.02em;
+}
+
+/* bottom_label 이 있는 줄은 행간 보정 (라벨 공간 확보) */
+.annot-passage:has(.annot-bottom-label) {
+  line-height: 2.2;
+}
+
+/* ─── bracket (Unicode inline) ─────────────────────────────────────── */
+
+.annot-bracket {
+  font-weight: 600;
+  color: var(--ink, #111);
+}

@@ -7,6 +7,11 @@
   ``playful`` 1종만 ``GET /worksheets/{id}/preview`` 에서 노출.
   ``classic`` / ``modern`` 은 보관 — Phase 2 종료 후 와이프 피드백에 따라 추가 노출.
   하지만 이 함수 자체는 3종 모두 지원 (라우트에서 화이트리스트 제한).
+
+ADR-0014 D2 — annotation CSS 주입:
+  ``templates/_annotation.css`` 를 모듈 로드 시점에 한 번 읽어 캐시. 모든 템플릿이
+  ``{{ annotation_css | safe }}`` 로 inline. 별 파일 import 없음 (Playwright
+  file:// 컨텍스트에서도 안전).
 """
 
 from __future__ import annotations
@@ -32,6 +37,9 @@ _env = jinja2.Environment(
     keep_trailing_newline=True,
 )
 
+# ADR-0014 D2 — annotation CSS 모듈 로드 시점 캐시 (재읽기 비용 회피).
+_ANNOTATION_CSS = (_TEMPLATES_DIR / "_annotation.css").read_text(encoding="utf-8")
+
 
 def render_worksheet_html(context: dict, style: str = "playful") -> str:
     """Jinja2 로 templates/{style}.html 렌더 → HTML 문자열.
@@ -51,10 +59,11 @@ def render_worksheet_html(context: dict, style: str = "playful") -> str:
             (정상 배포 환경에서는 발생하지 않아야 함).
     """
     if style not in _ALLOWED_STYLES:
-        raise ValueError(
-            f"허용되지 않은 style: '{style}'. "
-            f"허용 값: {sorted(_ALLOWED_STYLES)}"
-        )
+        raise ValueError(f"허용되지 않은 style: '{style}'. 허용 값: {sorted(_ALLOWED_STYLES)}")
 
     template = _env.get_template(f"{style}.html")
+    # ADR-0014 D2 — annotation CSS 자동 주입. context 에 동일 key 가 있으면 우선
+    # (테스트 / 커스텀 렌더 시 override 가능).
+    if "annotation_css" not in context:
+        context = {**context, "annotation_css": _ANNOTATION_CSS}
     return template.render(**context)

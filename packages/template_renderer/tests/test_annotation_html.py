@@ -1,0 +1,320 @@
+"""render_annotations_to_html 단위 테스트 (ADR-0014).
+
+매핑 검증:
+  - highlight 12색
+  - underline
+  - inline_note (sup 메모)
+  - top_label (<ruby>)
+  - bottom_label (data-label)
+  - bracket Unicode (5종)
+  - arrow skip + 로그
+  - XSS escape (D6)
+  - 중첩 / out-of-range 처리 (D5)
+"""
+
+from __future__ import annotations
+
+import logging
+import uuid
+from datetime import UTC, datetime
+
+import pytest
+from template_renderer.annotation_html import render_annotations_to_html
+
+from shared.schemas.annotation import (
+    AnnotationKind,
+    CharacterOffsetV1Span,
+    SyntaxAnnotation,
+)
+from shared.schemas.passage import Passage, SourceMeta, SourceProvider, TargetGrade
+
+
+def _make_passage(body_text: str = "The economy is growing.") -> Passage:
+    return Passage(
+        id=uuid.uuid4(),
+        tenant_id=uuid.UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+        workspace_id=uuid.UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+        body_text=body_text,
+        word_count=len(body_text.split()),
+        source=SourceMeta(provider=SourceProvider.USER_INPUT),
+        target_grade=TargetGrade.HIGH_3,
+        created_at=datetime(2026, 5, 1, 0, 0, 0, tzinfo=UTC),
+        updated_at=datetime(2026, 5, 1, 0, 0, 0, tzinfo=UTC),
+    )
+
+
+def _make_annotation(
+    kind: AnnotationKind,
+    start: int,
+    end: int,
+    *,
+    text: str | None = None,
+    color_index: int | None = None,
+    bracket_style: str | None = None,
+    arrow_target_span: CharacterOffsetV1Span | None = None,
+) -> SyntaxAnnotation:
+    return SyntaxAnnotation(
+        id=uuid.uuid4(),
+        tenant_id=uuid.UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+        workspace_id=uuid.UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+        passage_id=uuid.uuid4(),
+        kind=kind,
+        span=CharacterOffsetV1Span(start=start, end=end),
+        text=text,
+        color_index=color_index,
+        bracket_style=bracket_style,  # type: ignore[arg-type]
+        arrow_target_span=arrow_target_span,
+        created_at=datetime(2026, 5, 1, 0, 0, 0, tzinfo=UTC),
+        updated_at=datetime(2026, 5, 1, 0, 0, 0, tzinfo=UTC),
+    )
+
+
+# ─── 기본 ────────────────────────────────────────────────────────────────────
+
+
+def test_no_annotations_returns_escaped_body() -> None:
+    """annotation 0개 → body_text 그대로 escape 후 <p> wrap."""
+    passage = _make_passage("Hello & world")
+    result = render_annotations_to_html(passage, [])
+    assert result == '<p class="annot-passage">Hello &amp; world</p>'
+
+
+def test_empty_body_text() -> None:
+    """body_text 가 빈 문자열이면 빈 <p>."""
+    passage = _make_passage("")
+    result = render_annotations_to_html(passage, [])
+    assert result == '<p class="annot-passage"></p>'
+
+
+# ─── highlight ──────────────────────────────────────────────────────────────
+
+
+def test_highlight_color_index_1() -> None:
+    passage = _make_passage("Hello world")
+    ann = _make_annotation(AnnotationKind.HIGHLIGHT, 0, 5, color_index=1)
+    result = str(render_annotations_to_html(passage, [ann]))
+    assert "annot-highlight annot-highlight--1" in result
+    assert ">Hello<" in result
+
+
+def test_highlight_color_index_12() -> None:
+    passage = _make_passage("Hello world")
+    ann = _make_annotation(AnnotationKind.HIGHLIGHT, 6, 11, color_index=12)
+    result = str(render_annotations_to_html(passage, [ann]))
+    assert "annot-highlight--12" in result
+
+
+def test_highlight_color_index_out_of_range_fallback_to_1() -> None:
+    """schema 가 1~12 강제하지만 방어적 fallback 검증."""
+    from template_renderer.annotation_html import _highlight_class
+
+    assert _highlight_class(0) == "annot-highlight annot-highlight--1"
+    assert _highlight_class(99) == "annot-highlight annot-highlight--1"
+
+
+# ─── underline ──────────────────────────────────────────────────────────────
+
+
+def test_underline() -> None:
+    passage = _make_passage("Hello world")
+    ann = _make_annotation(AnnotationKind.UNDERLINE, 0, 5)
+    result = str(render_annotations_to_html(passage, [ann]))
+    assert '<span class="annot-underline">Hello</span>' in result
+
+
+# ─── inline_note ────────────────────────────────────────────────────────────
+
+
+def test_inline_note_with_sup() -> None:
+    passage = _make_passage("Hello world")
+    ann = _make_annotation(AnnotationKind.INLINE_NOTE, 0, 5, text="중요")
+    result = str(render_annotations_to_html(passage, [ann]))
+    assert '<span class="annot-inline-note">Hello' in result
+    assert '<sup class="annot-inline-note__text">중요</sup>' in result
+
+
+def test_inline_note_text_escaped() -> None:
+    """inline_note text 의 HTML 특수문자 escape."""
+    passage = _make_passage("Hello")
+    ann = _make_annotation(AnnotationKind.INLINE_NOTE, 0, 5, text="<script>")
+    result = str(render_annotations_to_html(passage, [ann]))
+    assert "<script>" not in result  # raw 가 아닌
+    assert "&lt;script&gt;" in result
+
+
+# ─── top_label ──────────────────────────────────────────────────────────────
+
+
+def test_top_label_ruby() -> None:
+    passage = _make_passage("Hello world")
+    ann = _make_annotation(AnnotationKind.TOP_LABEL, 0, 5, text="명사구")
+    result = str(render_annotations_to_html(passage, [ann]))
+    assert '<ruby class="annot-top-label">' in result
+    assert "<rt>명사구</rt></ruby>" in result
+    assert "Hello" in result
+
+
+def test_top_label_text_escaped() -> None:
+    passage = _make_passage("Hello")
+    ann = _make_annotation(AnnotationKind.TOP_LABEL, 0, 5, text="A&B")
+    result = str(render_annotations_to_html(passage, [ann]))
+    assert "A&amp;B" in result
+
+
+# ─── bottom_label ───────────────────────────────────────────────────────────
+
+
+def test_bottom_label_data_attribute() -> None:
+    passage = _make_passage("Hello world")
+    ann = _make_annotation(AnnotationKind.BOTTOM_LABEL, 6, 11, text="동사")
+    result = str(render_annotations_to_html(passage, [ann]))
+    assert '<span class="annot-bottom-label" data-label="동사">' in result
+    assert "world</span>" in result
+
+
+def test_bottom_label_data_attr_escaped() -> None:
+    """data-label 안의 따옴표가 escape 되어야 (HTML attribute 안전)."""
+    passage = _make_passage("Hello")
+    ann = _make_annotation(AnnotationKind.BOTTOM_LABEL, 0, 5, text='a"b')
+    result = str(render_annotations_to_html(passage, [ann]))
+    assert 'data-label="a&#34;b"' in result or 'data-label="a&quot;b"' in result
+
+
+# ─── bracket ────────────────────────────────────────────────────────────────
+
+
+def test_bracket_square() -> None:
+    passage = _make_passage("Hello world")
+    ann = _make_annotation(AnnotationKind.BRACKET, 0, 5, bracket_style="[]")
+    result = str(render_annotations_to_html(passage, [ann]))
+    assert '<span class="annot-bracket">[</span>Hello' in result
+    assert 'Hello<span class="annot-bracket">]</span>' in result
+
+
+def test_bracket_paren_curly_corner_angle() -> None:
+    """5종 bracket_style 모두 매핑."""
+    passage = _make_passage("abcdefghij")
+    annotations = [
+        _make_annotation(AnnotationKind.BRACKET, 0, 1, bracket_style="()"),
+        _make_annotation(AnnotationKind.BRACKET, 2, 3, bracket_style="{}"),
+        _make_annotation(AnnotationKind.BRACKET, 4, 5, bracket_style="⌜⌟"),
+        _make_annotation(AnnotationKind.BRACKET, 6, 7, bracket_style="<>"),
+    ]
+    result = str(render_annotations_to_html(passage, annotations))
+    assert "(</span>a<span" in result
+    assert "{</span>c<span" in result
+    assert "⌜</span>e<span" in result
+    # < / > 는 escape — 그러나 우리 wrap 안에 들어가는 글자는 < / >.
+    # `<` 가 본문 글자 아니라 bracket 글자라 escape 됨 (markupsafe).
+    assert "&lt;</span>g<span" in result
+
+
+def test_bracket_missing_style_skipped(caplog: pytest.LogCaptureFixture) -> None:
+    """bracket_style=None 이면 skip + 경고."""
+    passage = _make_passage("Hello")
+    # 에디터 입력 버그 시뮬레이션
+    ann = _make_annotation(AnnotationKind.BRACKET, 0, 5, bracket_style=None)
+    with caplog.at_level(logging.WARNING):
+        result = str(render_annotations_to_html(passage, [ann]))
+    assert "annot-bracket" not in result
+    assert "bracket_style" in caplog.text
+
+
+# ─── arrow skip ─────────────────────────────────────────────────────────────
+
+
+def test_arrow_skipped_with_log(caplog: pytest.LogCaptureFixture) -> None:
+    """ADR-0014 D4 — arrow 는 명시적 skip + 1회 로그."""
+    passage = _make_passage("Hello world")
+    ann = _make_annotation(
+        AnnotationKind.ARROW,
+        0,
+        5,
+        arrow_target_span=CharacterOffsetV1Span(start=6, end=11),
+    )
+    with caplog.at_level(logging.INFO):
+        result = str(render_annotations_to_html(passage, [ann]))
+    # arrow 에 의한 wrap class 가 본문에 없어야
+    assert "annot-arrow" not in result
+    assert "arrow" in caplog.text.lower()
+
+
+# ─── XSS escape (D6) ────────────────────────────────────────────────────────
+
+
+def test_body_text_xss_escaped() -> None:
+    """body_text 의 HTML 특수문자 escape."""
+    passage = _make_passage("<script>alert(1)</script>")
+    result = str(render_annotations_to_html(passage, []))
+    assert "<script>" not in result
+    assert "&lt;script&gt;" in result
+
+
+def test_body_text_with_annotation_xss_escaped() -> None:
+    """annotation 적용 본문도 escape 되어야."""
+    passage = _make_passage('A&B"C')
+    ann = _make_annotation(AnnotationKind.HIGHLIGHT, 0, 5, color_index=1)
+    result = str(render_annotations_to_html(passage, [ann]))
+    assert "&amp;" in result
+    assert "&#34;" in result or "&quot;" in result
+
+
+# ─── 중첩 / 충돌 (D5) ───────────────────────────────────────────────────────
+
+
+def test_overlapping_text_runs_last_wins() -> None:
+    """highlight + underline 같은 span — 마지막 적용 우선 (hwpx 와 동일)."""
+    passage = _make_passage("Hello")
+    annotations = [
+        _make_annotation(AnnotationKind.HIGHLIGHT, 0, 5, color_index=1),
+        _make_annotation(AnnotationKind.UNDERLINE, 0, 5),
+    ]
+    result = str(render_annotations_to_html(passage, annotations))
+    # 마지막 적용 = underline → underline class 만 (highlight 사라짐)
+    assert "annot-underline" in result
+    assert "annot-highlight" not in result
+
+
+def test_partial_overlap_text_runs() -> None:
+    """highlight 0-5 + underline 3-7 → 0-3 highlight, 3-5 underline, 5-7 underline."""
+    passage = _make_passage("abcdefghij")
+    annotations = [
+        _make_annotation(AnnotationKind.HIGHLIGHT, 0, 5, color_index=2),
+        _make_annotation(AnnotationKind.UNDERLINE, 3, 7),
+    ]
+    result = str(render_annotations_to_html(passage, annotations))
+    assert "annot-highlight--2" in result
+    assert "annot-underline" in result
+
+
+# ─── out-of-range (D5) ──────────────────────────────────────────────────────
+
+
+def test_span_out_of_range_skipped(caplog: pytest.LogCaptureFixture) -> None:
+    """span 이 body_text 길이 초과 → skip + 경고."""
+    passage = _make_passage("Hello")  # n=5
+    ann = _make_annotation(AnnotationKind.HIGHLIGHT, 0, 100, color_index=1)
+    with caplog.at_level(logging.WARNING):
+        result = str(render_annotations_to_html(passage, [ann]))
+    # annotation 적용 안 됨
+    assert "annot-highlight" not in result
+    assert "out of body_text range" in caplog.text
+
+
+# ─── 복합 fixture ───────────────────────────────────────────────────────────
+
+
+def test_complex_fixture_highlight_label_bracket() -> None:
+    """복합 — highlight + top_label + bracket 동시 적용 시 모든 마크 출력."""
+    passage = _make_passage("The economy is growing.")
+    annotations = [
+        _make_annotation(AnnotationKind.HIGHLIGHT, 4, 11, color_index=1),  # economy
+        _make_annotation(AnnotationKind.TOP_LABEL, 0, 11, text="명사구"),
+        _make_annotation(AnnotationKind.BRACKET, 0, 23, bracket_style="[]"),
+    ]
+    result = str(render_annotations_to_html(passage, annotations))
+    assert "annot-highlight--1" in result
+    assert 'class="annot-top-label"' in result
+    assert "<rt>명사구</rt>" in result
+    assert ">[<" in result or '<span class="annot-bracket">[</span>' in result
+    assert ">]<" in result or '<span class="annot-bracket">]</span>' in result
