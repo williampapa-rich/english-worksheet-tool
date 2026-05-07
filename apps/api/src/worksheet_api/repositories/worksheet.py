@@ -14,10 +14,11 @@ from __future__ import annotations
 
 import uuid
 
+from sqlalchemy import text as sa_text
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from shared.schemas.worksheet import Worksheet
+from shared.schemas.worksheet import Worksheet, WorksheetItem
 from worksheet_api.models.worksheet import WorksheetItemORM, WorksheetORM
 from worksheet_api.repositories.base import BaseRepository
 from worksheet_api.repositories.tenant_context import TenantContext
@@ -67,6 +68,109 @@ class WorksheetRepository(BaseRepository[WorksheetORM, Worksheet]):
         ``Worksheet`` 의 default_factory 빈 리스트가 적용된다.
         """
         return Worksheet.model_validate(orm, update={"items": []})
+
+    # ─── create ─────────────────────────────────────────────────────────────
+
+    async def create_with_items(self, worksheet: Worksheet) -> Worksheet:
+        """Worksheet + 모든 items 를 단일 트랜잭션에 영속화.
+
+        호출 전제: 호출자가 ``async with session.begin():`` 컨텍스트 안에 있어야 한다.
+        commit 은 caller 책임 (BaseRepository 패턴 준수).
+
+        흐름:
+          1. tenant_id / workspace_id 일치 검증 (BaseRepository._validate_tenant_fields).
+          2. passage_id cross-tenant 사전 검증 (IN 쿼리 1회).
+          3. WorksheetORM insert + flush → id 확보.
+          4. WorksheetItemORM bulk insert (worksheet_id 채워서).
+          5. 최신 상태 Worksheet (items id 포함) 반환.
+
+        Args:
+            worksheet: 영속화할 Worksheet 도메인 모델.
+                tenant_id / workspace_id 는 TenantContext 와 일치해야 한다.
+
+        Returns:
+            id 가 채워진 Worksheet (items 도 id 포함).
+
+        Raises:
+            ValueError: sentinel UUID / tenant_id 불일치 / cross-tenant passage_id.
+            sqlalchemy.exc.IntegrityError: passage_id 가 DB 에 존재하지 않을 때
+                (ondelete=RESTRICT FK 위배). 라우터에서 422 매핑.
+        """
+        # 1. tenant 검증 (sentinel + 불일치)
+        self._validate_tenant_fields(worksheet)
+
+        # 2. passage_id cross-tenant 사전 검증
+        #    items 의 passage_id 들이 모두 동일 tenant 의 passages 에 속하는지 IN 쿼리로 확인.
+        #    items 가 없으면 건너뜀.
+        if worksheet.items:
+            passage_ids = [item.passage_id for item in worksheet.items]
+
+            # passages 테이블에서 현재 tenant 소속 passage_id 가 몇 개인지 확인
+            # asyncpg 는 UUID list 를 직접 bind 할 수 없으므로 문자열로 변환
+            ids_str = [str(pid) for pid in passage_ids]
+            placeholders = ", ".join(f":pid_{i}" for i in range(len(ids_str)))
+            bind_params: dict[str, object] = {
+                f"pid_{i}": ids_str[i] for i in range(len(ids_str))
+            }
+            bind_params["tenant_id"] = str(self._tenant_ctx.tenant_id)
+
+            count_stmt = sa_text(
+                f"SELECT COUNT(*) FROM passages "  # noqa: S608
+                f"WHERE id::text IN ({placeholders}) "
+                f"AND tenant_id = :tenant_id::uuid"
+            )
+            result = await self._session.exec(count_stmt, params=bind_params)  # type: ignore[arg-type]
+            count = result.scalar_one()
+
+            if count != len(passage_ids):
+                raise ValueError(
+                    f"passage_id 중 하나 이상이 현재 tenant({self._tenant_ctx.tenant_id}) "
+                    f"소유가 아니거나 존재하지 않습니다. "
+                    f"요청된 passage_id 개수={len(passage_ids)}, "
+                    f"검증 통과 개수={count}. "
+                    f"cross-tenant passage_id 또는 삭제된 passage 참조 시도."
+                )
+
+        # 3. WorksheetORM insert (items 제외)
+        worksheet_orm = self._to_orm(worksheet)
+        self._session.add(worksheet_orm)
+        await self._session.flush()
+        await self._session.refresh(worksheet_orm)
+
+        # 4. WorksheetItemORM bulk insert
+        saved_items: list[WorksheetItem] = []
+        for item in worksheet.items:
+            item_orm = WorksheetItemORM(
+                worksheet_id=worksheet_orm.id,
+                passage_id=item.passage_id,
+                order=item.order,
+                label=item.label,
+                include_translation=item.include_translation,
+                include_vocabulary=item.include_vocabulary,
+                include_syntax_annotations=item.include_syntax_annotations,
+                include_questions=item.include_questions,
+                include_variants=item.include_variants,
+            )
+            self._session.add(item_orm)
+            await self._session.flush()
+            await self._session.refresh(item_orm)
+
+            saved_items.append(
+                WorksheetItem(
+                    passage_id=item_orm.passage_id,
+                    order=item_orm.order,
+                    label=item_orm.label,
+                    include_translation=item_orm.include_translation,
+                    include_vocabulary=item_orm.include_vocabulary,
+                    include_syntax_annotations=item_orm.include_syntax_annotations,
+                    include_questions=item_orm.include_questions,
+                    include_variants=item_orm.include_variants,
+                )
+            )
+
+        # 5. 최신 상태 도메인 모델 (items id 포함) 반환
+        saved_worksheet = self._to_domain(worksheet_orm)
+        return saved_worksheet.model_copy(update={"items": saved_items})
 
     # ─── items 조회 ──────────────────────────────────────────────────────────
 

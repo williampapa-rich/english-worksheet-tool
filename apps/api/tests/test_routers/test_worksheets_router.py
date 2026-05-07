@@ -1,6 +1,13 @@
-"""GET /worksheets/{id}/preview + POST /worksheets/{id}/export.pdf 라우터 단위 테스트.
+"""GET /worksheets/{id}/preview + POST /worksheets/{id}/export.pdf + POST /worksheets 라우터 단위 테스트.
 
 mock session + mock repository 로 실제 DB 없이 실행한다.
+
+커버 케이스 (POST /worksheets):
+  - 201 정상 — id 채워진 Worksheet 반환
+  - 422 — cross-tenant passage_id (WorksheetRepository.create_with_items 가 ValueError)
+  - 422 — 존재하지 않는 passage_id (IntegrityError mock → 422)
+  - 422 — Pydantic validation (kind 가 enum 값이 아님)
+  - items=[] 인 Worksheet 정상 생성 확인
 
 커버 케이스 (preview):
   - 200 정상 — fixture worksheet 생성 → preview 호출 → HTML 에 academy.name / title 포함
@@ -32,6 +39,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from worksheet_api.db import get_db
 from worksheet_api.main import app
@@ -514,3 +522,128 @@ async def test_export_pdf_cross_tenant_404(async_client: AsyncClient) -> None:
         resp = await async_client.post(f"/worksheets/{WORKSHEET_ID_1}/export.pdf")
 
     assert resp.status_code == 404
+
+
+# ─── POST /worksheets 테스트 ────────────────────────────────────────────────
+
+
+def _make_create_payload(
+    *,
+    passage_id: uuid.UUID = PASSAGE_ID_1,
+    kind: str = "student",
+    include_items: bool = True,
+) -> dict[str, Any]:
+    """POST /worksheets 요청 본문 헬퍼."""
+    payload: dict[str, Any] = {
+        "title": "신규 워크시트",
+        "kind": kind,
+        "template_id": "playful",
+        "orientation": "portrait",
+        "branding": {
+            "academy_name": "테스트학원",
+            "primary_color": "#1F4E79",
+        },
+    }
+    if include_items:
+        payload["items"] = [
+            {
+                "passage_id": str(passage_id),
+                "order": 0,
+                "label": "독해 연습",
+                "include_translation": False,
+            }
+        ]
+    return payload
+
+
+@pytest.mark.asyncio
+async def test_create_worksheet_ok_201(async_client: AsyncClient) -> None:
+    """정상 — 201 + body 에 id 채워진 Worksheet 반환.
+
+    create_with_items 가 성공적으로 Worksheet 를 반환하면 라우터는 201 + JSON 을
+    반환해야 한다.
+    """
+    saved_worksheet = _make_worksheet()
+
+    with patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls:
+        # session.begin() 컨텍스트 매니저 mock (라우터가 async with session.begin() 사용)
+        mock_ws_repo = mock_ws_repo_cls.return_value
+        mock_ws_repo.create_with_items = AsyncMock(return_value=saved_worksheet)
+
+        resp = await async_client.post("/worksheets/", json=_make_create_payload())
+
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["id"] == str(saved_worksheet.id)
+    assert body["title"] == "테스트 워크시트"
+
+
+@pytest.mark.asyncio
+async def test_create_worksheet_cross_tenant_passage_422(async_client: AsyncClient) -> None:
+    """cross-tenant passage_id → 422.
+
+    create_with_items 가 ValueError (cross-tenant passage_id) 를 raise 하면
+    라우터는 422 를 반환해야 한다.
+    """
+    with patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls:
+        mock_ws_repo = mock_ws_repo_cls.return_value
+        mock_ws_repo.create_with_items = AsyncMock(
+            side_effect=ValueError(
+                "passage_id 중 하나 이상이 현재 tenant 소유가 아니거나 존재하지 않습니다."
+            )
+        )
+
+        resp = await async_client.post("/worksheets/", json=_make_create_payload())
+
+    assert resp.status_code == 422
+    assert "passage_id" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_create_worksheet_integrity_error_422(async_client: AsyncClient) -> None:
+    """존재하지 않는 passage_id (IntegrityError) → 422.
+
+    FK 위배로 IntegrityError 가 발생하면 라우터는 422 를 반환해야 한다.
+    (보안: 다른 tenant passage 의 존재 여부 노출 방지 — 404 대신 422)
+    """
+    with patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls:
+        mock_ws_repo = mock_ws_repo_cls.return_value
+        mock_ws_repo.create_with_items = AsyncMock(
+            side_effect=IntegrityError("FK violation", None, None)
+        )
+
+        resp = await async_client.post("/worksheets/", json=_make_create_payload())
+
+    assert resp.status_code == 422
+    assert "passage_id" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_create_worksheet_invalid_kind_422(async_client: AsyncClient) -> None:
+    """kind 가 WorksheetKind enum 값이 아님 → 422 (Pydantic validation)."""
+    payload = _make_create_payload(kind="invalid_kind_xyz")
+
+    resp = await async_client.post("/worksheets/", json=payload)
+
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_create_worksheet_empty_items_ok(async_client: AsyncClient) -> None:
+    """items=[] 인 Worksheet 정상 생성 — 201.
+
+    Worksheet schema 는 items 를 default_factory=[] 로 허용한다.
+    items 없이도 worksheet 생성이 가능해야 한다.
+    """
+    saved_worksheet = _make_worksheet().model_copy(update={"items": []})
+
+    with patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls:
+        mock_ws_repo = mock_ws_repo_cls.return_value
+        mock_ws_repo.create_with_items = AsyncMock(return_value=saved_worksheet)
+
+        payload = _make_create_payload(include_items=False)
+        resp = await async_client.post("/worksheets/", json=payload)
+
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["items"] == []
