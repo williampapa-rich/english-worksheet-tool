@@ -261,3 +261,173 @@ async def test_e2e_extract_persists_translation_and_vocab_when_present(
         assert get_body["translation"] is not None
         assert get_body["translation"]["text"] == extract_translation["text"]
     assert len(get_body["vocabulary"]) == len(extract_vocabulary)
+
+
+# ─── B3 — 보강 라우트 DB 라운드트립 (LLM mock + 실 DB) ────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_e2e_translation_repo_update_text_roundtrip(pg_session: Any) -> None:
+    """B3 — TranslationRepository.update_text 의 in-place UPDATE 라운드트립.
+
+    LLM 호출 없이 repository 만 직접 호출. ``update_text`` 가 same-id row 를 갱신
+    (passage_id UNIQUE 그대로) + ``created_by`` 변경 + ``updated_at`` 갱신.
+    """
+    ctx_a = TenantContext(tenant_id=TEST_TENANT_A, workspace_id=TEST_WORKSPACE_A)
+    p_repo = PassageRepository(pg_session, ctx_a)
+    t_repo = TranslationRepository(pg_session, ctx_a)
+
+    passage = await p_repo.create(
+        Passage(
+            tenant_id=TEST_TENANT_A,
+            workspace_id=TEST_WORKSPACE_A,
+            body_text="The economy is growing.",
+            word_count=4,
+            source=SourceMeta(provider=SourceProvider.USER_INPUT),
+            target_grade=TargetGrade.HIGH_3,
+        )
+    )
+    initial = await t_repo.create(
+        Translation(
+            tenant_id=TEST_TENANT_A,
+            workspace_id=TEST_WORKSPACE_A,
+            passage_id=passage.id,
+            text="초기 LLM 해석",
+            created_by=TranslationCreatedBy.LLM,
+        )
+    )
+    await pg_session.flush()
+
+    updated = await t_repo.update_text(
+        passage.id,
+        text="갱신된 사용자 해석",
+        created_by=TranslationCreatedBy.USER,
+    )
+    assert updated is not None
+    assert updated.id == initial.id  # same row
+    assert updated.text == "갱신된 사용자 해석"
+    assert updated.created_by == TranslationCreatedBy.USER
+
+    # 다시 조회해도 동일 (1:1 UNIQUE 그대로)
+    fetched = await t_repo.get_by_passage(passage.id)
+    assert fetched is not None
+    assert fetched.id == initial.id
+
+
+@pytest.mark.asyncio
+async def test_e2e_vocabulary_delete_llm_preserves_user(pg_session: Any) -> None:
+    """B3 — VocabularyRepository.delete_llm_for_passage 가 USER 항목 보존 (D4).
+
+    LLM 항목 + USER 항목 + LLM-but-user_edited 항목 mix → delete 후 USER /
+    user_edited 만 남음.
+    """
+    ctx_a = TenantContext(tenant_id=TEST_TENANT_A, workspace_id=TEST_WORKSPACE_A)
+    p_repo = PassageRepository(pg_session, ctx_a)
+    v_repo = VocabularyRepository(pg_session, ctx_a)
+
+    passage = await p_repo.create(
+        Passage(
+            tenant_id=TEST_TENANT_A,
+            workspace_id=TEST_WORKSPACE_A,
+            body_text="Test.",
+            word_count=1,
+            source=SourceMeta(provider=SourceProvider.USER_INPUT),
+            target_grade=TargetGrade.HIGH_3,
+        )
+    )
+
+    # LLM 항목 — 삭제 대상
+    await v_repo.create(
+        Vocabulary(
+            tenant_id=TEST_TENANT_A,
+            workspace_id=TEST_WORKSPACE_A,
+            passage_id=passage.id,
+            word="economy",
+            headword_normalized="economy",
+            meaning_ko="경제",
+            selected_by=VocabularySelectedBy.LLM,
+            user_edited=False,
+        )
+    )
+    # USER 항목 — 보존
+    await v_repo.create(
+        Vocabulary(
+            tenant_id=TEST_TENANT_A,
+            workspace_id=TEST_WORKSPACE_A,
+            passage_id=passage.id,
+            word="growing",
+            headword_normalized="growing",
+            meaning_ko="성장하는 (사용자 추가)",
+            selected_by=VocabularySelectedBy.USER,
+            user_edited=False,
+        )
+    )
+    # LLM 산출이지만 사용자가 수정한 항목 — 보존 (user_edited=True)
+    await v_repo.create(
+        Vocabulary(
+            tenant_id=TEST_TENANT_A,
+            workspace_id=TEST_WORKSPACE_A,
+            passage_id=passage.id,
+            word="steadily",
+            headword_normalized="steadily",
+            meaning_ko="꾸준히 (사용자 수정)",
+            selected_by=VocabularySelectedBy.LLM,
+            user_edited=True,
+        )
+    )
+    await pg_session.flush()
+
+    deleted_count = await v_repo.delete_llm_for_passage(passage.id)
+    assert deleted_count == 1  # economy 만 삭제
+
+    remaining = await v_repo.list_by_passage(passage.id)
+    headwords = {v.headword_normalized for v in remaining}
+    assert headwords == {"growing", "steadily"}  # USER + user_edited 보존
+
+
+@pytest.mark.asyncio
+async def test_e2e_vocabulary_list_user_edited_headwords(pg_session: Any) -> None:
+    """B3 — VocabularyRepository.list_user_edited_headwords 가 USER / user_edited 만 반환."""
+    ctx_a = TenantContext(tenant_id=TEST_TENANT_A, workspace_id=TEST_WORKSPACE_A)
+    p_repo = PassageRepository(pg_session, ctx_a)
+    v_repo = VocabularyRepository(pg_session, ctx_a)
+
+    passage = await p_repo.create(
+        Passage(
+            tenant_id=TEST_TENANT_A,
+            workspace_id=TEST_WORKSPACE_A,
+            body_text="Test.",
+            word_count=1,
+            source=SourceMeta(provider=SourceProvider.USER_INPUT),
+            target_grade=TargetGrade.HIGH_3,
+        )
+    )
+
+    await v_repo.create(
+        Vocabulary(
+            tenant_id=TEST_TENANT_A,
+            workspace_id=TEST_WORKSPACE_A,
+            passage_id=passage.id,
+            word="economy",
+            headword_normalized="economy",
+            meaning_ko="경제",
+            selected_by=VocabularySelectedBy.LLM,
+            user_edited=False,
+        )
+    )
+    await v_repo.create(
+        Vocabulary(
+            tenant_id=TEST_TENANT_A,
+            workspace_id=TEST_WORKSPACE_A,
+            passage_id=passage.id,
+            word="growing",
+            headword_normalized="growing",
+            meaning_ko="성장하는",
+            selected_by=VocabularySelectedBy.USER,
+            user_edited=False,
+        )
+    )
+    await pg_session.flush()
+
+    headwords = await v_repo.list_user_edited_headwords(passage.id)
+    assert headwords == {"growing"}
