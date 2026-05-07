@@ -14,12 +14,20 @@ export function Home() {
           <br />
           일관된 콘텐츠 모델 위에서 생성·편집·내보내기합니다.
         </p>
-        <Link
-          to="/editor"
-          className="inline-block bg-blue-600 text-white font-medium px-6 py-3 rounded-xl hover:bg-blue-700 transition-colors"
-        >
-          구문분석 에디터 PoC 열기 →
-        </Link>
+        <div className="flex flex-col gap-3">
+          <Link
+            to="/worksheets"
+            className="inline-block bg-blue-600 text-white font-medium px-6 py-3 rounded-xl hover:bg-blue-700 transition-colors"
+          >
+            학생 자료 목록 →
+          </Link>
+          <Link
+            to="/editor"
+            className="inline-block bg-white border border-gray-200 text-gray-700 font-medium px-6 py-3 rounded-xl hover:border-blue-300 hover:text-blue-600 transition-colors"
+          >
+            구문분석 에디터 PoC →
+          </Link>
+        </div>
       </div>
     </main>
   );
