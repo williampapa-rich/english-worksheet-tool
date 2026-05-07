@@ -4,7 +4,7 @@
 - **작성자**: PM (Dennis) + architect / backend-dev
 - **검수자**: 와이프 (영어 강사)
 - **관련 PR**: B1 (#51) / B2 (#52) / ADR-0011 (#53) / B3 (#54) / ADR-0014 (#55) / B4 (#56)
-- **상태**: 검수 시작 대기 — 본 문서는 검수 시작 전 *준비* 산출물
+- **상태**: 검수 시작 대기 — 본 문서는 검수 시작 전 _준비_ 산출물
 
 ---
 
@@ -70,7 +70,7 @@ Phase 2 진입 베이스 (B1~B4 + ADR-0011 + ADR-0014) 가 머지된 시점에�
 ### 1.2 비교 baseline
 
 Phase 1 (HWPX 출력 D 등급, 사용 불가) → ADR-0008 채택안 A (HTML→PDF) → 본 검수가
-*첫 PDF baseline*. Phase 1 baseline (구문분석 단독 PDF) 가 OK 받은 상태에서 진행.
+_첫 PDF baseline_. Phase 1 baseline (구문분석 단독 PDF) 가 OK 받은 상태에서 진행.
 
 ---
 
@@ -81,17 +81,18 @@ Phase 1 검수 (`docs/phase-1-wife-feedback.md`) 와 같은 등급 체계 사용
 
 ### 2.1 합격 등급 정의
 
-| 등급  | 의미 (제안)                                                                         | 와이프 정의 |
-| ----- | ----------------------------------------------------------------------------------- | ----------- |
-| **A** | 수업에서 그대로 인쇄해서 학생에게 배포 가능                                         |             |
-| **B** | 약간 수기 보완하면 사용 가능 (예: 학생 이름란 손기입)                               |             |
-| **C** | 컴퓨터로 재편집 후 사용 가능 (예: 어휘 1~2개 직접 수정)                             |             |
-| **D** | 사용 불가. 처음부터 재설계 또는 다른 접근 필요                                      |             |
+| 등급  | 의미 (제안)                                             | 와이프 정의 |
+| ----- | ------------------------------------------------------- | ----------- |
+| **A** | 수업에서 그대로 인쇄해서 학생에게 배포 가능             |             |
+| **B** | 약간 수기 보완하면 사용 가능 (예: 학생 이름란 손기입)   |             |
+| **C** | 컴퓨터로 재편집 후 사용 가능 (예: 어휘 1~2개 직접 수정) |             |
+| **D** | 사용 불가. 처음부터 재설계 또는 다른 접근 필요          |             |
 
 **Phase 2 baseline 합격선**:
+
 - [ ] A 만 합격
 - [ ] B 까지 합격
-- [ ] C 까지 합격
+- [ V ] C 까지 합격
 
 (와이프가 체크. C 까지 합격이면 v0.2 미세 조정 PR 로 충분, B 이상만 합격이면 큰
 변경 필요 가능성.)
@@ -108,7 +109,7 @@ ADR-0013 / 0014 작성 시 도메인 단독 결정 보류한 항목들. 각 항�
 #### A1. paragraph 보존 강도
 
 영어 원문 paragraph 가 너무 길 때 한국어 줄바꿈 추가 OK?
-- (a) 원문 paragraph 그대로 (현재 정책).
+
 - (b) 한국어로 옮길 때 더 짧게 쪼개도 OK.
 
 **변경 비용**: 프롬프트 가이드 1줄 수정 — 매우 작음.
@@ -116,20 +117,18 @@ ADR-0013 / 0014 작성 시 도메인 단독 결정 보류한 항목들. 각 항�
 #### A2. 영어 병기 임계
 
 "잘 알려진 고유명사" 의 기준?
+
 - 현재 정책: 인명/지명은 한국어 + 첫 등장 1회 영어 병기. 기관명/브랜드는 영어 그대로.
 - 와이프가 평소 어디까지 한국어로 옮기는지?
-  - 예: `Apple` → "애플" or "Apple"?
-  - 예: `Microsoft` → "마이크로소프트" or "Microsoft"?
-  - 예: 인용 출처 (`Nature`, `Time`) → 한국어 (네이처) or 영어 그대로?
+  - 예: `Apple` → "Apple"
+  - 예: `Microsoft` → "Microsoft"
+  - 예: 인용 출처 (`Nature`, `Time`) → 영어 그대로
 
 **변경 비용**: 프롬프트 가이드 예시 갱신 — 작음.
 
 #### A3. idiom / phrasal verb 표기
 
 - (a) 의역만 — `It's not rocket science` → "그렇게 어려운 일은 아니다" (현재).
-- (b) 직역+의역 병기 — "그렇게 어려운 일은 아니다 (직역: 로켓 과학이 아니다)".
-
-학원 스타일이 학생 학습 효과에 따라 다름. 와이프가 어느 쪽?
 
 **변경 비용**: 프롬프트 가이드 정반대 정책 — 작음 (LLM 출력 검증은 도메인 expert
 검토 필요).
@@ -137,24 +136,24 @@ ADR-0013 / 0014 작성 시 도메인 단독 결정 보류한 항목들. 각 항�
 #### A4. 해석 문체
 
 - (a) 평어 — "~한다", "~이다" (현재 example 톤).
-- (b) 경어 — "~합니다", "~입니다".
-
-학생 / 자료 톤에 따라.
 
 **변경 비용**: 프롬프트 가이드 + example 갱신 — 작음.
 
 #### A5. 부정 / 시제 / 가정법 / 대명사 referent 정책
 
 ADR-0013 의 high #2 반영 (한국 해설지 핵심 가이드 추가) 가 와이프 톤과 맞는지.
-실제 검수 PDF 의 해석을 보고 OK/NG 판단.
+실제 검수 PDF 의 해석을 보고 OK/NG 판단. --> 오케이
 
 **변경 비용**: 프롬프트 가이드 미세 조정 — 검수 결과 보고 결정.
 
 #### A6. 학년별 어휘 / 톤 조정
 
 `target_grade` (중1~수능) 별로 LLM 이 적절히 톤 조정하는지.
+
 - 중학생용: 더 쉬운 한국어, 짧은 문장.
 - 수능용: 시험 해설지 톤, 정확성 우선.
+
+-> 오케이
 
 **변경 비용**: 프롬프트 가이드 학년별 분기 — 중간 (학년 매트릭스 확장 필요할 수도).
 
@@ -172,9 +171,6 @@ ADR-0013 의 high #2 반영 (한국 해설지 핵심 가이드 추가) 가 와�
 ADR-0013 v0.1 권고: `수능 필수` / `고N 교과서` / `중N 교과서` / `어법 / 구문` /
 `심화` / `숙어`.
 
-와이프가 평소 학원에서 쓰는 다른 라벨 있는가?
-- 예: `"수능 1등급"`, `"내신 빈출"`, `"빈도 A/B/C"`.
-
 **변경 비용**: 프롬프트 권고 값 추가 — 작음. 자유 문자열이라 LLM 이 학습.
 
 ### 3.C. annotation HTML 시각 표현 (ADR-0014) — 3건
@@ -183,6 +179,7 @@ ADR-0013 v0.1 권고: `수능 필수` / `고N 교과서` / `중N 교과서` / `�
 
 Chromium 의 `<ruby>` + `ruby-position: over` 가 Pretendard / Noto Serif KR 폰트와
 잘 맞는지. PDF 에서:
+
 - 라벨 글자 크기 (현재 0.55em) 가 적절한가?
 - 본문 위 위치가 너무 가까운가 / 멀리 있는가?
 - 색상 (현재 `--theme`) 이 가독성 OK?
@@ -191,17 +188,23 @@ Chromium 의 `<ruby>` + `ruby-position: over` 가 Pretendard / Noto Serif KR 폰
 
 #### C2. bottom_label CSS `::after` 위치
 
-본문 *아래* 라벨이 다음 줄과 겹치지 않는지. 현재 `line-height: 2.2` 로 보정.
+본문 _아래_ 라벨이 다음 줄과 겹치지 않는지. 현재 `line-height: 2.2` 로 보정.
+
 - 너무 띄움 → 종이 낭비.
 - 너무 가까움 → 라벨 충돌.
+
+-> 웹앱 상에서는 괜찮아 보이는데, 출력물은 안봐서 모르겠음
 
 **변경 비용**: CSS 미세 조정.
 
 #### C3. 12색 highlight 의 인쇄 충실도
 
 12색 `--annot-highlight-{1..12}` 가 Chromium PDF 에서 화면 색상 그대로 인쇄되는지.
+
 - `print-color-adjust: exact` 적용됨 (playful.html 의 `print_background=True`).
 - 와이프 프린터 (잉크젯 / 레이저) 에서 색상 차이 큰지?
+
+-> 웹앱 상에서는 괜찮아 보이는데, 출력물은 안봐서 모르겠음
 
 **변경 비용**: 색상 dict 재선정 — 작음 (와이프 프린터 색상 가이드 따라).
 
@@ -209,12 +212,12 @@ Chromium 의 `<ruby>` + `ruby-position: over` 가 Pretendard / Noto Serif KR 폰
 
 ## 4. 변경 비용 매트릭스 (검수 결과 기반 v0.2 PR 추정)
 
-| 검수 결과 | 변경 범위 | 추정 PR 수 |
-|---|---|---|
-| 모든 항목 A 등급, 11건 모두 OK | v0.2 PR 없음, B5 → Phase 2 baseline 종료 | 0 |
-| A~C 등급, 일부 항목 (예: A1, A4, B1) 만 변경 | 프롬프트 v0.2 PR 1건 + 라우트 default 1건 | 2 |
-| C/D 등급 우려, 다수 항목 변경 | 프롬프트 + 라우트 + 템플릿 CSS + 어댑터 | 3~4 |
-| D 등급 (사용 불가) | 처음부터 재설계 — 별 ADR 신규 | 별 phase |
+| 검수 결과                                    | 변경 범위                                 | 추정 PR 수 |
+| -------------------------------------------- | ----------------------------------------- | ---------- |
+| 모든 항목 A 등급, 11건 모두 OK               | v0.2 PR 없음, B5 → Phase 2 baseline 종료  | 0          |
+| A~C 등급, 일부 항목 (예: A1, A4, B1) 만 변경 | 프롬프트 v0.2 PR 1건 + 라우트 default 1건 | 2          |
+| C/D 등급 우려, 다수 항목 변경                | 프롬프트 + 라우트 + 템플릿 CSS + 어댑터   | 3~4        |
+| D 등급 (사용 불가)                           | 처음부터 재설계 — 별 ADR 신규             | 별 phase   |
 
 D 등급 트리거 — Phase 1 처럼 fixture 모두 D 면 ADR-0008 의 채택안 A (HTML→PDF) 가
 **다음 단계** 에서 한계 가 드러난 것. 본 검수가 그 첫 신호.
@@ -231,12 +234,131 @@ D 등급 트리거 — Phase 1 처럼 fixture 모두 D 면 ADR-0008 의 채택�
 4. 결과를 본 문서 §6 (검수 기록) 에 추가.
 5. v0.2 PR 들어갈 변경 사항 정리 → §4 매트릭스로 추정.
 
-본 문서는 §3 의 답변이 들어오기 전까지 채워지지 않은 *가이드* 단계.
+본 문서는 §3 의 답변이 들어오기 전까지 채워지지 않은 _가이드_ 단계.
 
 ---
 
-## 6. 검수 기록 (와이프 응답 대기)
+## 6. 검수 기록 (진행 중 — 2026-05-07 1차 라운드)
 
-> 검수 시작 후 PM 이 채움.
+### 6.1 검수 fixture
 
-(빈 칸 — 검수 신호 대기)
+- 영어 지문: zero-waste stores (와이프 학원 자료가 아닌 PM 임의 sample, 6 paragraph,
+  276 단어).
+- worksheet 메타: 제목 "고2 영어 — Zero-Waste Stores" / subtitle "Week 01" / kind=
+  student / template_id=playful / branding "테스트 학원" / theme `#1F4E79` / instruction
+  "다음 글을 읽고 한글 해석과 어휘를 학습하세요."
+- include_translation=true / include_vocabulary=true.
+- annotation 0건 (학생 자료라 본 라운드는 annotation 검수 외).
+
+### 6.2 LLM provider — Gemini 임시 전환 (2026-05-07)
+
+Anthropic API 결제 이슈로 검수 단계만 Gemini 2.5 Flash Lite 로 임시 전환:
+- `packages/llm/src/llm/gemini_client.py` 신규 — `StructuredLLMClient` Protocol 구현.
+- `apps/api/.../config.py` 에 `llm_provider` / `google_api_key` 필드 추가.
+- `apps/api/.../llm_setup.py` 가 `LLM_PROVIDER` 환경변수로 분기.
+- `.env` 에 `LLM_PROVIDER=gemini` + `GOOGLE_API_KEY=...` 추가 (기기마다 직접 추가).
+- `packages/llm/src/llm/augment.py` 의 LLM output schema 에서 `extra="forbid"` 제거
+  (Gemini API 가 schema 의 `additionalProperties: false` 거절).
+- 단위 테스트 6건 추가 (`packages/llm/tests/test_gemini_client.py`).
+
+운영 단계 (Phase 3+ 또는 Anthropic 결제 후) 에는 `.env` 의 `LLM_PROVIDER=anthropic`
+으로 되돌림. 두 client 코드 / 테스트는 그대로 유지 (멀티 provider 지원).
+
+### 6.3 검수 산출물 (1차 라운드)
+
+- `var/b5_review_preview.html` — HTML preview (커밋됨).
+- `var/b5_review_worksheet.pdf` — Playwright PDF, overflow 정책 3차 패치 적용 후
+  (커밋됨).
+
+### 6.4 와이프 응답 (1차 라운드)
+
+**§2.1 합격선**: `C 까지 합격` (사용자 체크).
+
+**§3 답변**:
+- A1 paragraph 보존: (b) 한국어로 짧게 쪼개도 OK.
+- A2 영어 병기: 모두 영어 그대로 (Apple / Microsoft / Nature / Time).
+- A3 idiom: (a) 의역만 (현재 정책 유지).
+- A4 문체: (a) 평어 (현재 정책 유지).
+- A5/A6: HTML preview 등급 자체가 A 라 자동 OK 가정 (NG 명시 없음).
+- B1 count default: Q1 의 *어휘 박스 schema 확장* (유의어/반의어/예문 표 형태) 으로
+  흡수됨 — count default 자체의 의미 약화. 별 항목으로 갈음.
+- B2 level_label: 동일하게 schema 확장에 흡수 — 평소 라벨은 와이프와 별 라운드
+  (v0.2-γ 작업 시) 에서.
+- C1/C2/C3: annotation fixture 별도 필요 → Phase 1 baseline 검수와 함께. 본 라운드
+  검수 외.
+
+**HTML 자체 등급**: `A` (사용자 평가).
+
+**PDF 등급 — 진행 중 (3차 결과 대기)**:
+- 1차 (overflow 정책 미적용): 두 페이지로 찢어지면서 한글 해석 + 어휘 박스 *사라짐*.
+  본문도 두 번째 페이지로 밀림. → D 등급에 가까움.
+- 2차 (CSS 1차 패치 — `break-inside: avoid` 적용): 빈 페이지 1개 추가됨 + footer
+  가 페이지 중앙에 떠 다님.
+- 3차 (CSS 2차 패치 — 박스 분할 허용 + footer position fixed + 어휘 *항목 단위*
+  묶음): **대기 중 — 사용자가 아이맥에서 PDF 확인 후 등급 부여**.
+
+### 6.5 v0.2 PR 분리 (예정)
+
+검수 결과에 따라 다음 PR 들로 분리:
+
+- **v0.2-α (overflow 정책)**: `playful.html` 의 `@media print` 정책. 현재
+  `docs/b5-wife-review-prep` 브랜치에 작업 누적. 3차 결과 OK 면 별 PR 로 분리 머지.
+  - CSS 변경: `.page` overflow/min-height 풀기 + `.q*` break-inside 정책 + `.footer`
+    position fixed + 어휘 항목 단위 묶음 + 헤딩 break-after avoid.
+  - 회귀 테스트: `pytest packages/template_renderer/tests` 통과 검증 + 기존 60+
+    apps/api 테스트 회귀 검증.
+- **v0.2-β (page counter fix)**: 현재 footer 의 `1/1` 은 정적. Chromium `@page
+  @bottom-right { content: counter(page) "/" counter(pages) }` 로 자동 갱신.
+  ADR-0010 D5 의 "Stage 2 PoC 에서 정밀화" 영역.
+- **v0.2-γ (Vocabulary schema 확장)**: 큰 변경.
+  - `shared/schemas/vocabulary.py` 에 `synonyms` / `antonyms` / `example_sentences`
+    필드 추가 (Pydantic + Alembic 마이그레이션).
+  - `docs/prompts/augment-vocabulary-v0.md` 갱신 (출력 schema 확장).
+  - `playful.html` 의 어휘 블록을 *표 형태* 로 (단어 / 뜻 / 유의어 / 반의어 / 예문).
+  - 별 ADR 신규 — Vocabulary v0.2 schema. (PM 결정 영역 — 표 컬럼 / 페이지 분할 정책.)
+
+### 6.6 인계 노트 (기기 간 컨텍스트 복원용)
+
+다른 기기에서 작업 이어가는 경우 (예: 맥북 → 아이맥):
+1. `git pull origin docs/b5-wife-review-prep` 후 본 문서 (`docs/phase-2-wife-review-prep.md`)
+   읽기 — §6.1~6.5 가 현재 상태.
+2. **`.env` 에 `LLM_PROVIDER=gemini` + `GOOGLE_API_KEY=...` 추가** (gitignore 됨,
+   기기마다 직접 입력 필요. 키는 Google AI Studio 에서 새로 발급 권장).
+3. `uv sync --all-packages` 로 venv 복구 (Gemini SDK / Playwright 등 deps).
+4. `playwright install chromium` (이미 있으면 skip — `~/Library/Caches/ms-playwright`
+   확인).
+5. Docker DB 가동: `docker compose up -d db`.
+6. Alembic head 적용: `cd apps/api && uv run alembic upgrade head` (이미 head 면 skip).
+7. API 서버 (워크스페이스 루트에서):
+   ```bash
+   uv run python -c "
+   from dotenv import load_dotenv
+   load_dotenv('.env')
+   from worksheet_api.main import app
+   import uvicorn
+   uvicorn.run(app, host='127.0.0.1', port=8000, log_level='info')
+   "
+   ```
+8. PDF 재검수 — 두 가지 옵션:
+   - **(a) 같은 worksheet 재사용**: 맥북에서 만든 worksheet_id 가 *같은 DB* (Docker
+     volume) 에 있으면 그대로:
+     ```bash
+     curl -sX POST http://localhost:8000/worksheets/247d1ebd-d5e7-4c3d-a7d6-8bc011409cf9/export.pdf \
+       > var/b5_review_worksheet.pdf
+     ```
+   - **(b) 새 worksheet 생성**: DB 가 다르면 §1.1 의 1~5 단계 재실행. 자동 스크립트
+     `/tmp/b5_review_run.py` (PDF 만 깨졌으니 그 파일 위에 zero-waste 지문 / fixture
+     메타 그대로) — 단 `/tmp` 는 기기 종속. PDF 만 재생성하려면 직접 curl 패턴.
+9. PDF 열어 `var/b5_review_worksheet.pdf` 결과 와이프와 함께 §2.1 등급 + §6.4 PDF
+   3차 결과 평가.
+10. 결과 본 문서 §6.4 의 "PDF 등급 — 진행 중" 부분 채움 → v0.2-α 머지 또는 추가
+    패치 진행.
+
+**Claude 가 컨텍스트 복원할 때** — 본 문서 §6 + `git log --oneline -10` + 마지막
+PR (#57) 머지 시점만 보면 지금까지 한 작업 거의 다 파악 가능. 메모리 (기기 단위
+로컬) 와 별개로 본 문서가 인계 source-of-truth.
+
+집에서 Claude 에게 던질 첫 메시지 예시:
+> "퇴근 후 이어서 작업한다. `docs/phase-2-wife-review-prep.md` §6 읽고 어디까지
+> 진행됐는지 파악한 다음, PDF 3차 결과 와이프와 검수 시작하려고 해. 셋업 가이드
+> §6.6 따라가서 API 서버 띄워주고, PDF 다시 생성해줘."

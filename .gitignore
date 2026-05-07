@@ -70,3 +70,7 @@ admin/fixtures/extractor/**/*
 # ─── 기타 ───────────────────────────────────────────────────────────────────
 *.log
 *.tmp
+
+# ─── LLM 사용량 로그 — request_id / 토큰 / 시간 등 민감 메타 ────────────────
+var/llm_usage.jsonl
+var/llm_usage*.jsonl

@@ -46,6 +46,80 @@
     .page { box-shadow: 0 6px 28px rgba(0, 0, 0, 0.10); margin: 0 auto; }
   }
 
+  /* B5 v0.2-α — PDF 다중 페이지 overflow 정책 (사용자 결정: 추후 폰트/사이즈
+   * 커스터마이징 들어가므로 콘텐츠 길이 가변 = overflow 로직 1급 시민).
+   *
+   * 외부 작업자 템플릿은 '한 페이지 컨테이너' 가정 (.page min-height 297mm +
+   * overflow: hidden + footer = 마지막 자식). PDF 다중 페이지에서 큰 박스
+   * (q-translation / q-vocabulary) 가 break-inside: avoid 로 통째 묶이면 *빈
+   * 페이지* 가 발생.
+   *
+   * 정책 결정 (PM 답변 2026-05-07): (A) 박스 분할 허용 + (C-부분) running footer
+   * 하이브리드 — 빈 페이지 박멸 + 학원 자료 표준 매 페이지 footer.
+   *
+   *   1. .page 의 단일 페이지 가정 해제 (min-height/overflow/flex 풀기).
+   *   2. 큰 박스는 분할 허용 (break-inside: auto) — 단 vocabulary __item 같은
+   *      *항목 단위* 는 묶음 (한 단어가 두 페이지 걸치진 않게).
+   *   3. footer 는 colored running footer 로 페이지마다 하단 고정 시도. Chromium
+   *      이 position: running() 미지원이라 @page margin-bottom + position fixed
+   *      fallback (Chromium 의 print 컨텍스트에서 fixed 가 매 페이지 반복).
+   */
+  @media print {
+    .page {
+      min-height: 0 !important;
+      height: auto !important;
+      overflow: visible !important;
+      display: block !important;
+      box-shadow: none !important;
+    }
+    .body {
+      flex: none !important;
+      display: block !important;
+    }
+    .questions { display: block !important; flex: none !important; }
+
+    /* (A) 큰 박스 — 분할 허용 (콘텐츠 길이 가변 대응) */
+    .q,
+    .q-translation,
+    .q-vocabulary {
+      break-inside: auto;
+      page-break-inside: auto;
+    }
+
+    /* (A-보강) 어휘 *항목 단위* 는 묶음 — 한 단어가 두 페이지 걸치면 가독성 ↓ */
+    .q-vocabulary__item {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+
+    /* (C-부분) 큰 박스 시작 시 헤딩이 외톨이로 페이지 끝에 남지 않도록 */
+    .q-head,
+    .q-translation__heading,
+    .q-vocabulary__heading {
+      break-after: avoid;
+      page-break-after: avoid;
+    }
+
+    /* (C-부분) footer — 매 페이지 하단 고정 시도.
+     * @page margin: 0 환경에서 position: fixed; bottom: 0 이 Chromium PDF 에서
+     * 매 페이지 반복된다 (Paged Media level 3 fallback). */
+    .footer {
+      position: fixed !important;
+      bottom: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      margin-top: 0 !important;
+      padding: 8mm var(--page-side) 8mm !important;
+      background: #fff;
+      border-top: 1px solid var(--line);
+      display: flex !important;
+    }
+
+    /* footer 가 fixed 이므로 본문 마지막에 footer 높이만큼 padding 확보 (마지막
+     * 페이지 콘텐츠가 footer 와 겹치지 않도록). */
+    .body { padding-bottom: 22mm !important; }
+  }
+
   .page {
     width: {{ '297mm' if is_landscape else '210mm' }};
     min-height: {{ '210mm' if is_landscape else '297mm' }};
