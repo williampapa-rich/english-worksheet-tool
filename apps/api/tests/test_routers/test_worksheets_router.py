@@ -7,6 +7,7 @@ mock session + mock repository 로 실제 DB 없이 실행한다.
   - 422 — cross-tenant passage_id (WorksheetRepository.create_with_items 가 ValueError)
   - 422 — 존재하지 않는 passage_id (IntegrityError mock → 422)
   - 422 — Pydantic validation (kind 가 enum 값이 아님)
+  - 422 — 같은 passage_id 중복 (W-1 (a) — 도메인 정책)
   - items=[] 인 Worksheet 정상 생성 확인
 
 커버 케이스 (preview):
@@ -626,6 +627,37 @@ async def test_create_worksheet_invalid_kind_422(async_client: AsyncClient) -> N
     resp = await async_client.post("/worksheets/", json=payload)
 
     assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_create_worksheet_duplicate_passage_id_422(async_client: AsyncClient) -> None:
+    """W-1 (a) — 같은 passage_id 가 여러 item 에 중복 → 422.
+
+    create_with_items 가 ValueError("중복") 를 raise → 라우터 422 매핑.
+    Phase 2 PoC 도메인 정책: 동일 passage 두 번 금지.
+    """
+    with patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls:
+        mock_ws_repo = mock_ws_repo_cls.return_value
+        mock_ws_repo.create_with_items = AsyncMock(
+            side_effect=ValueError(
+                "같은 passage_id 를 여러 item 에 중복으로 넣을 수 없습니다."
+            )
+        )
+
+        # 같은 passage_id 를 두 item 에 사용
+        payload = _make_create_payload()
+        payload["items"].append(
+            {
+                "passage_id": str(PASSAGE_ID_1),
+                "order": 1,
+                "label": "중복",
+            }
+        )
+
+        resp = await async_client.post("/worksheets/", json=payload)
+
+    assert resp.status_code == 422
+    assert "중복" in resp.json()["detail"]
 
 
 @pytest.mark.asyncio

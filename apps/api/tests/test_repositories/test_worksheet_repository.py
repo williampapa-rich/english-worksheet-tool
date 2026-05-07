@@ -152,16 +152,17 @@ class TestWorksheetRepositoryUnit:
     async def test_create_with_items_cross_tenant_passage_id_raises(self) -> None:
         """create_with_items: passage_id 가 다른 tenant 소유이면 ValueError.
 
-        sa_text IN 쿼리 결과가 요청 passage_id 수보다 적으면
+        SQLModel COUNT IN 쿼리 결과가 요청 passage_id 수보다 적으면
         cross-tenant passage_id 로 간주해 ValueError 를 raise 해야 한다.
         """
         from unittest.mock import MagicMock
 
         mock_session = AsyncMock()
         # COUNT(*) 가 0 을 반환 → passage 가 다른 tenant 소속
-        mock_scalar_result = MagicMock()
-        mock_scalar_result.scalar_one.return_value = 0
-        mock_session.exec.return_value = mock_scalar_result
+        # SQLModel exec().one() 은 Result.one() 호출 — sync 메서드, MagicMock 으로 처리
+        mock_count_result = MagicMock()
+        mock_count_result.one.return_value = 0
+        mock_session.exec.return_value = mock_count_result
 
         repo = WorksheetRepository(mock_session, _ctx_a())
 
@@ -177,6 +178,31 @@ class TestWorksheetRepositoryUnit:
 
         # passage count 쿼리 1회 실행됐어야 한다
         assert mock_session.exec.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_create_with_items_duplicate_passage_id_raises(self) -> None:
+        """create_with_items: items 안에 같은 passage_id 가 두 번 나오면 ValueError.
+
+        도메인 정책 (Phase 2 PoC): 동일 passage 를 여러 item 에 중복으로 넣을 수 없음.
+        와이프 요청 들어오면 완화 (별 ADR / PR).
+        검증은 cross-tenant 검증보다 먼저 — DB 쿼리 전에 차단.
+        """
+        mock_session = AsyncMock()
+        repo = WorksheetRepository(mock_session, _ctx_a())
+
+        same_passage_id = uuid.UUID("11112222-3333-4444-5555-666677778888")
+        worksheet = _make_worksheet(
+            items=[
+                WorksheetItem(passage_id=same_passage_id, order=0, label="첫 번째"),
+                WorksheetItem(passage_id=same_passage_id, order=1, label="두 번째"),
+            ]
+        )
+
+        with pytest.raises(ValueError, match="중복"):
+            await repo.create_with_items(worksheet)
+
+        # 중복 검증은 DB 쿼리 전에 차단 — exec 호출 0회
+        mock_session.exec.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_create_with_items_no_items_skips_passage_check(self) -> None:
@@ -318,6 +344,8 @@ class TestWorksheetRepositoryIntegration:
         assert saved.id is not None
         assert saved.title == "테스트 워크시트"
         assert len(saved.items) == 1
+        # S-1 (a) — items 도 영속화 후 id 가 채워져야 한다.
+        assert saved.items[0].id is not None, "create_with_items 는 item.id 를 반환해야 한다"
         assert saved.items[0].passage_id == passage_id
         assert saved.items[0].order == 0
         assert saved.items[0].label == "독해 연습"
