@@ -7,8 +7,11 @@
   4. GET /worksheets/{id} → 단건 (items 포함)
   5. PATCH /worksheets/{id} → 메타 수정 (items 는 A2-b 별 라우트)
   6. DELETE /worksheets/{id} → 삭제 (items cascade)
-  7. GET /worksheets/{id}/preview?style=playful → 브라우저로 HTML 확인
-  8. POST /worksheets/{id}/export.pdf → PDF 다운로드 확인
+  7. POST   /worksheets/{id}/items → item 추가 (A2-b)
+  8. PATCH  /worksheets/{id}/items/{item_id} → item 수정 (A2-b)
+  9. DELETE /worksheets/{id}/items/{item_id} → item 삭제 (A2-b)
+  10. GET /worksheets/{id}/preview?style=playful → 브라우저로 HTML 확인
+  11. POST /worksheets/{id}/export.pdf → PDF 다운로드 확인
 
 현재 라우트:
   POST /worksheets
@@ -34,6 +37,20 @@
     → 204 no content (성공)
     → 404 worksheet not found / cross-tenant
     items 는 ON DELETE CASCADE 로 자동 정리 (worksheet_items.worksheet_id FK).
+
+  POST /worksheets/{id}/items  (A2-b)
+    → 201 application/json (WorksheetItem, id 포함)
+    → 404 worksheet not found / cross-tenant
+    → 422 cross-tenant passage_id / 중복 passage_id / Pydantic validation error
+
+  PATCH /worksheets/{id}/items/{item_id}  (A2-b)
+    → 200 application/json (WorksheetItem — 업데이트된 상태)
+    → 404 worksheet not found / item not found / cross-tenant
+    → 422 passage_id 키 포함 (변경 금지) / NOT NULL 필드 null / Pydantic validation error
+
+  DELETE /worksheets/{id}/items/{item_id}  (A2-b)
+    → 204 no content (성공)
+    → 404 worksheet not found / item not found / cross-tenant
 
   GET /worksheets/{id}/preview?style=playful
     → 200 text/html
@@ -463,6 +480,239 @@ async def patch_worksheet(
         for item_orm in items_orm
     ]
     return updated.model_copy(update={"items": items})
+
+
+# ─── DELETE /worksheets/{id} ─────────────────────────────────────────────────
+
+
+# ─── 요청 스키마 (POST/PATCH /worksheets/{id}/items) ────────────────────────
+
+
+class WorksheetItemCreateRequest(BaseModel):
+    """POST /worksheets/{id}/items request — passage_id 는 필수, order/label/옵션은 default.
+
+    passage_id 는 현재 tenant 소속 passage 여야 한다.
+    order 충돌 정책 (PM 결정 2026-05-07): DB 제약 없음. 같은 worksheet 안에 같은 order 가진
+    items 가 둘 이상이어도 저장 허용. 정렬은 비결정적. 와이프 피드백 후 unique constraint 또는
+    자동 시프트 도입 검토 (별 ADR).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    passage_id: uuid.UUID
+    order: int = Field(..., ge=0, description="Worksheet 안의 노출 순서 (0-based).")
+    label: str | None = Field(
+        default=None,
+        max_length=255,
+        description="항목 라벨 (예: '관계절이 포함된 문장').",
+    )
+    include_translation: bool = False
+    include_vocabulary: bool = False
+    include_syntax_annotations: bool = False
+    include_questions: bool = False
+    include_variants: bool = False
+
+
+class WorksheetItemUpdateRequest(BaseModel):
+    """PATCH /worksheets/{id}/items/{item_id} request — 모든 필드 optional.
+
+    passage_id 는 미포함 (변경 금지 — DELETE + POST 사용).
+    extra="forbid" 이므로 passage_id 를 포함하면 422 반환.
+
+    null 의미론: None default = 변경 없음. NOT NULL 필드 (order) 에 명시적 null → 422.
+    "변경하지 않음" 을 표현하려면 요청 body 에서 키를 **제외** 하세요.
+    빈 body ({}) → 422 (변경할 필드 없음).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    order: int | None = Field(default=None, ge=0)
+    label: str | None = Field(default=None, max_length=255)
+    include_translation: bool | None = None
+    include_vocabulary: bool | None = None
+    include_syntax_annotations: bool | None = None
+    include_questions: bool | None = None
+    include_variants: bool | None = None
+
+
+# ─── POST /worksheets/{id}/items ─────────────────────────────────────────────
+
+
+@router.post("/{worksheet_id}/items", response_model=WorksheetItem, status_code=201)
+async def add_worksheet_item(
+    worksheet_id: uuid.UUID,
+    body: WorksheetItemCreateRequest,
+    tenant_ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> WorksheetItem:
+    """기존 Worksheet 에 item 1개를 추가한다.
+
+    passage_id 가 현재 tenant 소속인지 검증한다.
+    같은 worksheet 안에 동일 passage_id 가 이미 존재하면 422 (중복 차단).
+
+    멀티테넌트: tenant_id / workspace_id 는 TenantContext 에서 결정된다.
+    다른 tenant 의 worksheet_id 로 시도하면 404 반환 (존재 여부 노출 방지).
+
+    order 충돌 정책: 같은 order 가진 item 이 이미 존재해도 저장 허용 (PM 결정).
+    정렬은 비결정적 — 와이프 피드백 후 unique constraint 또는 자동 시프트 도입 검토.
+
+    Args:
+        worksheet_id: item 을 추가할 Worksheet UUID.
+        body: WorksheetItemCreateRequest — passage_id / order / 옵션.
+        tenant_ctx: 현재 요청의 테넌트 컨텍스트.
+        session: DB 세션.
+
+    Returns:
+        201 + 저장된 WorksheetItem (id 포함).
+
+    Raises:
+        HTTPException 404: Worksheet 가 존재하지 않거나 다른 tenant 소유.
+        HTTPException 422: cross-tenant passage_id / 중복 passage_id / validation error.
+    """
+    domain_item = WorksheetItem(
+        passage_id=body.passage_id,
+        order=body.order,
+        label=body.label,
+        include_translation=body.include_translation,
+        include_vocabulary=body.include_vocabulary,
+        include_syntax_annotations=body.include_syntax_annotations,
+        include_questions=body.include_questions,
+        include_variants=body.include_variants,
+    )
+
+    worksheet_repo = WorksheetRepository(session, tenant_ctx)
+    try:
+        async with session.begin():
+            saved_item = await worksheet_repo.add_item(worksheet_id, domain_item)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except IntegrityError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="passage_id 가 존재하지 않습니다. passage_id 를 확인하세요.",
+        ) from exc
+
+    if saved_item is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Worksheet {worksheet_id} 를 찾을 수 없습니다.",
+        )
+
+    return saved_item
+
+
+# ─── PATCH /worksheets/{id}/items/{item_id} ──────────────────────────────────
+
+
+@router.patch(
+    "/{worksheet_id}/items/{item_id}",
+    response_model=WorksheetItem,
+    status_code=200,
+)
+async def patch_worksheet_item(
+    worksheet_id: uuid.UUID,
+    item_id: uuid.UUID,
+    body: WorksheetItemUpdateRequest,
+    tenant_ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> WorksheetItem:
+    """WorksheetItem 의 허용 필드를 부분 수정한다.
+
+    수정 가능 필드: order / label / include_translation / include_vocabulary /
+    include_syntax_annotations / include_questions / include_variants.
+
+    passage_id 는 변경 불가 — DELETE + POST 사용 정책.
+    extra="forbid" 이므로 passage_id 포함 시 Pydantic validation error → 422.
+
+    빈 body ({}) → 422 (변경할 필드 없음).
+    order=null → 422 (NOT NULL 필드 — Repository W-1 차단).
+
+    멀티테넌트: 다른 tenant 의 worksheet_id 또는 item_id → 404.
+
+    Args:
+        worksheet_id: 부모 Worksheet UUID.
+        item_id: 수정할 WorksheetItem UUID.
+        body: WorksheetItemUpdateRequest — 수정할 필드만 포함.
+        tenant_ctx: 현재 요청의 테넌트 컨텍스트.
+        session: DB 세션.
+
+    Returns:
+        200 + 업데이트된 WorksheetItem.
+
+    Raises:
+        HTTPException 404: Worksheet 또는 item 이 없거나 cross-tenant.
+        HTTPException 422: passage_id 키 / NOT NULL null / 빈 body / validation error.
+    """
+    patch = body.model_dump(exclude_unset=True)
+
+    if not patch:
+        raise HTTPException(
+            status_code=422,
+            detail="PATCH 요청에 변경할 필드가 없습니다. 최소 하나의 필드를 포함하세요.",
+        )
+
+    worksheet_repo = WorksheetRepository(session, tenant_ctx)
+    try:
+        async with session.begin():
+            updated_item = await worksheet_repo.update_item(worksheet_id, item_id, patch)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except IntegrityError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="변경 값이 DB 제약 조건을 위반합니다.",
+        ) from exc
+
+    if updated_item is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Worksheet {worksheet_id} 또는 item {item_id} 를 찾을 수 없습니다.",
+        )
+
+    return updated_item
+
+
+# ─── DELETE /worksheets/{id}/items/{item_id} ─────────────────────────────────
+
+
+@router.delete("/{worksheet_id}/items/{item_id}", status_code=204)
+async def delete_worksheet_item(
+    worksheet_id: uuid.UUID,
+    item_id: uuid.UUID,
+    tenant_ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> Response:
+    """WorksheetItem 1개를 삭제한다.
+
+    부모 Worksheet 가 없거나 다른 tenant 소유이면 404.
+    item 이 없거나 다른 worksheet 소속이면 404.
+
+    멀티테넌트: W-2 가드 — 부모 worksheet tenant 검증 후 item 조회.
+
+    Args:
+        worksheet_id: 부모 Worksheet UUID.
+        item_id: 삭제할 WorksheetItem UUID.
+        tenant_ctx: 현재 요청의 테넌트 컨텍스트.
+        session: DB 세션.
+
+    Returns:
+        204 no content.
+
+    Raises:
+        HTTPException 404: Worksheet 또는 item 이 없거나 cross-tenant.
+    """
+    worksheet_repo = WorksheetRepository(session, tenant_ctx)
+
+    async with session.begin():
+        deleted = await worksheet_repo.delete_item(worksheet_id, item_id)
+
+    if not deleted:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Worksheet {worksheet_id} 또는 item {item_id} 를 찾을 수 없습니다.",
+        )
+
+    return Response(status_code=204)
 
 
 # ─── DELETE /worksheets/{id} ─────────────────────────────────────────────────
