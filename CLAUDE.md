@@ -3,9 +3,9 @@
 > 이 문서는 Claude Code CLI가 프로젝트 컨텍스트를 이해하기 위한 헌장(charter)이자, subagent들의 협업 규칙서다.
 > 변경 시 PR로 관리한다. 모든 핵심 의사결정은 여기 반영된다.
 
-**버전**: v0.7
-**최종 갱신**: 2026-05-03
-**상태**: Phase 0 종료 — Phase 1 진입 전 (P0-9 smoke test + runbook 머지 완료)
+**버전**: v0.8
+**최종 갱신**: 2026-05-07
+**상태**: Phase 1 진행 중 — 구문분석 에디터 베이스 + Worksheet 출력 파이프라인 (Stage 0~2) 머지 완료, Phase 1 baseline 와이프 OK 대기
 
 ---
 
@@ -89,20 +89,53 @@
 
 ### 2.2 현재 위치
 
-**Phase 0 종료 / Phase 1 진입 전**.
+**Phase 1 진행 중** — 구문분석 에디터 베이스 + Worksheet 출력 파이프라인 (Stage 0~2)
+머지 완료. Phase 1 baseline 와이프 OK 대기.
 
-Phase 0 DoD 5개 모두 충족 (P0-9 smoke test + runbook 머지 완료):
-1. `shared/schemas/` 1차 정의 완료 — passage, question, annotation, worksheet, tenant, extraction
+#### Phase 0 — 종료 (2026-05-02)
+
+DoD 5개 모두 충족:
+1. `shared/schemas/` 1차 정의 — passage / question / annotation / worksheet / tenant / extraction
 2. Vision LLM 추출 파이프라인 — text / image / pdf 각 1건 smoke test 통과
-3. DB 에 Passage 저장/조회 — POST /passages/extract + GET /passages/{id}
+3. DB Passage 저장/조회 — `POST /passages/extract` + `GET /passages/{id}`
 4. 멀티테넌트 스키마 (`tenant_id`) + 인증 stub — sentinel UUID 차단 + cross-tenant 격리
-5. architect `docs/schema-coverage-audit.md` 산출 완료
+5. architect `docs/schema-coverage-audit.md` 산출
 
-Phase 1 진입 전 필수 ADR:
-- **ADR-0004**: Annotation span 식별 방식 (character offset vs ProseMirror position)
-- **ADR (마커 처리)**: `①②③④⑤`, `_..._`, `______` 등 마커 분리 vs inline 유지
+운영 가이드: `docs/phase-0-runbook.md`. Phase 0 진입 차단 ADR 모두 해소 (ADR-0004 / ADR-0006).
 
-운영 가이드: `docs/phase-0-runbook.md`
+#### Phase 1 — 진행 중
+
+**머지된 베이스**:
+- 구문분석 에디터 — Tiptap 기반 highlight / underline / inline_note / top_label / bottom_label /
+  bracket 마크 + ADR-0011 (bracket / label inline node 전환) 적용. `apps/web/` + `packages/editor/`.
+- HWPX 매핑 카탈로그 — `docs/annotation-hwpx-mapping.md` (P1-7) + 핵심 마크 HWPX 매핑 구현
+  (`packages/hwpx_renderer/` — P1-8a inline run 후보 A 채택).
+- Worksheet 출력 파이프라인 (Phase 2 산출에 선반영, Phase 1 검수 부담 분산):
+  - **Stage 0 (PR #40)**: 외부 워크시트 템플릿 3종 자산 도입 + 분석 문서.
+  - **Stage 1 (PR #41 / #42)**: `Worksheet` 출력 파라미터 확장 (subtitle / orientation /
+    instruction / WorksheetItem.label) + ADR-0010 + Alembic + Branding 어댑터.
+  - **Stage 2 (PR #44 / #45)**: Jinja2 HTML 렌더 (`GET /worksheets/{id}/preview?style=playful`)
+    + Playwright PDF (`POST /worksheets/{id}/export.pdf`). XSS escape (markupsafe) + W-2 가드
+    (cross-tenant `WorksheetItemORM` 차단) 적용.
+- 사용자 환경 — `user_preferences` 백엔드/프론트 (PR #33~38), highlight 자유색상 chip 동기화.
+
+**Phase 1 baseline DoD (와이프 검수 대기)**:
+- 단일 지문에 대해 6 마크 (highlight / underline / inline_note / top_label / bottom_label /
+  bracket) 작업 → HWPX 출력. 와이프가 검수해서 OK 받는 1차 baseline.
+
+**Phase 1 잔존 / follow-up**:
+- P1-8b — top/bottom label 수평 align pillow 폰트 metric 보정 (현재는 단락 indent 근사).
+- P1-8c — 화살표/곡선 PoC (좌표계 / anchor 정책).
+- annotation split-mark 정밀 렌더 ADR — Worksheet 출력의 `content_html` 정밀화 (현재 PR
+  #44 / #45 는 `<p>{escape(body_text)}</p>` 단순 wrap, 한계 명시).
+- HWPX 텍스트박스 align — §11 Open Questions 잔존.
+
+#### Stage / Phase 트리거
+
+- **Phase 1 baseline 와이프 OK** → Phase 2 본격 진입 (Worksheet CRUD 라우트 + LLM 해석/어휘
+  보강 파이프라인 + 학생용 템플릿 v0.1 검수).
+- **annotation split-mark ADR** → Worksheet 출력에 에디터 산출 HTML 통합. Phase 1 baseline
+  검증 후 또는 Phase 2 진입과 묶어 진행.
 
 ---
 
@@ -436,7 +469,7 @@ Phase 0를 시작할 수 있는 기반을 깔고, architect + domain-expert의 a
 ## 11. Open Questions (계속 갱신)
 
 - [x] 기존 `exam-generator` 스키마 구체 내용 — `docs/schema-coverage-audit.md` (v0.3, 2026-05-02)
-- [ ] HWPX 렌더링 시 텍스트 런 위에 텍스트박스를 정확히 align하는 방법 — backend-dev PoC 필요
+- [ ] HWPX 렌더링 시 텍스트 런 위에 텍스트박스를 정확히 align하는 방법 — backend-dev PoC 필요 (P1-8b 후속, 라벨 pillow 폰트 metric 보정)
 - [ ] 구문분석 에디터에서 annotation 충돌(같은 span에 라벨 2개 이상) 시 시각적 처리 방식 — frontend-dev + domain-expert 협의
 - [ ] DB 멀티테넌트 격리 방식: row-level filter vs PostgreSQL RLS — 결정 시점 Phase 4
 - [ ] LLM 비용 모니터링 / 캐싱 전략 — Phase 3 진입 전
@@ -447,6 +480,17 @@ Phase 0를 시작할 수 있는 기반을 깔고, architect + domain-expert의 a
 - [ ] **Vocabulary 글로벌 마스터 도입 시점** — Phase 2/3 진입 전 ADR (`audit §4-3`)
 - [ ] **Question / VariantQuestion 단일 테이블 vs 별 테이블** — Phase 3 진입 전 ADR (`audit §4-5`)
 - [ ] **레퍼런스 프로그램 영상 분석** — `/Users/william/Downloads/ScreenRecording_04-24-2026 15-11-52_1.MP4` 프레임 단위 분석 → UI/기능 설계 입력. 산출물 위치: `docs/reference-program-analysis.md` (작업 #5와 병렬, Phase 1 진입 전 완료 권고)
+- [ ] **annotation split-mark 정밀 렌더 ADR** — Worksheet 출력 (`content_html`) 에 에디터
+  산출 HTML (split-mark 또는 hwpx_renderer 산출 HTML 변환) 을 안전하게 주입하는 방법.
+  현재 PR #44 / #45 는 `<p>{escape(body_text)}</p>` 단순 wrap (한계 명시). Phase 1 baseline
+  검수 후 또는 Phase 2 진입과 묶어 ADR 신규.
+- [ ] **Worksheet CRUD 라우트** — `POST /worksheets` / `PATCH /worksheets/{id}` / `DELETE`
+  / `GET /worksheets/{id}` (current: preview / export.pdf 만 존재). Phase 2 본격 진입 시점.
+- [ ] **ADR-0011 / ADR-0012 파일 부재** — 관련 머지 commit (PR #36, PR #41 등) 은 ADR 번호를
+  참조하지만 `docs/adr/0011-*.md` / `0012-*.md` 가 실제로 존재하지 않음. 결정 사항이 PR
+  본문 / commit message / 메모리에 흩어져 있음. 두 ADR 모두 사후 정리 필요 (별 chore PR).
+- [ ] **AnnotationSpan / AnnotationCategory 영속화 검증** — 에디터에서 직렬화된 결과를 DB
+  에 저장 / 복원 라운드트립 검증 (Phase 1 baseline 검수 시 자연스럽게 검증됨).
 
 ---
 
@@ -461,3 +505,4 @@ Phase 0를 시작할 수 있는 기반을 깔고, architect + domain-expert의 a
 | v0.5 | 2026-05-02 | §11 Open Questions 갱신 — Phase 1 진입 차단 ADR 2개 해소 표기 (ADR-0004 Annotation span 식별 방식, ADR-0006 마커 처리 정책). |
 | v0.6 | 2026-05-03 | §3.5 라벨 결정 갱신 (P1-0b PoC 반영) + bracket 표현 결정 미정 명시 + inline_note 잠정 표기. P1-7 매핑 카탈로그 (`docs/annotation-hwpx-mapping.md`) 반영. |
 | v0.7 | 2026-05-03 | §3.5 inline_note "잠정" 표기 제거 — P1-8a (PR #14) 머지로 inline run 후보 A 채택 확정. 12색 highlight 사전 정의 / underline `#000000` 고정 명시. |
+| v0.8 | 2026-05-07 | §2.2 "현재 위치" 전면 갱신 — Phase 1 진행 중 (구문분석 에디터 베이스 + Worksheet 출력 파이프라인 Stage 0~2 머지 완료, baseline 와이프 OK 대기). user_preferences (PR #33~38), Worksheet Stage 0~2 (PR #40~45), bracket / label inline node 전환 (PR #36 / ADR-0011) 흔적 반영. §11 Open Questions 갱신: annotation split-mark 정밀 렌더 ADR / Worksheet CRUD 라우트 / ADR-0011·0012 파일 부재 / AnnotationSpan 영속화 검증 항목 추가. |
