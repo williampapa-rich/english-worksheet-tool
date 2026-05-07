@@ -48,8 +48,13 @@ from extractor.errors import (
 from extractor.image import extract_from_image
 from extractor.pdf import extract_from_pdf
 from extractor.text import extract_from_text
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from hwpx_renderer.render import render_passage_with_annotations
+from llm.augment import (
+    DEFAULT_VOCABULARY_COUNT,
+    augment_translation,
+    augment_vocabulary,
+)
 from llm.client import StructuredLLMClient
 from llm.errors import (
     LLMSchemaValidationError,
@@ -62,7 +67,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from shared.schemas.extraction import ExtractionResult
 from shared.schemas.passage import Passage
 from shared.schemas.question import Question
-from shared.schemas.translation import Translation
+from shared.schemas.translation import Translation, TranslationCreatedBy
 from shared.schemas.vocabulary import Vocabulary
 from worksheet_api.db import get_db
 from worksheet_api.llm_setup import get_llm_client
@@ -415,3 +420,230 @@ async def _dispatch_extract(
     # kind 가 Literal 에 없는 값은 Pydantic validation 에서 이미 차단되지만
     # 방어적으로 처리
     raise ValueError(f"알 수 없는 kind: {body.kind}")
+
+
+# ─── B3: 보강 라우트 (ADR-0013) ─────────────────────────────────────────────
+
+# Translation 보강 mode (ADR-0013 D2)
+TranslationAugmentMode = Literal["skip_if_user_edited", "replace", "skip_if_exists"]
+# Vocabulary 보강 mode (ADR-0013 D3)
+VocabularyAugmentMode = Literal["skip_if_user_edited", "replace", "append"]
+
+
+def _raise_llm_http_exception(exc: Exception) -> None:
+    """ADR-0003 §D-3.5 / ADR-0013 D7 LLM 에러 → HTTPException 매핑.
+
+    extract_passages 의 try/except 와 같은 매핑을 보강 라우트에서도 재사용.
+    """
+    if isinstance(exc, LLMSchemaValidationError):
+        raise HTTPException(
+            status_code=502,
+            detail=f"LLM structured output 검증 실패: {exc}",
+        ) from exc
+    if isinstance(exc, LLMTimeoutError):
+        raise HTTPException(status_code=504, detail=str(exc)) from exc
+    if isinstance(exc, PermanentLLMError):
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    # 다른 LLM* 에러 (LLMNetworkError / LLMRateLimitError) 는 retry 소진 후 도달
+    raise HTTPException(status_code=502, detail=f"LLM 호출 실패: {exc}") from exc
+
+
+@router.post(
+    "/{passage_id}/translation",
+    response_model=Translation,
+    status_code=200,
+)
+async def augment_passage_translation(
+    passage_id: UUID,
+    tenant_ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    llm_client: Annotated[StructuredLLMClient, Depends(get_llm_client)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+    mode: Annotated[
+        TranslationAugmentMode, Query(description="ADR-0013 D2 mode.")
+    ] = "skip_if_user_edited",
+) -> Translation:
+    """LLM 으로 Translation 보강 (ADR-0013 D1, D2).
+
+    Mode 별 동작:
+      - ``skip_if_user_edited`` (default): 기존 ``created_by=USER`` 면 LLM 호출 X +
+        기존 반환. 그 외는 LLM 호출 → 덮어쓰기 (in-place UPDATE).
+      - ``replace``: 항상 LLM 호출 → 덮어쓰기. ``created_by`` 가 USER 였어도 LLM 으로
+        갱신.
+      - ``skip_if_exists``: 기존 row 가 있으면 LLM 호출 X. 없을 때만 호출 + INSERT.
+
+    트랜잭션 경계: ADR-0003 §D-3.4 — 핸들러 1건 = ``session.begin()`` 1건.
+
+    Raises:
+        HTTPException 404: passage_id 가 없거나 다른 tenant 소유.
+        HTTPException 502: LLMSchemaValidationError / 기타 LLM 에러.
+        HTTPException 504: LLMTimeoutError.
+        HTTPException 500: PermanentLLMError.
+    """
+    async with session.begin():
+        passage_repo = PassageRepository(session, tenant_ctx)
+        translation_repo = TranslationRepository(session, tenant_ctx)
+
+        passage = await passage_repo.get(passage_id)
+        if passage is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Passage {passage_id} 를 찾을 수 없습니다.",
+            )
+
+        existing = await translation_repo.get_by_passage(passage_id)
+
+        # mode 별 분기 — LLM 호출 skip 여부
+        if mode == "skip_if_exists" and existing is not None:
+            return existing
+        if (
+            mode == "skip_if_user_edited"
+            and existing is not None
+            and existing.created_by == TranslationCreatedBy.USER
+        ):
+            return existing
+
+        # LLM 호출 (CLAUDE.md §8.3 — packages/llm/ 단일 경로)
+        try:
+            llm_translation = await augment_translation(
+                passage,
+                llm_client=llm_client,
+            )
+        except (
+            LLMSchemaValidationError,
+            LLMTimeoutError,
+            PermanentLLMError,
+        ) as exc:
+            _raise_llm_http_exception(exc)
+            raise  # unreachable, mypy 만족용
+
+        # 영속화
+        if existing is None:
+            new_translation = llm_translation.model_copy(
+                update={
+                    "tenant_id": tenant_ctx.tenant_id,
+                    "workspace_id": tenant_ctx.workspace_id,
+                    "passage_id": passage_id,
+                }
+            )
+            return await translation_repo.create(new_translation)
+        # 기존 row 갱신 — passage_id UNIQUE 그대로, in-place UPDATE
+        updated = await translation_repo.update_text(
+            passage_id,
+            text=llm_translation.text,
+            created_by=TranslationCreatedBy.LLM,
+        )
+        if updated is None:
+            # 위에서 existing != None 확인했는데 여기서 None — 이론상 도달 불가
+            raise HTTPException(
+                status_code=500,
+                detail="Translation update 중 row 가 사라졌습니다 (race).",
+            )
+        return updated
+
+
+class VocabularyAugmentResponse(BaseModel):
+    """POST /passages/{id}/vocabulary 응답 — 보강 후 전체 vocabulary list."""
+
+    vocabulary: list[Vocabulary]
+
+
+@router.post(
+    "/{passage_id}/vocabulary",
+    response_model=VocabularyAugmentResponse,
+    status_code=200,
+)
+async def augment_passage_vocabulary(
+    passage_id: UUID,
+    tenant_ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    llm_client: Annotated[StructuredLLMClient, Depends(get_llm_client)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+    mode: Annotated[
+        VocabularyAugmentMode, Query(description="ADR-0013 D3 mode.")
+    ] = "skip_if_user_edited",
+    count: Annotated[
+        int,
+        Query(
+            ge=1,
+            le=30,
+            description="요청 어휘 개수 (LLM 이 적게 반환 가능). 기본 10.",
+        ),
+    ] = DEFAULT_VOCABULARY_COUNT,
+) -> VocabularyAugmentResponse:
+    """LLM 으로 Vocabulary list 보강 (ADR-0013 D1, D3).
+
+    Mode 별 동작:
+      - ``skip_if_user_edited`` (default): 기존 USER / user_edited 항목 보존. LLM
+        결과 중 USER 항목과 ``headword_normalized`` 충돌 항목은 skip. 나머지 INSERT.
+      - ``replace``: ``selected_by=LLM`` 그리고 ``user_edited=False`` 인 row 만 DELETE,
+        USER 항목 보존. LLM 결과 INSERT.
+      - ``append``: 기존 그대로, LLM 결과만 INSERT (충돌 무시).
+
+    응답: 보강 후 passage 의 전체 vocabulary list (call 후 새 상태).
+
+    Raises:
+        HTTPException 404: passage_id 가 없거나 다른 tenant 소유.
+        HTTPException 502: LLM 에러.
+        HTTPException 504: LLMTimeoutError.
+        HTTPException 500: PermanentLLMError.
+    """
+    async with session.begin():
+        passage_repo = PassageRepository(session, tenant_ctx)
+        vocabulary_repo = VocabularyRepository(session, tenant_ctx)
+
+        passage = await passage_repo.get(passage_id)
+        if passage is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Passage {passage_id} 를 찾을 수 없습니다.",
+            )
+
+        # USER / user_edited 항목의 headword set — skip_if_user_edited 충돌 검출용
+        user_headwords: set[str] = set()
+        if mode == "skip_if_user_edited":
+            user_headwords = await vocabulary_repo.list_user_edited_headwords(passage_id)
+
+        # LLM 호출
+        try:
+            llm_vocab = await augment_vocabulary(
+                passage,
+                llm_client=llm_client,
+                count=count,
+            )
+        except (
+            LLMSchemaValidationError,
+            LLMTimeoutError,
+            PermanentLLMError,
+        ) as exc:
+            _raise_llm_http_exception(exc)
+            raise
+
+        # mode 별 기존 데이터 처리
+        if mode == "replace":
+            await vocabulary_repo.delete_llm_for_passage(passage_id)
+
+        # LLM 결과끼리 중복 제거 (replace / skip_if_user_edited 모드 — append 는 raw 유지)
+        items_to_insert: list[Vocabulary] = []
+        seen_headwords: set[str] = set()
+        for v in llm_vocab:
+            if mode == "skip_if_user_edited" and v.headword_normalized in user_headwords:
+                continue  # USER 항목과 충돌 → skip (D4 사용자 수정 보존)
+            if mode in ("skip_if_user_edited", "replace"):
+                if v.headword_normalized in seen_headwords:
+                    continue  # LLM 결과 내 중복 — 첫 항목만 (silent drift 방지)
+                seen_headwords.add(v.headword_normalized)
+            items_to_insert.append(v)
+
+        # INSERT
+        for v in items_to_insert:
+            v_with_ids = v.model_copy(
+                update={
+                    "tenant_id": tenant_ctx.tenant_id,
+                    "workspace_id": tenant_ctx.workspace_id,
+                    "passage_id": passage_id,
+                }
+            )
+            await vocabulary_repo.create(v_with_ids)
+
+        # 응답: 보강 후 전체 list
+        final_list = await vocabulary_repo.list_by_passage(passage_id)
+        return VocabularyAugmentResponse(vocabulary=final_list)

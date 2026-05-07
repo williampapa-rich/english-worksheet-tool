@@ -1,19 +1,20 @@
-"""VocabularyRepository — Phase 0 read-only.
+"""VocabularyRepository — Phase 0 read-only + B1 영속화 + B3 보강 update.
 
-Phase 0 에서는 Vocabulary 가 선택적으로만 추출된다 (ADR-0003 PM-5 / PM-6).
-write 는 Phase 2 에서 도입 예정.
-
-write 메서드를 미리 구현해 Phase 2 진입 시 즉시 사용 가능하도록 한다.
+write 단계:
+  - B1 (PR #51) — extract 시점 영속화 활성화 (옵션 B).
+  - B3 (PR #54) — 보강 라우트의 selective DELETE (`delete_llm_for_passage`).
+    ``selected_by=LLM`` 그리고 ``user_edited=False`` 인 row 만 삭제 (USER 항목 보존,
+    ADR-0013 D3 / D4 — 사용자 수정 보존).
 """
 
 from __future__ import annotations
 
 import uuid
 
-from sqlmodel import select
+from sqlmodel import delete, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from shared.schemas.vocabulary import Vocabulary
+from shared.schemas.vocabulary import Vocabulary, VocabularySelectedBy
 from worksheet_api.models.vocabulary import VocabularyORM
 from worksheet_api.repositories.base import BaseRepository
 from worksheet_api.repositories.tenant_context import TenantContext
@@ -69,3 +70,60 @@ class VocabularyRepository(BaseRepository[VocabularyORM, Vocabulary]):
         )
         result = await self._session.exec(stmt)
         return [self._to_domain(orm) for orm in result.all()]
+
+    async def list_user_edited_headwords(
+        self,
+        passage_id: uuid.UUID,
+    ) -> set[str]:
+        """``selected_by=USER`` 또는 ``user_edited=True`` 인 항목의 headword set.
+
+        ADR-0013 D3 ``mode=skip_if_user_edited`` 에서 LLM 결과의 충돌 검출에 사용.
+
+        Args:
+            passage_id: 조회 기준 Passage UUID.
+
+        Returns:
+            ``headword_normalized`` set. 사용자 수정 항목이 없으면 빈 set.
+        """
+        stmt = (
+            select(self._orm_class.headword_normalized)
+            .where(self._orm_class.tenant_id == self._tenant_ctx.tenant_id)
+            .where(self._orm_class.workspace_id == self._tenant_ctx.workspace_id)
+            .where(self._orm_class.passage_id == passage_id)
+            .where(
+                (self._orm_class.selected_by == VocabularySelectedBy.USER.value)
+                | (self._orm_class.user_edited.is_(True))  # type: ignore[union-attr]
+            )
+        )
+        result = await self._session.exec(stmt)
+        return set(result.all())
+
+    # ─── write 메서드 — B3 보강 ──────────────────────────────────────────────
+
+    async def delete_llm_for_passage(
+        self,
+        passage_id: uuid.UUID,
+    ) -> int:
+        """Passage 의 LLM 산출 (``selected_by=LLM`` 그리고 ``user_edited=False``)
+        Vocabulary row 만 DELETE. USER 항목 / 사용자 수정 항목은 보존.
+
+        ADR-0013 D3 ``mode=replace`` / ``skip_if_user_edited`` 에서 LLM 항목만
+        교체할 때 사용. tenant 필터 강제.
+
+        Args:
+            passage_id: 대상 Passage UUID.
+
+        Returns:
+            삭제된 row 수.
+        """
+        stmt = (
+            delete(self._orm_class)
+            .where(self._orm_class.tenant_id == self._tenant_ctx.tenant_id)
+            .where(self._orm_class.workspace_id == self._tenant_ctx.workspace_id)
+            .where(self._orm_class.passage_id == passage_id)
+            .where(self._orm_class.selected_by == VocabularySelectedBy.LLM.value)
+            .where(self._orm_class.user_edited.is_(False))  # type: ignore[union-attr]
+        )
+        result = await self._session.exec(stmt)  # type: ignore[call-overload]
+        await self._session.flush()
+        return result.rowcount if hasattr(result, "rowcount") else 0
