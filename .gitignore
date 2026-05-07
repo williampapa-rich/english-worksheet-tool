@@ -74,3 +74,8 @@ admin/fixtures/extractor/**/*
 # ─── LLM 사용량 로그 — request_id / 토큰 / 시간 등 민감 메타 ────────────────
 var/llm_usage.jsonl
 var/llm_usage*.jsonl
+
+# ─── 검수 산출물 — 와이프 브랜딩 정보 + 바이너리 history 누적 방지 ──────────
+# B5 / 후속 검수 시점에 매번 재생성되는 ephemeral artifact 라 git 추적 불필요.
+var/*.html
+var/*.pdf

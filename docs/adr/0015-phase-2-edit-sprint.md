@@ -126,6 +126,11 @@ CLAUDE.md §3.1 canonical schema 중심 + ADR-0013 사용자 수정 메타 정�
 - ADR-0013 의 `skip_if_user_edited` 모드와 정합 — 사용자 수정 후 LLM 보강 호출
   시 보존 검증 단위 테스트
 - Pydantic input DTO (`extra="forbid"`) + 단위 테스트 100% 통과
+  - **Gemini provider 호환 주의**: B5 검수 단계에서 `packages/llm/src/llm/augment.py`
+    의 *LLM output* DTO 들은 `extra="forbid"` 가 제거됐다 (Gemini API 가
+    `additionalProperties: false` 거절). 본 sprint 의 *API input* DTO 는
+    LLM output 과 별개 — `extra="forbid"` 유지. Anthropic / Gemini 양쪽
+    호환은 LLM output DTO 에만 영향, API input DTO 는 영향 없음.
 
 **예상 PR 분량**: 5 PR × 200~300 LOC ≈ 1,200 LOC (1.5주)
 

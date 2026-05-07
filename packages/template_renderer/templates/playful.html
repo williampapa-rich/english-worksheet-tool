@@ -18,8 +18,11 @@
   {% set is_landscape = (worksheet.orientation | default('portrait')) == 'landscape' %}
   /* @page margin / size 는 Playwright `page.pdf()` 인자 (margin / format /
    * landscape) 가 우선 결정 — 본 CSS 는 size 만 명시 (CSS 측 의도 문서화 목적).
-   * margin: top 0 / bottom 28mm (footer 22mm + 6mm 시각 margin) 은 pdf.py 에서
-   * 전달. 박스 분할 한계선이 자동으로 footer 위 6mm 에서 끊어짐. */
+   * margin: top 12mm / bottom 33mm (footer 22mm + 11mm 시각 margin) 은
+   * pdf.py 에서 전달. 박스 분할 한계선이 자동으로 footer 위 11mm 에서 끊어짐.
+   * footer_html 빈 문자열 fallback 시 (구버전 호환) 본 @page CSS 만 적용 —
+   * margin 미지정 → 브라우저 기본값 (Chromium PDF context 기본 0.4inch).
+   * 새 호출부는 footer_html 명시 권장. */
   @page { size: A4 {{ 'landscape' if is_landscape else 'portrait' }}; }
   *, *::before, *::after { box-sizing: border-box; }
 

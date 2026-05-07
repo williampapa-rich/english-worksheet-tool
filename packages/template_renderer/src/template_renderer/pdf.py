@@ -32,8 +32,8 @@ async def render_worksheet_pdf(
 
     Playwright Chromium headless 로 HTML 을 렌더한 뒤 PDF 를 생성한다.
     ``footer_html`` 이 주어지면 Chromium native ``display_header_footer`` 로 매
-    페이지 하단에 자동 주입 — 박스 분할 한계선이 footer 위 6mm (= margin-bottom
-    28mm) 에서 자동으로 끊어진다.
+    페이지 하단에 자동 주입 — 박스 분할 한계선이 footer 위 11mm (= margin-bottom
+    33mm = footer 22mm + 11mm 시각 margin) 에서 자동으로 끊어진다.
 
     Args:
         html: ``render_worksheet_html()`` 산출 HTML 문자열.
@@ -56,13 +56,16 @@ async def render_worksheet_pdf(
             ``playwright install chromium`` 으로 해결.
 
     Note:
-        - footer_html 이 주어지면 Playwright ``margin.bottom: 28mm`` 을 자동
-          적용 — 페이지 콘텐츠 박스가 28mm 만큼 작아져 박스 분할 한계선이
-          footer 위 6mm (footer 22mm + 6mm 시각 margin = 28mm) 에서 끊어짐.
+        - footer_html 이 주어지면 Playwright ``margin={top: 12mm, bottom: 33mm}``
+          을 자동 적용 — 페이지 콘텐츠 박스가 33mm 만큼 작아져 박스 분할
+          한계선이 footer 위 11mm (footer 22mm + 11mm 시각 margin = 33mm)
+          에서 끊어짐. 상단 12mm 는 page2+ 박스 재개 시 종이 끝 시각 보정 (page1
+          banner 는 .banner { margin-top: -12mm } 음수 마진으로 종이 위 붙임).
           fixed footer 트릭 (Paged Media level 3 fallback) 대체 — Chromium
           native API 라 박스 border 가 footer 영역 침범 원리적으로 불가.
         - footer_html 이 빈 문자열이면 ``prefer_css_page_size=True`` + CSS
-          @page 정의 우선 (구버전 호환). 새 호출부는 footer_html 명시 권장.
+          @page 정의 우선 (구버전 호환). 이 fallback 경로는 margin 인자 미전달
+          이라 박스 한계선 시각 보장 없음 — 새 호출부는 footer_html 명시 권장.
         - CDN webfont 로딩 대기: ``wait_until="networkidle"`` 로 font load
           완료 보장. 인터넷 없는 환경에서는 timeout 발생 가능.
     """
