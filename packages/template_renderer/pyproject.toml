@@ -14,6 +14,9 @@ dependencies = [
   #            템플릿 전면 재작성 필요. FastAPI 의존 스택과도 친숙.
   # 사용 범위: template_renderer.render.render_worksheet_html() 전용.
   "jinja2>=3.1.0",
+  # MarkupSafe — XSS 방어 위한 escape() 직접 사용 (adapters.py:worksheet_to_template_context).
+  # Jinja2 의 transitive dep 이지만 직접 import 하므로 명시 (§3.6 / §8.4 의존성 명시 원칙).
+  "markupsafe>=2.1",
   # workspace 멤버 패키지
   "shared",
 ]

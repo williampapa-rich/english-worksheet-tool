@@ -228,3 +228,27 @@ class TestWorksheetToTemplateContext:
         # 다른 key 는 정상
         assert ctx["student"] == {"name": "", "class_name": "", "date": ""}
         assert ctx["questions"] == []
+
+    def test_body_text_html_special_chars_escaped(self) -> None:
+        """S-1 회귀: body_text 의 HTML 특수문자가 markupsafe.escape() 로 escape 된다.
+
+        templates/*.html 의 ``{{ q.content_html | safe }}`` 와 결합되어도 raw
+        HTML 태그가 주입되지 않도록 어댑터 레이어에서 escape 한다.
+        """
+        passage_id = uuid.UUID("11111111-1111-1111-1111-111111111111")
+        passage = _make_passage(
+            passage_id=passage_id,
+            body_text='<script>alert("xss")</script> & "quote"',
+        )
+        item = WorksheetItem(passage_id=passage_id, order=0)
+        worksheet = _make_worksheet(items=[item])
+
+        ctx = worksheet_to_template_context(worksheet, [passage])
+
+        content = ctx["questions"][0]["content_html"]
+        # raw <script> 태그가 들어가서는 안 된다
+        assert "<script>" not in content
+        # escape 된 형태가 들어가야 한다
+        assert "&lt;script&gt;" in content
+        assert "&amp;" in content
+        assert "&#34;" in content or "&quot;" in content

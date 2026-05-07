@@ -68,34 +68,11 @@ class WorksheetRepository(BaseRepository[WorksheetORM, Worksheet]):
         """
         return Worksheet.model_validate(orm, update={"items": []})
 
-    # ─── 별칭 메서드 ─────────────────────────────────────────────────────────
-
-    async def get_by_id(
-        self,
-        worksheet_id: uuid.UUID,
-        tenant_ctx: TenantContext,
-    ) -> Worksheet | None:
-        """ID + tenant 필터로 단건 조회.
-
-        ``tenant_ctx`` 인자는 호출 일관성을 위한 API — 내부에서는 생성자 주입된
-        ``self._tenant_ctx`` 를 사용한다. 외부에서 다른 tenant_ctx 를 넘겨도
-        생성자 컨텍스트를 따르므로 교차 격리가 유지된다.
-
-        Args:
-            worksheet_id: 조회할 Worksheet UUID.
-            tenant_ctx: 현재 요청의 TenantContext (생성자와 동일 컨텍스트여야 함).
-
-        Returns:
-            Worksheet 인스턴스 또는 None.
-        """
-        return await self.get(worksheet_id)
-
     # ─── items 조회 ──────────────────────────────────────────────────────────
 
     async def list_items_for_worksheet(
         self,
         worksheet_id: uuid.UUID,
-        tenant_ctx: TenantContext,
     ) -> list[WorksheetItemORM]:
         """WorksheetItemORM 목록 조회 — tenant_id 이중 검증.
 
@@ -109,7 +86,6 @@ class WorksheetRepository(BaseRepository[WorksheetORM, Worksheet]):
 
         Args:
             worksheet_id: item 을 조회할 Worksheet UUID.
-            tenant_ctx: 현재 요청의 TenantContext (생성자와 동일 컨텍스트여야 함).
 
         Returns:
             WorksheetItemORM 리스트 (order 기준 정렬). 부모 Worksheet 가 없거나 다른

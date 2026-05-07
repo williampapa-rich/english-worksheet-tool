@@ -20,6 +20,7 @@ content_html 한계 (본 PR):
 
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Annotated
 
@@ -37,6 +38,8 @@ from worksheet_api.repositories import (
     WorksheetRepository,
     get_tenant_context,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/worksheets", tags=["worksheets"])
 
@@ -93,7 +96,7 @@ async def preview_worksheet(
     passage_repo = PassageRepository(session, tenant_ctx)
 
     # 2. Worksheet 조회 — tenant_id 필터 자동 적용
-    worksheet = await worksheet_repo.get_by_id(worksheet_id, tenant_ctx)
+    worksheet = await worksheet_repo.get(worksheet_id)
     if worksheet is None:
         raise HTTPException(
             status_code=404,
@@ -101,14 +104,24 @@ async def preview_worksheet(
         )
 
     # 3. WorksheetItems 조회 — W-2 가드 패턴 (tenant 재검증 포함)
-    items_orm = await worksheet_repo.list_items_for_worksheet(worksheet_id, tenant_ctx)
+    items_orm = await worksheet_repo.list_items_for_worksheet(worksheet_id)
 
     # 4. 각 item 의 Passage 조회 (tenant 필터 자동 적용)
+    # passage 가 None 이면 데이터 무결성 이상 (cross-tenant FK 또는 삭제된 passage).
+    # graceful degradation 으로 렌더는 계속하되 warning 로그로 추적.
     passages: list[Passage] = []
     for item_orm in items_orm:
         passage = await passage_repo.get(item_orm.passage_id)
-        if passage is not None:
-            passages.append(passage)
+        if passage is None:
+            logger.warning(
+                "worksheet item passage missing — possible data integrity issue: "
+                "worksheet_id=%s, item_id=%s, passage_id=%s",
+                worksheet_id,
+                item_orm.id,
+                item_orm.passage_id,
+            )
+            continue
+        passages.append(passage)
 
     # 5. 템플릿 컨텍스트 생성 + 렌더링
     context = worksheet_to_template_context(worksheet, passages)

@@ -9,6 +9,8 @@ mock session + mock repository 로 실제 DB 없이 실행한다.
   - 422 — invalid style
   - 422 — style=classic (MVP 정책 — README §26)
   - 422 — style=modern (MVP 정책 — README §26)
+  - 200 + warning — passage 누락 graceful (W-2 후속, R-3)
+  - 200 + escape — body_text XSS escape (S-1 회귀)
 
 패턴: test_annotations_router.py 와 동일한 mock 패턴 사용.
 """
@@ -168,7 +170,7 @@ async def test_preview_worksheet_ok(async_client: AsyncClient) -> None:
         patch("worksheet_api.routers.worksheets.PassageRepository") as mock_passage_repo_cls,
     ):
         mock_ws_repo = mock_ws_repo_cls.return_value
-        mock_ws_repo.get_by_id = AsyncMock(return_value=worksheet)
+        mock_ws_repo.get = AsyncMock(return_value=worksheet)
         mock_ws_repo.list_items_for_worksheet = AsyncMock(return_value=[item_orm])
 
         mock_passage_repo = mock_passage_repo_cls.return_value
@@ -192,7 +194,7 @@ async def test_preview_worksheet_not_found_404(async_client: AsyncClient) -> Non
     unknown_id = uuid.UUID("99999999-9999-9999-9999-999999999999")
 
     with patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls:
-        mock_ws_repo_cls.return_value.get_by_id = AsyncMock(return_value=None)
+        mock_ws_repo_cls.return_value.get = AsyncMock(return_value=None)
 
         resp = await async_client.get(
             f"/worksheets/{unknown_id}/preview",
@@ -207,12 +209,12 @@ async def test_preview_worksheet_not_found_404(async_client: AsyncClient) -> Non
 async def test_preview_worksheet_cross_tenant_404(async_client: AsyncClient) -> None:
     """cross-tenant: 다른 tenant 의 worksheet_id → 404 (존재 여부 노출 방지).
 
-    WorksheetRepository.get_by_id() 가 tenant_id 필터로 None 을 반환하면
+    WorksheetRepository.get() 이 tenant_id 필터로 None 을 반환하면
     라우터는 404 를 반환해야 한다.
     """
     with patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls:
         # 다른 tenant 소유 → tenant 필터 후 None
-        mock_ws_repo_cls.return_value.get_by_id = AsyncMock(return_value=None)
+        mock_ws_repo_cls.return_value.get = AsyncMock(return_value=None)
 
         resp = await async_client.get(
             f"/worksheets/{WORKSHEET_ID_1}/preview",
@@ -254,3 +256,79 @@ async def test_preview_worksheet_style_modern_422(async_client: AsyncClient) -> 
     )
 
     assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_preview_worksheet_passage_missing_graceful(
+    async_client: AsyncClient,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """W-2 후속: passage 가 None 이어도 200 + warning 로그.
+
+    데이터 무결성 이상 (cross-tenant FK 또는 삭제된 passage) 시 silently 스킵
+    하지 않고 logger.warning 으로 추적해야 한다. graceful degradation 으로
+    렌더는 계속하되 questions 가 빈 리스트가 된다.
+    """
+    import logging
+
+    worksheet = _make_worksheet()
+    item_orm = _make_item_orm()
+
+    with (
+        caplog.at_level(logging.WARNING, logger="worksheet_api.routers.worksheets"),
+        patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls,
+        patch("worksheet_api.routers.worksheets.PassageRepository") as mock_passage_repo_cls,
+    ):
+        mock_ws_repo = mock_ws_repo_cls.return_value
+        mock_ws_repo.get = AsyncMock(return_value=worksheet)
+        mock_ws_repo.list_items_for_worksheet = AsyncMock(return_value=[item_orm])
+
+        mock_passage_repo = mock_passage_repo_cls.return_value
+        mock_passage_repo.get = AsyncMock(return_value=None)  # passage 누락
+
+        resp = await async_client.get(
+            f"/worksheets/{WORKSHEET_ID_1}/preview",
+            params={"style": "playful"},
+        )
+
+    assert resp.status_code == 200
+    assert any("passage missing" in rec.message for rec in caplog.records), (
+        "passage 누락 시 warning 로그가 남아야 한다"
+    )
+
+
+@pytest.mark.asyncio
+async def test_preview_worksheet_xss_escape(async_client: AsyncClient) -> None:
+    """S-1 회귀: passage.body_text 의 HTML 특수문자가 escape 되어야 한다.
+
+    body_text 에 ``<script>`` 가 포함돼도 렌더 결과에 raw <script> 태그가
+    들어가지 않아야 한다 (markupsafe.escape() 적용).
+    """
+    worksheet = _make_worksheet()
+    item_orm = _make_item_orm()
+    malicious_text = '<script>alert("xss")</script>'
+    passage = _make_passage()
+    passage = passage.model_copy(update={"body_text": malicious_text})
+
+    with (
+        patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls,
+        patch("worksheet_api.routers.worksheets.PassageRepository") as mock_passage_repo_cls,
+    ):
+        mock_ws_repo = mock_ws_repo_cls.return_value
+        mock_ws_repo.get = AsyncMock(return_value=worksheet)
+        mock_ws_repo.list_items_for_worksheet = AsyncMock(return_value=[item_orm])
+
+        mock_passage_repo = mock_passage_repo_cls.return_value
+        mock_passage_repo.get = AsyncMock(return_value=passage)
+
+        resp = await async_client.get(
+            f"/worksheets/{WORKSHEET_ID_1}/preview",
+            params={"style": "playful"},
+        )
+
+    assert resp.status_code == 200
+    body = resp.text
+    # raw <script> 태그가 들어가서는 안 된다
+    assert "<script>alert" not in body
+    # escape 된 형태가 들어가야 한다 (markupsafe escape)
+    assert "&lt;script&gt;" in body

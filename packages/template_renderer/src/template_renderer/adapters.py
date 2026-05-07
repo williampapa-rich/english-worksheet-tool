@@ -24,6 +24,11 @@ ADR-0010 §D3 / §D6 구현.
 
 from __future__ import annotations
 
+import uuid
+from typing import Any
+
+from markupsafe import escape
+
 from shared.schemas.passage import Passage
 from shared.schemas.worksheet import Branding, Worksheet
 
@@ -85,12 +90,12 @@ def worksheet_to_template_context(
           (``branding_to_academy_dict`` 가 None 필드를 그대로 통과).
     """
     # passage_id → Passage 빠른 조회용 매핑
-    passage_map: dict = {p.id: p for p in passages}
+    passage_map: dict[uuid.UUID, Passage] = {p.id: p for p in passages}
 
     # items 를 order 기준으로 정렬한 뒤 질문 목록 구성
     sorted_items = sorted(worksheet.items, key=lambda item: item.order)
 
-    questions: list[dict] = []
+    questions: list[dict[str, Any]] = []
     for idx, item in enumerate(sorted_items, start=1):
         passage = passage_map.get(item.passage_id)
         # passage 가 없으면 빈 content 로 graceful degradation
@@ -98,7 +103,10 @@ def worksheet_to_template_context(
         body_text = passage.body_text if passage is not None else ""
         # 한계: body_text raw text 를 <p> 로 단순 wrap.
         # 정밀한 annotation split-mark HTML 주입은 별도 ADR 에서 다룬다.
-        content_html = f"<p>{body_text}</p>"
+        # XSS 방어 (S-1): markupsafe.escape() 로 body_text 의 HTML 특수문자를 escape.
+        # 결과는 Markup 타입 — 템플릿의 `| safe` 와 결합되어도 escape 가 유지된다.
+        # annotation 렌더러 도입 시 신뢰 가능한 HTML 은 명시적으로 Markup(...) 으로 감싸야 함.
+        content_html = f"<p>{escape(body_text)}</p>"
         questions.append(
             {
                 "number": idx,

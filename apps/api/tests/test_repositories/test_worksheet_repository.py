@@ -107,29 +107,10 @@ class TestWorksheetRepositoryUnit:
         repo = WorksheetRepository(mock_session, _ctx_a())
         foreign_worksheet_id = uuid.UUID("ffffffff-ffff-ffff-ffff-ffffffffffff")
 
-        result = await repo.list_items_for_worksheet(foreign_worksheet_id, _ctx_a())
+        result = await repo.list_items_for_worksheet(foreign_worksheet_id)
 
         assert result == []
         # WorksheetORM get 이후 ItemORM 쿼리가 없어야 한다 (exec 는 1회 — get() 용으로만)
-        assert mock_session.exec.call_count == 1
-
-    @pytest.mark.asyncio
-    async def test_get_by_id_delegates_to_base_get(self) -> None:
-        """get_by_id() 는 내부적으로 BaseRepository.get() 에 위임한다."""
-        from unittest.mock import MagicMock
-
-        mock_session = AsyncMock()
-        mock_result = MagicMock()
-        mock_result.first.return_value = None  # not found
-        mock_session.exec.return_value = mock_result
-
-        repo = WorksheetRepository(mock_session, _ctx_a())
-        worksheet_id = uuid.UUID("12345678-0000-0000-0000-000000000001")
-
-        result = await repo.get_by_id(worksheet_id, _ctx_a())
-
-        assert result is None
-        # exec 가 1회 호출 (BaseRepository.get 쿼리)
         assert mock_session.exec.call_count == 1
 
 
@@ -185,5 +166,5 @@ class TestWorksheetRepositoryIntegration:
 
         # tenant A context 로 조회 시도 → 빈 리스트 기대
         repo_a = WorksheetRepository(pg_session, _ctx_a())
-        items = await repo_a.list_items_for_worksheet(ws_id, _ctx_a())
+        items = await repo_a.list_items_for_worksheet(ws_id)
         assert items == [], "cross-tenant item 노출은 W-2 가드로 차단되어야 한다"
