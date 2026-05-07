@@ -1563,3 +1563,127 @@ async def test_post_vocab_manual_422_extra_field(async_client: AsyncClient) -> N
         )
 
     assert resp.status_code == 422
+
+
+# ─── E1-d — DELETE /passages/{id}/vocabulary/{vid} ──────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_delete_vocabulary_204_when_present(async_client: AsyncClient) -> None:
+    """E1-d: 정상 삭제 → 204 + repo.delete_by_id 호출."""
+    saved_passage = _make_saved_passage()
+    existing = _make_saved_vocabulary(saved_passage.id, "economy", "경제")
+
+    with (
+        patch("worksheet_api.routers.passages.PassageRepository") as mock_prepo,
+        patch("worksheet_api.routers.passages.VocabularyRepository") as mock_vrepo,
+    ):
+        mock_prepo.return_value.get = AsyncMock(return_value=saved_passage)
+        mock_vrepo.return_value.get = AsyncMock(return_value=existing)
+        mock_vrepo.return_value.delete_by_id = AsyncMock(return_value=True)
+
+        resp = await async_client.delete(
+            f"/passages/{saved_passage.id}/vocabulary/{existing.id}"
+        )
+
+    assert resp.status_code == 204
+    mock_vrepo.return_value.delete_by_id.assert_awaited_once_with(existing.id)
+
+
+@pytest.mark.asyncio
+async def test_delete_vocabulary_allows_user_selected(async_client: AsyncClient) -> None:
+    """E1-d (D3 b): selected_by=USER 도 삭제 허용."""
+    saved_passage = _make_saved_passage()
+    user_vocab = Vocabulary(
+        id=uuid.uuid4(),
+        tenant_id=TENANT_A,
+        workspace_id=WORKSPACE_A,
+        passage_id=saved_passage.id,
+        word="userword",
+        headword_normalized="userword",
+        meaning_ko="사용자 단어",
+        selected_by=VocabularySelectedBy.USER,
+        user_edited=False,
+        created_at=datetime(2026, 5, 1, 0, 0, 0, tzinfo=UTC),
+        updated_at=datetime(2026, 5, 1, 0, 0, 0, tzinfo=UTC),
+    )
+
+    with (
+        patch("worksheet_api.routers.passages.PassageRepository") as mock_prepo,
+        patch("worksheet_api.routers.passages.VocabularyRepository") as mock_vrepo,
+    ):
+        mock_prepo.return_value.get = AsyncMock(return_value=saved_passage)
+        mock_vrepo.return_value.get = AsyncMock(return_value=user_vocab)
+        mock_vrepo.return_value.delete_by_id = AsyncMock(return_value=True)
+
+        resp = await async_client.delete(
+            f"/passages/{saved_passage.id}/vocabulary/{user_vocab.id}"
+        )
+
+    assert resp.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_delete_vocabulary_404_when_passage_missing(
+    async_client: AsyncClient,
+) -> None:
+    """E1-d: passage 없으면 404."""
+    with (
+        patch("worksheet_api.routers.passages.PassageRepository") as mock_prepo,
+        patch("worksheet_api.routers.passages.VocabularyRepository") as mock_vrepo,
+    ):
+        mock_prepo.return_value.get = AsyncMock(return_value=None)
+        mock_vrepo.return_value.delete_by_id = AsyncMock()
+
+        resp = await async_client.delete(
+            f"/passages/{uuid.uuid4()}/vocabulary/{uuid.uuid4()}"
+        )
+
+    assert resp.status_code == 404
+    mock_vrepo.return_value.delete_by_id.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_delete_vocabulary_404_when_vocab_missing(
+    async_client: AsyncClient,
+) -> None:
+    """E1-d: vocabulary 없으면 404."""
+    saved_passage = _make_saved_passage()
+
+    with (
+        patch("worksheet_api.routers.passages.PassageRepository") as mock_prepo,
+        patch("worksheet_api.routers.passages.VocabularyRepository") as mock_vrepo,
+    ):
+        mock_prepo.return_value.get = AsyncMock(return_value=saved_passage)
+        mock_vrepo.return_value.get = AsyncMock(return_value=None)
+        mock_vrepo.return_value.delete_by_id = AsyncMock()
+
+        resp = await async_client.delete(
+            f"/passages/{saved_passage.id}/vocabulary/{uuid.uuid4()}"
+        )
+
+    assert resp.status_code == 404
+    mock_vrepo.return_value.delete_by_id.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_delete_vocabulary_404_cross_passage(async_client: AsyncClient) -> None:
+    """E1-d: vocabulary.passage_id 가 URL passage_id 와 불일치 → 404."""
+    saved_passage = _make_saved_passage()
+    other_passage_id = uuid.uuid4()
+    existing = _make_saved_vocabulary(other_passage_id, "economy", "경제")
+
+    with (
+        patch("worksheet_api.routers.passages.PassageRepository") as mock_prepo,
+        patch("worksheet_api.routers.passages.VocabularyRepository") as mock_vrepo,
+    ):
+        mock_prepo.return_value.get = AsyncMock(return_value=saved_passage)
+        mock_vrepo.return_value.get = AsyncMock(return_value=existing)
+        mock_vrepo.return_value.delete_by_id = AsyncMock()
+
+        resp = await async_client.delete(
+            f"/passages/{saved_passage.id}/vocabulary/{existing.id}"
+        )
+
+    assert resp.status_code == 404
+    mock_vrepo.return_value.delete_by_id.assert_not_awaited()

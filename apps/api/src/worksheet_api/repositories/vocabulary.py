@@ -129,6 +129,29 @@ class VocabularyRepository(BaseRepository[VocabularyORM, Vocabulary]):
         await self._session.flush()
         return result.rowcount if hasattr(result, "rowcount") else 0
 
+    async def delete_by_id(self, vocabulary_id: uuid.UUID) -> bool:
+        """Vocabulary row 단건 삭제 (ADR-0015 Stage E1-d, D3 (b) 채택).
+
+        ``selected_by`` / ``user_edited`` 무관 — 사용자 의도로 삭제. tenant 필터
+        강제로 cross-tenant 삭제 불가.
+
+        Args:
+            vocabulary_id: 삭제할 Vocabulary UUID.
+
+        Returns:
+            True 면 삭제됨, False 면 row 없음 (404 매핑용).
+        """
+        stmt = (
+            delete(self._orm_class)
+            .where(self._orm_class.id == vocabulary_id)
+            .where(self._orm_class.tenant_id == self._tenant_ctx.tenant_id)
+            .where(self._orm_class.workspace_id == self._tenant_ctx.workspace_id)
+        )
+        result = await self._session.exec(stmt)  # type: ignore[call-overload]
+        await self._session.flush()
+        rowcount = result.rowcount if hasattr(result, "rowcount") else 0
+        return rowcount > 0
+
     async def update_fields(
         self,
         vocabulary_id: uuid.UUID,
