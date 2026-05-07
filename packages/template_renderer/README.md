@@ -1,16 +1,39 @@
 # `packages/template_renderer`
 
-Worksheet HTML 템플릿 + (예정) Jinja2 렌더 + Playwright PDF 변환 파이프라인.
+Worksheet HTML 템플릿 + Jinja2 렌더 + Playwright PDF 변환 파이프라인.
 
-- **상태**: Stage 0 — 자산 도입만 완료. 렌더/변환 코드는 Stage 2 (Phase 1 baseline 후)
-  에 추가.
+- **상태**: Stage 2 — Playwright PDF 변환 추가.
 - **출처**: 외부 작업자가 작성한 워크시트 템플릿 3종 (2026-05-06 도입).
 - **관련 문서**:
   - `docs/template-rendering-analysis.md` (도입 분석 + PM 결정 5건)
   - `docs/adr/0008-phase-1-output-format.md` (HWPX → HTML/PDF 전환)
   - annotation split-mark 렌더링 ADR (향후 ADR — 번호 확정 시 갱신)
-  - 향후 ADR-0011 (Worksheet HTML 템플릿 + Playwright PDF 파이프라인) — Stage 1 진입 시
+  - 향후 ADR-0011 (Worksheet HTML 템플릿 + Playwright PDF 파이프라인) — Stage 3 진입 시
     승격
+
+## Playwright 설치
+
+Python 패키지만으로는 브라우저 바이너리가 설치되지 않는다. PDF 렌더를 사용하려면
+별도로 Chromium 바이너리를 설치해야 한다.
+
+```bash
+playwright install chromium
+```
+
+CI / Docker 환경에서 별도 셋업 필요. Dockerfile 예시:
+
+```dockerfile
+RUN pip install playwright && playwright install chromium --with-deps
+```
+
+## 제공 함수
+
+| 함수 | 위치 | 설명 |
+|---|---|---|
+| `render_worksheet_html(context, style)` | `template_renderer.render` | Jinja2 → HTML 문자열 |
+| `render_worksheet_pdf(html, *, landscape, print_background)` | `template_renderer.pdf` | HTML → PDF 바이트 (Playwright) |
+| `worksheet_to_template_context(worksheet, passages)` | `template_renderer.adapters` | Worksheet + Passage → Jinja2 context dict |
+| `branding_to_academy_dict(branding)` | `template_renderer.adapters` | Branding → academy dict |
 
 ## 디렉토리
 
@@ -81,34 +104,29 @@ schema 마이그레이션 + 어댑터로 해소.
 | `questions[].label` | ❌ | `WorksheetItem.label` 신규 |
 | `student.*` | ❌ | **도입 안 함** (PM 결정 #5) |
 
-## PDF 렌더 (Stage 2 — 미구현)
+## PDF 렌더 (Stage 2 — 완료)
 
-Playwright (headless Chromium) 채택 (PM 결정 #2). Stage 2 시작 시 `pyproject.toml` +
-렌더 함수 추가.
+Playwright (headless Chromium) 채택 (PM 결정 #2). 구현은
+`template_renderer.pdf.render_worksheet_pdf()` 참조.
 
 ```python
-from playwright.async_api import async_playwright
+from template_renderer.pdf import render_worksheet_pdf
 
-async def render_pdf(html: str, output_path: str, landscape: bool = False) -> None:
-    async with async_playwright() as p:
-        browser = await p.chromium.launch()
-        page = await browser.new_page()
-        await page.set_content(html, wait_until="networkidle")
-        await page.pdf(
-            path=output_path,
-            format="A4",
-            landscape=landscape,
-            print_background=True,
-            margin={"top": "0", "right": "0", "bottom": "0", "left": "0"},
-        )
-        await browser.close()
+pdf_bytes: bytes = await render_worksheet_pdf(
+    html,
+    landscape=False,        # worksheet.orientation 기반
+    print_background=True,  # 컬러 배너 보존
+)
 ```
 
-**주의**:
+**설계 주의**:
 - `@page size` 와 `landscape` 파라미터가 일치해야 함 (둘 다 `worksheet.orientation`
-  한 값에서 파생).
+  한 값에서 파생) — 라우터에서 일관 전달.
 - `print_background=True` 가 빠지면 playful 의 컬러 배너가 PDF 에서 사라짐.
-- `margin` 모두 0 — `.page` 요소가 자체 패딩 (20mm) 을 가지므로 이중 들여쓰기 회피.
+- 템플릿의 `@page { margin: 0 }` 정의를 그대로 사용 — `.page` 요소가 자체 패딩
+  (20mm) 을 가지므로 이중 들여쓰기 회피. `prefer_css_page_size=True` 로 CSS 우선.
+- 매 호출마다 Chromium launch — Stage 2 PoC 단계의 의도적 단순화. 운영 단계의
+  process-wide pool 도입은 별도 ADR 에서 다룬다.
 
 ## 폰트 / CDN 정책 (PM 결정 #3)
 
@@ -154,9 +172,10 @@ Playwright 채택 근거 중 하나).
 
 ## Stage 진행 상태
 
-- [x] Stage 0 — 자산 도입 (이 PR)
-- [ ] Stage 1 — schema 갭 해소 (subtitle, orientation, instruction,
-  WorksheetItem.label) + Branding ↔ academy 어댑터 (Phase 1 baseline 후)
-- [ ] Stage 2 — Playwright 도입 + 렌더 PoC (FastAPI 라우트 `GET /worksheets/{id}/preview`,
-  `POST /worksheets/{id}/export.pdf`) + 에디터 산출 HTML 호환성 검증
+- [x] Stage 0 — 자산 도입
+- [x] Stage 1 — schema 갭 해소 (subtitle, orientation, instruction,
+  WorksheetItem.label) + Branding ↔ academy 어댑터 + Jinja2 렌더 +
+  `GET /worksheets/{id}/preview`
+- [x] Stage 2 — Playwright 도입 + `POST /worksheets/{id}/export.pdf`
+  (브라우저 바이너리 별도 설치 필요: `playwright install chromium`)
 - [ ] Stage 3 — Web preview UI + customizing (Phase 2 본격)
