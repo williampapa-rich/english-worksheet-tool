@@ -1,8 +1,8 @@
-"""GET /worksheets/{id}/preview 라우터 단위 테스트.
+"""GET /worksheets/{id}/preview + POST /worksheets/{id}/export.pdf 라우터 단위 테스트.
 
 mock session + mock repository 로 실제 DB 없이 실행한다.
 
-커버 케이스:
+커버 케이스 (preview):
   - 200 정상 — fixture worksheet 생성 → preview 호출 → HTML 에 academy.name / title 포함
   - 404 — 존재하지 않는 worksheet_id
   - 404 — cross-tenant (다른 tenant 의 worksheet id)
@@ -11,6 +11,14 @@ mock session + mock repository 로 실제 DB 없이 실행한다.
   - 422 — style=modern (MVP 정책 — README §26)
   - 200 + warning — passage 누락 graceful (W-2 후속, R-3)
   - 200 + escape — body_text XSS escape (S-1 회귀)
+
+커버 케이스 (export.pdf):
+  - 200 + application/pdf — 정상 (render_worksheet_pdf mock)
+  - Content-Disposition: attachment + filename 확인
+  - 200 portrait worksheet → landscape=False 로 render_worksheet_pdf 호출 확인
+  - 200 landscape worksheet → landscape=True 로 render_worksheet_pdf 호출 확인
+  - 404 — 존재하지 않는 worksheet_id
+  - 404 — cross-tenant
 
 패턴: test_annotations_router.py 와 동일한 mock 패턴 사용.
 """
@@ -30,7 +38,13 @@ from worksheet_api.main import app
 from worksheet_api.repositories.tenant_context import TenantContext, get_tenant_context
 
 from shared.schemas.passage import Passage, SourceMeta, SourceProvider, TargetGrade
-from shared.schemas.worksheet import Branding, Worksheet, WorksheetItem, WorksheetKind
+from shared.schemas.worksheet import (
+    Branding,
+    Worksheet,
+    WorksheetItem,
+    WorksheetKind,
+    WorksheetOrientation,
+)
 
 # ─── 테스트용 고정 UUID ──────────────────────────────────────────────────────
 
@@ -332,3 +346,171 @@ async def test_preview_worksheet_xss_escape(async_client: AsyncClient) -> None:
     assert "<script>alert" not in body
     # escape 된 형태가 들어가야 한다 (markupsafe escape)
     assert "&lt;script&gt;" in body
+
+
+# ─── POST /worksheets/{id}/export.pdf 테스트 ─────────────────────────────────
+
+# Playwright 호출을 mock 하는 고정 PDF 바이트 (magic bytes 포함)
+_MOCK_PDF_BYTES = b"%PDF-1.4 mock pdf content for testing"
+
+
+@pytest.mark.asyncio
+async def test_export_pdf_ok(async_client: AsyncClient) -> None:
+    """정상 — 200 + Content-Type=application/pdf + b'%PDF' 시작.
+
+    ``render_worksheet_pdf`` 를 mock 해 Chromium 없이 라우터 로직만 검증한다.
+    """
+    worksheet = _make_worksheet()
+    passage = _make_passage()
+    item_orm = _make_item_orm()
+
+    with (
+        patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls,
+        patch("worksheet_api.routers.worksheets.PassageRepository") as mock_passage_repo_cls,
+        patch(
+            "worksheet_api.routers.worksheets.render_worksheet_pdf",
+            new=AsyncMock(return_value=_MOCK_PDF_BYTES),
+        ),
+    ):
+        mock_ws_repo = mock_ws_repo_cls.return_value
+        mock_ws_repo.get = AsyncMock(return_value=worksheet)
+        mock_ws_repo.list_items_for_worksheet = AsyncMock(return_value=[item_orm])
+
+        mock_passage_repo = mock_passage_repo_cls.return_value
+        mock_passage_repo.get = AsyncMock(return_value=passage)
+
+        resp = await async_client.post(f"/worksheets/{WORKSHEET_ID_1}/export.pdf")
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/pdf"
+    assert resp.content.startswith(b"%PDF")
+
+
+@pytest.mark.asyncio
+async def test_export_pdf_content_disposition(async_client: AsyncClient) -> None:
+    """Content-Disposition 헤더에 attachment + filename 이 포함돼야 한다.
+
+    worksheet.title = "테스트 워크시트" → filename 에 URL 인코딩된 한글 포함.
+    """
+    worksheet = _make_worksheet()
+    passage = _make_passage()
+    item_orm = _make_item_orm()
+
+    with (
+        patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls,
+        patch("worksheet_api.routers.worksheets.PassageRepository") as mock_passage_repo_cls,
+        patch(
+            "worksheet_api.routers.worksheets.render_worksheet_pdf",
+            new=AsyncMock(return_value=_MOCK_PDF_BYTES),
+        ),
+    ):
+        mock_ws_repo = mock_ws_repo_cls.return_value
+        mock_ws_repo.get = AsyncMock(return_value=worksheet)
+        mock_ws_repo.list_items_for_worksheet = AsyncMock(return_value=[item_orm])
+
+        mock_passage_repo = mock_passage_repo_cls.return_value
+        mock_passage_repo.get = AsyncMock(return_value=passage)
+
+        resp = await async_client.post(f"/worksheets/{WORKSHEET_ID_1}/export.pdf")
+
+    assert resp.status_code == 200
+    cd = resp.headers.get("content-disposition", "")
+    assert "attachment" in cd
+    # RFC 5987 filename* 형식 확인
+    assert "filename*=UTF-8''" in cd
+    # .pdf 확장자 포함 확인
+    assert ".pdf" in cd
+
+
+@pytest.mark.asyncio
+async def test_export_pdf_portrait_calls_landscape_false(async_client: AsyncClient) -> None:
+    """portrait orientation worksheet → landscape=False 로 render_worksheet_pdf 호출."""
+    worksheet = _make_worksheet()
+    assert worksheet.orientation == WorksheetOrientation.PORTRAIT  # fixture 기본값 확인
+
+    passage = _make_passage()
+    item_orm = _make_item_orm()
+
+    mock_render = AsyncMock(return_value=_MOCK_PDF_BYTES)
+
+    with (
+        patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls,
+        patch("worksheet_api.routers.worksheets.PassageRepository") as mock_passage_repo_cls,
+        patch("worksheet_api.routers.worksheets.render_worksheet_pdf", new=mock_render),
+    ):
+        mock_ws_repo = mock_ws_repo_cls.return_value
+        mock_ws_repo.get = AsyncMock(return_value=worksheet)
+        mock_ws_repo.list_items_for_worksheet = AsyncMock(return_value=[item_orm])
+
+        mock_passage_repo = mock_passage_repo_cls.return_value
+        mock_passage_repo.get = AsyncMock(return_value=passage)
+
+        resp = await async_client.post(f"/worksheets/{WORKSHEET_ID_1}/export.pdf")
+
+    assert resp.status_code == 200
+    # landscape=False 로 호출됐는지 확인
+    mock_render.assert_called_once()
+    _args, kwargs = mock_render.call_args
+    assert kwargs.get("landscape") is False
+
+
+@pytest.mark.asyncio
+async def test_export_pdf_landscape_calls_landscape_true(async_client: AsyncClient) -> None:
+    """landscape orientation worksheet → landscape=True 로 render_worksheet_pdf 호출."""
+    worksheet = _make_worksheet()
+    landscape_worksheet = worksheet.model_copy(
+        update={"orientation": WorksheetOrientation.LANDSCAPE}
+    )
+
+    passage = _make_passage()
+    item_orm = _make_item_orm()
+
+    mock_render = AsyncMock(return_value=_MOCK_PDF_BYTES)
+
+    with (
+        patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls,
+        patch("worksheet_api.routers.worksheets.PassageRepository") as mock_passage_repo_cls,
+        patch("worksheet_api.routers.worksheets.render_worksheet_pdf", new=mock_render),
+    ):
+        mock_ws_repo = mock_ws_repo_cls.return_value
+        mock_ws_repo.get = AsyncMock(return_value=landscape_worksheet)
+        mock_ws_repo.list_items_for_worksheet = AsyncMock(return_value=[item_orm])
+
+        mock_passage_repo = mock_passage_repo_cls.return_value
+        mock_passage_repo.get = AsyncMock(return_value=passage)
+
+        resp = await async_client.post(f"/worksheets/{WORKSHEET_ID_1}/export.pdf")
+
+    assert resp.status_code == 200
+    mock_render.assert_called_once()
+    _args, kwargs = mock_render.call_args
+    assert kwargs.get("landscape") is True
+
+
+@pytest.mark.asyncio
+async def test_export_pdf_not_found_404(async_client: AsyncClient) -> None:
+    """존재하지 않는 worksheet_id → 404."""
+    unknown_id = uuid.UUID("99999999-9999-9999-9999-999999999999")
+
+    with patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls:
+        mock_ws_repo_cls.return_value.get = AsyncMock(return_value=None)
+
+        resp = await async_client.post(f"/worksheets/{unknown_id}/export.pdf")
+
+    assert resp.status_code == 404
+    assert "찾을 수 없" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_export_pdf_cross_tenant_404(async_client: AsyncClient) -> None:
+    """cross-tenant: 다른 tenant 의 worksheet_id → 404 (존재 여부 노출 방지).
+
+    WorksheetRepository.get() 이 tenant_id 필터로 None 을 반환하면
+    라우터는 404 를 반환해야 한다.
+    """
+    with patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls:
+        mock_ws_repo_cls.return_value.get = AsyncMock(return_value=None)
+
+        resp = await async_client.post(f"/worksheets/{WORKSHEET_ID_1}/export.pdf")
+
+    assert resp.status_code == 404

@@ -17,6 +17,21 @@ dependencies = [
   # MarkupSafe — XSS 방어 위한 escape() 직접 사용 (adapters.py:worksheet_to_template_context).
   # Jinja2 의 transitive dep 이지만 직접 import 하므로 명시 (§3.6 / §8.4 의존성 명시 원칙).
   "markupsafe>=2.1",
+  # Playwright — HTML → PDF 변환 (headless Chromium).
+  # 대안 검토:
+  #   WeasyPrint: pure Python, 외부 바이너리 없음. 단점: color-mix(in srgb, ...) 미지원,
+  #     CDN webfont (@font-face 렌더) 제한, @page size 해석 일부 다름. playful.html 의
+  #     --theme-soft / --theme-mid 가 color-mix 로 자동 생성되므로 WeasyPrint 로는
+  #     동일한 시각적 결과 보장 불가. 탈락.
+  #   wkhtmltopdf: 외부 바이너리. 2023년 이후 사실상 deprecated (GitHub archive),
+  #     modern CSS 부분 지원, CDN 폰트 불안정. 탈락.
+  # 선택 이유: playful.html 이 color-mix(), @page size, CDN Pretendard + Tabler Icons
+  #   webfont 등 Chromium 111+ 전용 CSS 를 적극 활용. Playwright Chromium headless 가
+  #   유일하게 동일한 시각적 결과를 보장. PM 결정 (packages/template_renderer/README.md §PDF).
+  # 사용 범위: template_renderer.pdf.render_worksheet_pdf() 전용.
+  # 주의: Python 패키지만 추가. 브라우저 바이너리는 별도 설치 필요:
+  #   `playwright install chromium` (CI / 배포 환경에서 별도 셋업 필요).
+  "playwright>=1.40.0",
   # workspace 멤버 패키지
   "shared",
 ]
