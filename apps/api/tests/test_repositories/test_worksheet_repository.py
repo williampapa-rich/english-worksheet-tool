@@ -204,6 +204,51 @@ class TestWorksheetRepositoryUnit:
         # 중복 검증은 DB 쿼리 전에 차단 — exec 호출 0회
         mock_session.exec.assert_not_called()
 
+    # ─── list_with_pagination 단위 테스트 ──────────────────────────────────
+
+    @pytest.mark.asyncio
+    async def test_list_with_pagination_calls_count_and_list(self) -> None:
+        """list_with_pagination: count 쿼리와 list 쿼리가 각각 1회씩 실행된다.
+
+        exec 가 2회 호출되어야 한다 (count 1회 + list 1회).
+        첫 번째 exec 결과는 .one() 으로 총 개수, 두 번째 결과는 .all() 로 목록.
+        """
+        from unittest.mock import MagicMock
+
+        mock_session = AsyncMock()
+        # 첫 번째 exec (count): result.one() → 3
+        mock_count_result = MagicMock()
+        mock_count_result.one.return_value = 3
+        # 두 번째 exec (list): result.all() → 빈 리스트 (ORM 변환 필요 없음)
+        mock_list_result = MagicMock()
+        mock_list_result.all.return_value = []
+        mock_session.exec.side_effect = [mock_count_result, mock_list_result]
+
+        repo = WorksheetRepository(mock_session, _ctx_a())
+        worksheets, total = await repo.list_with_pagination(limit=10, offset=0)
+
+        assert total == 3
+        assert worksheets == []
+        assert mock_session.exec.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_list_with_pagination_empty_returns_zero_total(self) -> None:
+        """빈 결과: ([], 0) 반환."""
+        from unittest.mock import MagicMock
+
+        mock_session = AsyncMock()
+        mock_count_result = MagicMock()
+        mock_count_result.one.return_value = 0
+        mock_list_result = MagicMock()
+        mock_list_result.all.return_value = []
+        mock_session.exec.side_effect = [mock_count_result, mock_list_result]
+
+        repo = WorksheetRepository(mock_session, _ctx_a())
+        worksheets, total = await repo.list_with_pagination()
+
+        assert worksheets == []
+        assert total == 0
+
     @pytest.mark.asyncio
     async def test_create_with_items_no_items_skips_passage_check(self) -> None:
         """create_with_items: items 가 빈 리스트이면 passage_id 검증 쿼리가 없어야 한다.
@@ -358,6 +403,80 @@ class TestWorksheetRepositoryIntegration:
         items_orm = await repo.list_items_for_worksheet(saved.id)
         assert len(items_orm) == 1
         assert items_orm[0].passage_id == passage_id
+
+    @pytest.mark.asyncio
+    async def test_list_with_pagination_and_cross_tenant_isolation(self, pg_session) -> None:  # type: ignore[no-untyped-def]
+        """list_with_pagination: limit/offset/kind 필터 동작 + cross-tenant 격리 확인.
+
+        절차:
+          1. tenant A: student worksheet 2개, syntax_analysis worksheet 1개 생성.
+          2. tenant B: student worksheet 1개 생성.
+          3. tenant A context 로 kind=student, limit=1, offset=0 조회 → 1건, total=2.
+          4. tenant A context 로 kind=syntax_analysis 조회 → 1건.
+          5. tenant A context 로 kind=None 조회 → 3건, total=3.
+          6. tenant B context 로 kind=None 조회 → 1건 (cross-tenant 격리).
+        """
+        from datetime import UTC, datetime
+
+        from sqlalchemy import text as sa_text
+        from sqlmodel.ext.asyncio.session import AsyncSession
+
+        now = datetime.now(UTC)
+
+        ws_a1 = uuid.UUID("aabbcc01-0000-0000-0000-000000000001")
+        ws_a2 = uuid.UUID("aabbcc01-0000-0000-0000-000000000002")
+        ws_a3 = uuid.UUID("aabbcc01-0000-0000-0000-000000000003")
+        ws_b1 = uuid.UUID("aabbcc02-0000-0000-0000-000000000001")
+
+        async with AsyncSession(pg_session.bind) as ins:
+            async with ins.begin():
+                for ws_id, t_id, w_id, kind in [
+                    (ws_a1, TENANT_A, WORKSPACE_A, "student"),
+                    (ws_a2, TENANT_A, WORKSPACE_A, "student"),
+                    (ws_a3, TENANT_A, WORKSPACE_A, "syntax_analysis"),
+                    (ws_b1, TENANT_B, WORKSPACE_B, "student"),
+                ]:
+                    await ins.execute(
+                        sa_text(
+                            "INSERT INTO worksheets "
+                            "(id, tenant_id, workspace_id, title, kind, template_id, orientation, created_at, updated_at) "
+                            "VALUES (:id, :tenant_id, :workspace_id, :title, :kind, :template_id, :orientation, :now, :now) "
+                            "ON CONFLICT (id) DO NOTHING"
+                        ),
+                        {
+                            "id": str(ws_id),
+                            "tenant_id": str(t_id),
+                            "workspace_id": str(w_id),
+                            "title": f"Worksheet {ws_id}",
+                            "kind": kind,
+                            "template_id": "playful",
+                            "orientation": "portrait",
+                            "now": now,
+                        },
+                    )
+
+        repo_a = WorksheetRepository(pg_session, _ctx_a())
+
+        # tenant A, kind=student, limit=1 → 1건, total=2
+        wss, total = await repo_a.list_with_pagination(limit=1, offset=0, kind="student")
+        assert total == 2
+        assert len(wss) == 1
+
+        # tenant A, kind=syntax_analysis → 1건
+        wss, total = await repo_a.list_with_pagination(kind="syntax_analysis")
+        assert total == 1
+        assert len(wss) == 1
+
+        # tenant A, kind=None → 3건
+        wss, total = await repo_a.list_with_pagination()
+        assert total == 3
+        assert len(wss) == 3
+
+        # tenant B, kind=None → 1건 (cross-tenant 격리)
+        repo_b = WorksheetRepository(pg_session, _ctx_b())
+        wss_b, total_b = await repo_b.list_with_pagination()
+        assert total_b == 1
+        assert all(ws.tenant_id == TENANT_B for ws in wss_b)
 
     @pytest.mark.asyncio
     async def test_create_with_items_cross_tenant_passage_rejected(self, pg_session) -> None:  # type: ignore[no-untyped-def]

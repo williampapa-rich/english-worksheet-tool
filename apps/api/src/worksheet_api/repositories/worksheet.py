@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import func
+from sqlalchemy import desc, func
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -68,7 +68,7 @@ class WorksheetRepository(BaseRepository[WorksheetORM, Worksheet]):
         ``items`` 는 WorksheetORM 에 없는 필드이므로, model_validate 전에
         ``Worksheet`` 의 default_factory 빈 리스트가 적용된다.
         """
-        return Worksheet.model_validate(orm, update={"items": []})
+        return Worksheet.model_validate(orm).model_copy(update={"items": []})
 
     # ─── create ─────────────────────────────────────────────────────────────
 
@@ -181,6 +181,59 @@ class WorksheetRepository(BaseRepository[WorksheetORM, Worksheet]):
         saved_worksheet = self._to_domain(worksheet_orm)
         return saved_worksheet.model_copy(update={"items": saved_items})
 
+    # ─── list ────────────────────────────────────────────────────────────────
+
+    async def list_with_pagination(
+        self,
+        *,
+        limit: int = 20,
+        offset: int = 0,
+        kind: str | None = None,
+    ) -> tuple[list[Worksheet], int]:
+        """Worksheet 목록 + 전체 개수 (pagination 메타용).
+
+        tenant_id / workspace_id 필터 자동 적용 (BaseRepository._tenant_ctx).
+        items 는 lazy 로드하지 않음 (목록은 메타만, 단건 조회로 items 별도 호출).
+        정렬: created_at DESC (가장 최근 워크시트 먼저).
+
+        Args:
+            limit: 최대 반환 건수 (default 20, max 100 는 라우터에서 강제).
+            offset: 건너뛸 건수 (default 0).
+            kind: WorksheetKind 문자열 필터. None 이면 전체.
+
+        Returns:
+            (worksheets, total_count) — total 은 클라이언트가 다음 페이지 결정용.
+            items 는 항상 빈 리스트 (_to_domain 의 update={"items": []} 준수).
+        """
+        base_filter = [
+            WorksheetORM.tenant_id == self._tenant_ctx.tenant_id,
+            WorksheetORM.workspace_id == self._tenant_ctx.workspace_id,
+        ]
+        if kind is not None:
+            base_filter.append(WorksheetORM.kind == kind)
+
+        # 전체 개수 쿼리
+        count_stmt = (
+            select(func.count())
+            .select_from(WorksheetORM)
+            .where(*base_filter)
+        )
+        count_result = await self._session.exec(count_stmt)
+        total: int = count_result.one()
+
+        # 목록 쿼리 — created_at DESC (최신 먼저)
+        list_stmt = (
+            select(WorksheetORM)
+            .where(*base_filter)
+            .order_by(desc(WorksheetORM.created_at))  # type: ignore[arg-type]
+            .limit(limit)
+            .offset(offset)
+        )
+        list_result = await self._session.exec(list_stmt)
+        worksheets = [self._to_domain(orm) for orm in list_result.all()]
+
+        return worksheets, total
+
     # ─── items 조회 ──────────────────────────────────────────────────────────
 
     async def list_items_for_worksheet(
@@ -214,7 +267,7 @@ class WorksheetRepository(BaseRepository[WorksheetORM, Worksheet]):
         stmt = (
             select(WorksheetItemORM)
             .where(WorksheetItemORM.worksheet_id == worksheet_id)
-            .order_by(WorksheetItemORM.order)
+            .order_by(WorksheetItemORM.order)  # type: ignore[arg-type]
         )
         result = await self._session.exec(stmt)
         return list(result.all())

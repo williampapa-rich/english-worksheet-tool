@@ -1,4 +1,5 @@
-"""GET /worksheets/{id}/preview + POST /worksheets/{id}/export.pdf + POST /worksheets 라우터 단위 테스트.
+"""GET /worksheets + GET /worksheets/{id} + GET /worksheets/{id}/preview
++ POST /worksheets/{id}/export.pdf + POST /worksheets 라우터 단위 테스트.
 
 mock session + mock repository 로 실제 DB 없이 실행한다.
 
@@ -9,6 +10,21 @@ mock session + mock repository 로 실제 DB 없이 실행한다.
   - 422 — Pydantic validation (kind 가 enum 값이 아님)
   - 422 — 같은 passage_id 중복 (W-1 (a) — 도메인 정책)
   - items=[] 인 Worksheet 정상 생성 확인
+
+커버 케이스 (GET /worksheets/{id}):
+  - 200 정상 — id + items 포함된 Worksheet 반환
+  - 200 — items=[] 인 worksheet (items 조회 결과 빈 리스트)
+  - 404 — 존재하지 않는 worksheet_id
+  - 404 — cross-tenant (다른 tenant 의 worksheet id)
+
+커버 케이스 (GET /worksheets):
+  - 200 정상 — items + total + limit + offset 응답
+  - 200 — limit/offset 정확히 repository 에 전달
+  - 200 — kind 필터 정확히 전달
+  - 200 — 빈 결과 ({items: [], total: 0, ...})
+  - 422 — limit > 100 (Pydantic Query validation)
+  - 422 — offset < 0
+  - 422 — kind 가 enum 값 아님
 
 커버 케이스 (preview):
   - 200 정상 — fixture worksheet 생성 → preview 호출 → HTML 에 academy.name / title 포함
@@ -679,3 +695,194 @@ async def test_create_worksheet_empty_items_ok(async_client: AsyncClient) -> Non
     assert resp.status_code == 201
     body = resp.json()
     assert body["items"] == []
+
+
+# ─── GET /worksheets/{id} 테스트 ─────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_get_worksheet_ok_with_items(async_client: AsyncClient) -> None:
+    """정상 — id + items 포함된 Worksheet 반환.
+
+    WorksheetRepository.get 이 worksheet 를 반환하고
+    list_items_for_worksheet 가 item_orm 을 반환하면
+    라우터는 200 + items 가 채워진 Worksheet 를 반환해야 한다.
+    """
+    worksheet = _make_worksheet()
+    item_orm = _make_item_orm()
+    item_orm.id = uuid.UUID("55555555-5555-5555-5555-555555555555")
+    item_orm.include_translation = False
+    item_orm.include_vocabulary = False
+    item_orm.include_syntax_annotations = False
+    item_orm.include_questions = False
+    item_orm.include_variants = False
+
+    with patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls:
+        mock_ws_repo = mock_ws_repo_cls.return_value
+        mock_ws_repo.get = AsyncMock(return_value=worksheet)
+        mock_ws_repo.list_items_for_worksheet = AsyncMock(return_value=[item_orm])
+
+        resp = await async_client.get(f"/worksheets/{WORKSHEET_ID_1}")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["id"] == str(WORKSHEET_ID_1)
+    assert len(body["items"]) == 1
+    assert body["items"][0]["passage_id"] == str(PASSAGE_ID_1)
+
+
+@pytest.mark.asyncio
+async def test_get_worksheet_ok_empty_items(async_client: AsyncClient) -> None:
+    """items=[] 인 worksheet — 200 + items 빈 리스트.
+
+    list_items_for_worksheet 가 빈 리스트를 반환하면
+    라우터도 items=[] 로 반환해야 한다.
+    """
+    worksheet = _make_worksheet().model_copy(update={"items": []})
+
+    with patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls:
+        mock_ws_repo = mock_ws_repo_cls.return_value
+        mock_ws_repo.get = AsyncMock(return_value=worksheet)
+        mock_ws_repo.list_items_for_worksheet = AsyncMock(return_value=[])
+
+        resp = await async_client.get(f"/worksheets/{WORKSHEET_ID_1}")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["items"] == []
+
+
+@pytest.mark.asyncio
+async def test_get_worksheet_not_found_404(async_client: AsyncClient) -> None:
+    """존재하지 않는 worksheet_id → 404."""
+    unknown_id = uuid.UUID("99999999-9999-9999-9999-999999999999")
+
+    with patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls:
+        mock_ws_repo_cls.return_value.get = AsyncMock(return_value=None)
+
+        resp = await async_client.get(f"/worksheets/{unknown_id}")
+
+    assert resp.status_code == 404
+    assert "찾을 수 없" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_get_worksheet_cross_tenant_404(async_client: AsyncClient) -> None:
+    """cross-tenant: 다른 tenant 의 worksheet_id → 404 (존재 여부 노출 방지).
+
+    WorksheetRepository.get() 이 tenant_id 필터로 None 을 반환하면
+    라우터는 404 를 반환해야 한다.
+    """
+    with patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls:
+        mock_ws_repo_cls.return_value.get = AsyncMock(return_value=None)
+
+        resp = await async_client.get(f"/worksheets/{WORKSHEET_ID_1}")
+
+    assert resp.status_code == 404
+
+
+# ─── GET /worksheets 테스트 ──────────────────────────────────────────────────
+
+WORKSHEET_ID_2 = uuid.UUID("33333333-3333-3333-3333-333333333333")
+WORKSHEET_ID_3 = uuid.UUID("44444444-4444-4444-4444-444444444444")
+
+
+@pytest.mark.asyncio
+async def test_list_worksheets_ok(async_client: AsyncClient) -> None:
+    """정상 — items + total + limit + offset 응답.
+
+    list_with_pagination 이 worksheets 리스트와 total 을 반환하면
+    라우터는 200 + WorksheetListResponse 를 반환해야 한다.
+    각 worksheet 의 items 는 빈 리스트 (목록 응답 정책).
+    """
+    ws1 = _make_worksheet(worksheet_id=WORKSHEET_ID_1).model_copy(update={"items": []})
+    ws2 = _make_worksheet(worksheet_id=WORKSHEET_ID_2).model_copy(update={"items": []})
+
+    with patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls:
+        mock_ws_repo = mock_ws_repo_cls.return_value
+        mock_ws_repo.list_with_pagination = AsyncMock(return_value=([ws1, ws2], 2))
+
+        resp = await async_client.get("/worksheets/")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body["items"]) == 2
+    assert body["total"] == 2
+    assert body["limit"] == 20
+    assert body["offset"] == 0
+
+
+@pytest.mark.asyncio
+async def test_list_worksheets_limit_offset_forwarded(async_client: AsyncClient) -> None:
+    """limit/offset 파라미터가 repository 에 정확히 전달되는지 검증."""
+    ws = _make_worksheet().model_copy(update={"items": []})
+
+    with patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls:
+        mock_ws_repo = mock_ws_repo_cls.return_value
+        mock_ws_repo.list_with_pagination = AsyncMock(return_value=([ws], 10))
+
+        resp = await async_client.get("/worksheets/", params={"limit": 5, "offset": 3})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["limit"] == 5
+    assert body["offset"] == 3
+
+    # repository 호출 시 파라미터 확인
+    mock_ws_repo.list_with_pagination.assert_called_once_with(limit=5, offset=3, kind=None)
+
+
+@pytest.mark.asyncio
+async def test_list_worksheets_kind_filter_forwarded(async_client: AsyncClient) -> None:
+    """kind 필터가 repository 에 정확히 전달되는지 검증."""
+    ws = _make_worksheet().model_copy(update={"items": []})
+
+    with patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls:
+        mock_ws_repo = mock_ws_repo_cls.return_value
+        mock_ws_repo.list_with_pagination = AsyncMock(return_value=([ws], 1))
+
+        resp = await async_client.get("/worksheets/", params={"kind": "student"})
+
+    assert resp.status_code == 200
+    mock_ws_repo.list_with_pagination.assert_called_once_with(limit=20, offset=0, kind="student")
+
+
+@pytest.mark.asyncio
+async def test_list_worksheets_empty_result(async_client: AsyncClient) -> None:
+    """빈 결과 — {items: [], total: 0, limit: 20, offset: 0}."""
+    with patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls:
+        mock_ws_repo = mock_ws_repo_cls.return_value
+        mock_ws_repo.list_with_pagination = AsyncMock(return_value=([], 0))
+
+        resp = await async_client.get("/worksheets/")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["items"] == []
+    assert body["total"] == 0
+    assert body["limit"] == 20
+    assert body["offset"] == 0
+
+
+@pytest.mark.asyncio
+async def test_list_worksheets_limit_over_100_422(async_client: AsyncClient) -> None:
+    """limit > 100 → 422 (Pydantic Query validation)."""
+    resp = await async_client.get("/worksheets/", params={"limit": 101})
+
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_list_worksheets_offset_negative_422(async_client: AsyncClient) -> None:
+    """offset < 0 → 422 (Pydantic Query validation)."""
+    resp = await async_client.get("/worksheets/", params={"offset": -1})
+
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_list_worksheets_invalid_kind_422(async_client: AsyncClient) -> None:
+    """kind 가 WorksheetKind enum 값 아님 → 422."""
+    resp = await async_client.get("/worksheets/", params={"kind": "invalid_kind_xyz"})
+
+    assert resp.status_code == 422

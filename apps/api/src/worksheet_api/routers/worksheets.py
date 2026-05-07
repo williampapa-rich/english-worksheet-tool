@@ -3,14 +3,24 @@
 검수 흐름 (2026-05-07~):
   1. POST /passages/extract → passage_id 1+ 확보
   2. POST /worksheets {items: [{passage_id, order: 0}, ...]} → worksheet_id 확보
-  3. GET /worksheets/{id}/preview?style=playful → 브라우저로 HTML 확인
-  4. POST /worksheets/{id}/export.pdf → PDF 다운로드 확인
+  3. GET /worksheets → 목록 (필터/pagination)
+  4. GET /worksheets/{id} → 단건 (items 포함)
+  5. GET /worksheets/{id}/preview?style=playful → 브라우저로 HTML 확인
+  6. POST /worksheets/{id}/export.pdf → PDF 다운로드 확인
 
 현재 라우트:
   POST /worksheets
     → 201 application/json (Worksheet, id 포함)
     → 422 cross-tenant passage_id / validation error
     → 422 passage_id 가 DB 에 없음 (IntegrityError)
+
+  GET /worksheets
+    → 200 application/json (WorksheetListResponse — items 빈 리스트, total + limit + offset)
+    쿼리 파라미터: limit (1~100, default 20), offset (ge=0, default 0), kind (WorksheetKind | None)
+
+  GET /worksheets/{id}
+    → 200 application/json (Worksheet — id + items 포함)
+    → 404 worksheet not found / cross-tenant
 
   GET /worksheets/{id}/preview?style=playful
     → 200 text/html
@@ -71,6 +81,22 @@ router = APIRouter(prefix="/worksheets", tags=["worksheets"])
 
 # MVP 라우트에서 허용하는 style 값 (README §26)
 _MVP_ALLOWED_STYLES: frozenset[str] = frozenset({"playful"})
+
+
+# ─── 응답 스키마 (GET /worksheets) ──────────────────────────────────────────
+
+
+class WorksheetListResponse(BaseModel):
+    """GET /worksheets 응답 — pagination 메타 포함.
+
+    items 안의 각 Worksheet 는 WorksheetItem 리스트를 포함하지 않는다
+    (목록은 메타만 — N+1 회피). 단건 조회 (GET /worksheets/{id}) 로 items 를 가져온다.
+    """
+
+    items: list[Worksheet] = Field(description="Worksheet 목록 (items 는 빈 리스트).")
+    total: int = Field(description="전체 개수 (현재 tenant + 필터 기준).")
+    limit: int = Field(description="요청 limit (echo).")
+    offset: int = Field(description="요청 offset (echo).")
 
 
 # ─── 요청 스키마 (POST /worksheets) ─────────────────────────────────────────
@@ -193,6 +219,109 @@ async def create_worksheet(
         ) from exc
 
     return saved
+
+
+# ─── GET /worksheets ─────────────────────────────────────────────────────────
+
+
+@router.get("/", response_model=WorksheetListResponse, status_code=200)
+async def list_worksheets(
+    tenant_ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+    limit: int = Query(default=20, ge=1, le=100, description="최대 반환 건수 (1~100)."),
+    offset: int = Query(default=0, ge=0, description="건너뛸 건수."),
+    kind: WorksheetKind | None = Query(
+        default=None,
+        description="Worksheet 유형 필터. 미지정이면 전체 반환.",
+    ),
+) -> WorksheetListResponse:
+    """Worksheet 목록을 pagination 으로 반환한다.
+
+    목록의 각 Worksheet 는 items 를 포함하지 않는다 (N+1 회피).
+    items 가 필요하면 GET /worksheets/{id} 로 단건 조회한다.
+
+    정렬: created_at DESC (가장 최근 워크시트 먼저).
+    멀티테넌트: tenant_id / workspace_id 필터 자동 적용.
+
+    Args:
+        tenant_ctx: 현재 요청의 테넌트 컨텍스트.
+        session: DB 세션.
+        limit: 최대 반환 건수 (1~100, default 20).
+        offset: 건너뛸 건수 (default 0).
+        kind: WorksheetKind 필터 (optional).
+
+    Returns:
+        WorksheetListResponse: items + total + limit + offset.
+    """
+    worksheet_repo = WorksheetRepository(session, tenant_ctx)
+    worksheets, total = await worksheet_repo.list_with_pagination(
+        limit=limit,
+        offset=offset,
+        kind=kind.value if kind is not None else None,
+    )
+    return WorksheetListResponse(
+        items=worksheets,
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
+# ─── GET /worksheets/{id} ────────────────────────────────────────────────────
+
+
+@router.get("/{worksheet_id}", response_model=Worksheet, status_code=200)
+async def get_worksheet(
+    worksheet_id: uuid.UUID,
+    tenant_ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> Worksheet:
+    """Worksheet 단건을 items 포함해 반환한다.
+
+    멀티테넌트: 다른 tenant 의 worksheet_id 로 조회하면 404 반환 (존재 여부 노출 방지).
+    W-2 가드 패턴: WorksheetItemORM 조회 전 부모 WorksheetORM 의 tenant_id 재검증.
+
+    Args:
+        worksheet_id: 조회할 Worksheet UUID.
+        tenant_ctx: 현재 요청의 테넌트 컨텍스트.
+        session: DB 세션.
+
+    Returns:
+        Worksheet: id + items 포함.
+
+    Raises:
+        HTTPException 404: Worksheet 가 존재하지 않거나 다른 tenant 소유.
+    """
+    worksheet_repo = WorksheetRepository(session, tenant_ctx)
+
+    # 1. Worksheet 조회 — tenant_id 필터 자동 적용
+    worksheet = await worksheet_repo.get(worksheet_id)
+    if worksheet is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Worksheet {worksheet_id} 를 찾을 수 없습니다.",
+        )
+
+    # 2. WorksheetItems 조회 — W-2 가드 패턴 (tenant 재검증 포함)
+    items_orm = await worksheet_repo.list_items_for_worksheet(worksheet_id)
+
+    # 3. ORM → WorksheetItem 변환 (인라인 list comprehension — 단순 매핑)
+    items = [
+        WorksheetItem(
+            id=item_orm.id,
+            passage_id=item_orm.passage_id,
+            order=item_orm.order,
+            label=item_orm.label,
+            include_translation=item_orm.include_translation,
+            include_vocabulary=item_orm.include_vocabulary,
+            include_syntax_annotations=item_orm.include_syntax_annotations,
+            include_questions=item_orm.include_questions,
+            include_variants=item_orm.include_variants,
+        )
+        for item_orm in items_orm
+    ]
+
+    return worksheet.model_copy(update={"items": items})
 
 
 @router.get("/{worksheet_id}/preview", response_class=HTMLResponse, status_code=200)
