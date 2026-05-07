@@ -1793,9 +1793,13 @@ async def test_preview_includes_vocabulary_when_flag_true(
 
     assert resp.status_code == 200
     body = resp.text
-    # 어휘 헤딩 + word + meaning_ko + level_label 모두 포함
+    # 어휘 헤딩 + word + meaning_ko + 표 헤더 (v0.2-α: 표 형태 + 큰 박스 밖 분리).
+    # level_label 은 v0.2-γ Vocabulary schema 확장 (synonyms/antonyms/example_sentences)
+    # 진입 전까지 표 컬럼에 포함 안 됨.
     assert "어휘" in body
     assert "economy" in body
     assert "경제" in body
-    assert "수능 필수" in body
+    # 표 헤더 — v0.2-α 어휘 표 변환 확인.
+    assert "단어 (품사)" in body
+    assert "한글 뜻" in body
     mock_vocab_repo_cls.return_value.list_by_passage.assert_awaited_once_with(passage.id)

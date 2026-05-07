@@ -91,7 +91,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel.ext.asyncio.session import AsyncSession
 from template_renderer.adapters import worksheet_to_template_context
 from template_renderer.pdf import render_worksheet_pdf
-from template_renderer.render import render_worksheet_html
+from template_renderer.render import render_pdf_footer_html, render_worksheet_html
 
 from shared.schemas.annotation import SyntaxAnnotation
 from shared.schemas.passage import Passage
@@ -817,7 +817,10 @@ async def preview_worksheet(
     # 2~5. 조회 + 렌더 — export_pdf 와 동일 흐름 (DRY: _build_worksheet_html 공유)
     # style 검증은 preview 전용이므로 이 라우트에서 처리.
     # _build_worksheet_html 은 style=playful 고정 — MVP 단일 스타일 정책 준수.
-    _worksheet, html_content = await _build_worksheet_html(worksheet_id, tenant_ctx, session)
+    # preview 는 context 무시 (PDF export 만 footer 별도 렌더에 사용).
+    _worksheet, html_content, _context = await _build_worksheet_html(
+        worksheet_id, tenant_ctx, session
+    )
 
     return HTMLResponse(content=html_content, status_code=200)
 
@@ -829,11 +832,14 @@ async def _build_worksheet_html(
     worksheet_id: uuid.UUID,
     tenant_ctx: TenantContext,
     session: AsyncSession,
-) -> tuple[Worksheet, str]:
-    """Worksheet ID → (Worksheet, rendered HTML) 공유 헬퍼.
+) -> tuple[Worksheet, str, dict]:
+    """Worksheet ID → (Worksheet, rendered HTML, template context) 공유 헬퍼.
 
     ``preview`` 와 ``export_pdf`` 가 동일한 조회 + 렌더 흐름을 공유한다 (DRY).
     tenant_id 필터, W-2 가드 패턴, passage None warning 모두 이 함수에서 처리.
+
+    PDF export 는 반환된 ``context`` 를 ``render_pdf_footer_html()`` 에 다시
+    전달해 footer 부분 템플릿을 별도 렌더한다. preview 는 context 무시.
 
     Args:
         worksheet_id: 조회할 Worksheet UUID.
@@ -841,7 +847,7 @@ async def _build_worksheet_html(
         session: DB 세션.
 
     Returns:
-        tuple: (Worksheet 인스턴스, 렌더된 HTML 문자열).
+        tuple: (Worksheet 인스턴스, 렌더된 HTML 문자열, 템플릿 context dict).
         style 은 항상 ``playful`` (MVP 정책 — README §26).
 
     Raises:
@@ -925,7 +931,7 @@ async def _build_worksheet_html(
     )
     html_content = render_worksheet_html(context, style="playful")
 
-    return worksheet, html_content
+    return worksheet, html_content, context
 
 
 # ─── POST /worksheets/{id}/export.pdf ────────────────────────────────────────
@@ -970,13 +976,21 @@ async def export_worksheet_pdf(
         HTTPException 404: Worksheet 가 존재하지 않거나 다른 tenant 소유.
     """
     # preview 와 동일한 조회 + 렌더 흐름 (DRY: _build_worksheet_html 공유)
-    worksheet, html_content = await _build_worksheet_html(worksheet_id, tenant_ctx, session)
+    worksheet, html_content, context = await _build_worksheet_html(
+        worksheet_id, tenant_ctx, session
+    )
 
     # Worksheet.orientation → Playwright landscape 파라미터
     landscape = worksheet.orientation == WorksheetOrientation.LANDSCAPE
 
+    # footer 부분 템플릿 별도 렌더 — Chromium native footer_template 으로 매
+    # 페이지 하단에 자동 주입. margin.bottom: 28mm 로 박스 분할 한계선 자동 조정.
+    footer_html = render_pdf_footer_html(context)
+
     # Playwright 로 PDF 생성
-    pdf_bytes = await render_worksheet_pdf(html_content, landscape=landscape)
+    pdf_bytes = await render_worksheet_pdf(
+        html_content, landscape=landscape, footer_html=footer_html
+    )
 
     # RFC 5987 filename* 인코딩 — 한글/공백/특수문자 안전 처리
     safe_filename = urllib.parse.quote(worksheet.title, safe="")

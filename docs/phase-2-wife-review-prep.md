@@ -289,32 +289,97 @@ Anthropic API 결제 이슈로 검수 단계만 Gemini 2.5 Flash Lite 로 임시
 
 **HTML 자체 등급**: `A` (사용자 평가).
 
-**PDF 등급 — 진행 중 (3차 결과 대기)**:
+**PDF 등급 — 진행 중 (5차 결과 대기 — 2026-05-07)**:
 - 1차 (overflow 정책 미적용): 두 페이지로 찢어지면서 한글 해석 + 어휘 박스 *사라짐*.
   본문도 두 번째 페이지로 밀림. → D 등급에 가까움.
 - 2차 (CSS 1차 패치 — `break-inside: avoid` 적용): 빈 페이지 1개 추가됨 + footer
   가 페이지 중앙에 떠 다님.
 - 3차 (CSS 2차 패치 — 박스 분할 허용 + footer position fixed + 어휘 *항목 단위*
-  묶음): **대기 중 — 사용자가 아이맥에서 PDF 확인 후 등급 부여**.
+  묶음): page1 거의 빈 표지화 (q-passage 가 통째 page2 로 밀림). page1 = 103자, page2 = 2598자.
+- 4차 (override fix — `.q { page-break-inside: auto !important }` 로 screen
+  cascade 덮어쓰기 + 본문 12pt + line-height 2.78 + 어휘 박스 q 밖으로 분리 + 5컬럼 표):
+  page1 표지화 해소 (2 페이지로 정착, page1 본문/해석/어휘 시작 + page2 어휘 표 일부).
+  q 박스가 footer 영역 침범 시각 잔존.
+- **5차 (D안 — Playwright Chromium native `display_header_footer` + `margin`
+  채택, ADR-0015 작업 진행 중)**:
+  - fixed footer / `.body padding-bottom` / `@page margin` 모두 제거.
+  - `pdf.py` 의 `page.pdf()` 에 `margin={"top": "12mm", "bottom": "33mm"}` +
+    `footer_template=footer_html` 전달.
+  - footer 부분 템플릿 신규 (`templates/_pdf_footer.html`) — Chromium native
+    `<span class="pageNumber">` / `<span class="totalPages">` 자동 갱신.
+  - `.banner { margin-top: -12mm }` — page1 banner 종이 위 붙음 보정 (음수 마진).
+  - 어휘 표 `<tr>` 단위 `break-inside: avoid` + table 자체 `break-inside: auto`.
+  - **검증**: 박스 y_max=750.0 ≈ 한계선 748.0 (오차 0.7mm), page1 first_y=52.4
+    (banner 종이 위), page2 first_y=54.6 (12mm 상단 여백 적용), footer 모든 페이지 표시,
+    page3 에 thead + biodegradable 1행 (시각상 어색 가능 — 와이프 평가 대상).
+  - 회귀 검증: `packages/template_renderer/tests` 48 green +
+    `apps/api/tests/test_routers/test_worksheets_router.py` 65 green
+    (`level_label` → 표 헤더 `단어 (품사) / 한글 뜻` 검증으로 갱신, v0.2-α 의도
+    반영).
+  - **상태**: 사용자가 PDF 확인 후 등급 부여 대기 — 본 5차 결과로 §6.4 채움.
+
+**§6.4 최종 (5차 결과, 2026-05-07)**:
+- **PDF 퀄리티 등급**: `A` (사용자 평가 — "기능 자체는 A. 디자인/컨텐츠는 변경
+  영역이지 기능 결함 아님").
+- **§2.1 합격선** (사용자 사전 체크): C 까지 합격 → A 등급은 합격선 *훌쩍 초과*.
+- **결론**: B5 검수 OK → Phase 2 baseline 종료 → v0.2-α 머지 → Phase 2-edit
+  sprint (ADR-0015) 시작 신호.
+- **§4 매트릭스 정합 노트**: 매트릭스 첫 행 ("11건 모두 OK → 0 PR") 는 검수
+  *시작 전* 가정. 실제로는 검수 진행 중 5차에 걸쳐 v0.2-α 작업이 누적되어
+  PR 머지 필요. v0.2-β 는 5차 채택안 (Chromium native pageNumber/totalPages)
+  으로 자동 해소되어 별 PR 불필요. v0.2-γ (Vocabulary schema 확장) 는 본 sprint
+  외 영역 — 별 ADR.
+- **디자인/컨텐츠 후속 영역 (별 sprint 또는 점진 개선)**:
+  - CLAUDE.md §2.1 Phase 2 점진 개선 영역 — 타이포그래피 / 여백·간격·정렬 /
+    어휘 박스 강조 / 다중 템플릿 / 로고·컬러 외 프리셋.
+  - ADR-0015 Phase 2-edit sprint — 사용자 편집 UI (translation 인라인 편집 /
+    vocabulary 행 편집 / passage paragraph 분할).
 
 ### 6.5 v0.2 PR 분리 (예정)
 
 검수 결과에 따라 다음 PR 들로 분리:
 
-- **v0.2-α (overflow 정책)**: `playful.html` 의 `@media print` 정책. 현재
-  `docs/b5-wife-review-prep` 브랜치에 작업 누적. 3차 결과 OK 면 별 PR 로 분리 머지.
-  - CSS 변경: `.page` overflow/min-height 풀기 + `.q*` break-inside 정책 + `.footer`
-    position fixed + 어휘 항목 단위 묶음 + 헤딩 break-after avoid.
-  - 회귀 테스트: `pytest packages/template_renderer/tests` 통과 검증 + 기존 60+
-    apps/api 테스트 회귀 검증.
-- **v0.2-β (page counter fix)**: 현재 footer 의 `1/1` 은 정적. Chromium `@page
-  @bottom-right { content: counter(page) "/" counter(pages) }` 로 자동 갱신.
-  ADR-0010 D5 의 "Stage 2 PoC 에서 정밀화" 영역.
-- **v0.2-γ (Vocabulary schema 확장)**: 큰 변경.
+- **v0.2-α (overflow 정책 + Chromium native footer + 박스 한계선 + 어휘 표 분리)**:
+  현재 `docs/b5-wife-review-prep` 브랜치에 작업 누적. 5차 결과 OK 면 별 PR 로 분리 머지.
+  - **5차 채택안 (D안 — Chromium native)**:
+    - `packages/template_renderer/src/template_renderer/pdf.py` —
+      `render_worksheet_pdf()` 에 `footer_html` 인자 추가, `page.pdf()` 에
+      `display_header_footer=True` + `margin={"top":"12mm","bottom":"33mm"}` +
+      `footer_template` 전달. 기존 시그니처 backward compat (footer_html 빈
+      문자열 시 fallback 경로).
+    - `packages/template_renderer/src/template_renderer/render.py` —
+      `render_pdf_footer_html()` 신규 (footer 부분 템플릿 별도 렌더).
+    - `packages/template_renderer/templates/_pdf_footer.html` 신규 — 인라인
+      스타일 + Chromium native `pageNumber` / `totalPages` variable 사용.
+    - `packages/template_renderer/templates/playful.html` —
+      `<footer class="footer">` HTML 블록 / `.footer { position: fixed }` /
+      `.body { padding-bottom }` / `@page margin` 모두 제거.
+      `.banner { margin-top: -12mm }` 추가 (page1 banner 종이 위 붙음 보정).
+      `.q-vocabulary__table tr { break-inside: avoid }` + table 자체
+      `break-inside: auto` (어휘 행 단위 분할).
+    - `apps/api/src/worksheet_api/routers/worksheets.py` —
+      `_build_worksheet_html()` 시그니처 `(Worksheet, str)` →
+      `(Worksheet, str, dict)` 로 context 반환 추가. PDF export 라우트가
+      `render_pdf_footer_html(context)` 호출 후 `render_worksheet_pdf` 에
+      전달.
+  - **CSS 변경 (1~4차 누적, 5차에서 일부 제거됨 정합)**: `.page`
+    overflow/min-height 풀기 + `.q*` break-inside auto !important + 어휘 항목
+    단위 묶음 + 헤딩 break-after avoid.
+  - **본문/표 변경 (검수 답변 흡수)**: 본문 12pt + line-height 2.78 (150% ↑) +
+    어휘 박스 큰 q 박스 *밖* 으로 분리 + 5컬럼 표 (단어(품사)/한글뜻/유의어/
+    반의어/예문) — 유의어/반의어/예문 컬럼은 v0.2-γ 까지 빈 칸.
+  - 회귀 테스트: `packages/template_renderer/tests` 48 green + 라우터
+    테스트 65 green (`level_label` → 표 헤더 검증으로 갱신).
+- **v0.2-β (page counter fix)**: **5차 채택안 D 에서 자동 해소** —
+  Chromium native `<span class="pageNumber"></span>` / `<span class="totalPages"></span>`
+  가 매 페이지 자동 갱신. 별 PR 불필요.
+- **v0.2-γ (Vocabulary schema 확장)**: 큰 변경. 본 sprint 종료 후 별 ADR 로
+  진행 — Phase 2-edit (ADR-0015) sprint 와 별개 영역.
   - `shared/schemas/vocabulary.py` 에 `synonyms` / `antonyms` / `example_sentences`
     필드 추가 (Pydantic + Alembic 마이그레이션).
   - `docs/prompts/augment-vocabulary-v0.md` 갱신 (출력 schema 확장).
-  - `playful.html` 의 어휘 블록을 *표 형태* 로 (단어 / 뜻 / 유의어 / 반의어 / 예문).
+  - `playful.html` 의 어휘 표는 v0.2-α 에서 이미 5컬럼 형태로 준비됨 — 컬럼만
+    채워지면 됨.
   - 별 ADR 신규 — Vocabulary v0.2 schema. (PM 결정 영역 — 표 컬럼 / 페이지 분할 정책.)
 
 ### 6.6 인계 노트 (기기 간 컨텍스트 복원용)
@@ -362,3 +427,13 @@ PR (#57) 머지 시점만 보면 지금까지 한 작업 거의 다 파악 가�
 > "퇴근 후 이어서 작업한다. `docs/phase-2-wife-review-prep.md` §6 읽고 어디까지
 > 진행됐는지 파악한 다음, PDF 3차 결과 와이프와 검수 시작하려고 해. 셋업 가이드
 > §6.6 따라가서 API 서버 띄워주고, PDF 다시 생성해줘."
+
+### 6.7 Phase 2-edit Sprint 정의 (후속)
+
+B5 검수 결과 = A/B/C 등급 시 본 sprint 종료 → **Phase 2-edit sprint 시작
+신호**. `docs/adr/0015-phase-2-edit-sprint.md` 가 sprint 범위 / Stage E1 (백엔드
+PATCH 라우트) / Stage E2 (학생 자료 편집 UI) / Stage E3 (Passage 편집 UI) +
+PM 결정 항목 (D3-D6) 정의. 와이프가 학생 자료 1건을 *UI 만으로* 완성 가능하게
+하는 것이 종료 조건.
+
+D 등급 시 본 sprint 보류 → ADR-0008 채택안 한계 → 별 phase 신규.

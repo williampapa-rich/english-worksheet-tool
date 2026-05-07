@@ -16,13 +16,17 @@
 <link href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.5.0/dist/tabler-icons.min.css" rel="stylesheet">
 <style>
   {% set is_landscape = (worksheet.orientation | default('portrait')) == 'landscape' %}
-  @page { size: A4 {{ 'landscape' if is_landscape else 'portrait' }}; margin: 0; }
+  /* @page margin / size 는 Playwright `page.pdf()` 인자 (margin / format /
+   * landscape) 가 우선 결정 — 본 CSS 는 size 만 명시 (CSS 측 의도 문서화 목적).
+   * margin: top 0 / bottom 28mm (footer 22mm + 6mm 시각 margin) 은 pdf.py 에서
+   * 전달. 박스 분할 한계선이 자동으로 footer 위 6mm 에서 끊어짐. */
+  @page { size: A4 {{ 'landscape' if is_landscape else 'portrait' }}; }
   *, *::before, *::after { box-sizing: border-box; }
 
   :root {
-    --theme: {{ academy.theme_color | default('#2563eb') }};
-    --theme-soft: color-mix(in srgb, {{ academy.theme_color | default('#2563eb') }} 8%, white);
-    --theme-mid: color-mix(in srgb, {{ academy.theme_color | default('#2563eb') }} 14%, white);
+    --theme: {{ academy.theme_color | default('#2563eb', true) }};
+    --theme-soft: color-mix(in srgb, {{ academy.theme_color | default('#2563eb', true) }} 8%, white);
+    --theme-mid: color-mix(in srgb, {{ academy.theme_color | default('#2563eb', true) }} 14%, white);
     --ink: #1a1a1a;
     --body: #1f2937;
     --muted: #64748b;
@@ -78,18 +82,40 @@
     }
     .questions { display: block !important; flex: none !important; }
 
-    /* (A) 큰 박스 — 분할 허용 (콘텐츠 길이 가변 대응) */
+    /* (A) 큰 박스 — 분할 허용 (콘텐츠 길이 가변 대응).
+     * !important 로 screen 용 `.q { page-break-inside: avoid }` cascade 덮어쓰기.
+     * 이 override 가 없으면 첫 q-passage 가 page1 에 안 들어가고 통째 page2 로 밀려
+     * page1 이 거의 빈 표지화 (3차 PDF 증상). */
     .q,
     .q-translation,
     .q-vocabulary {
-      break-inside: auto;
-      page-break-inside: auto;
+      break-inside: auto !important;
+      page-break-inside: auto !important;
+      /* 박스가 페이지 분할 시 각 조각에 border / padding / border-radius 양쪽
+       * 모두 그려지도록 — 출력물에서 "인쇄가 잘린" 모양 방지. Chromium 지원. */
+      -webkit-box-decoration-break: clone;
+      box-decoration-break: clone;
     }
 
-    /* (A-보강) 어휘 *항목 단위* 는 묶음 — 한 단어가 두 페이지 걸치면 가독성 ↓ */
-    .q-vocabulary__item {
+    /* 박스 분할 후 *재개되는 페이지* 상단에 박스가 종이 끝에 바짝 붙어 보이는
+     * 문제 — `.q` padding (14px ≈ 3.7mm) 이 box-decoration-break: clone 으로
+     * 각 조각에 그려져 박스 안 위 여백은 확보됨. 페이지 자체 상단 여백은
+     * @page margin 영역인데 footer 가 fixed 라 @page 변경 시 footer 위치 회귀
+     * 위험. 박스 padding 만으로 우선 가고, 부족하면 `.q { padding-top: 22px }`
+     * 검토. */
+
+    /* (A-보강) 어휘 *항목 단위* 는 묶음 — 한 단어가 두 페이지 걸치면 가독성 ↓
+     * 표 형태 (v0.2-α 변경) 에선 `<tr>` 도 동일하게 묶음. */
+    .q-vocabulary__item,
+    .q-vocabulary__table tr {
       break-inside: avoid;
       page-break-inside: avoid;
+    }
+    /* 표는 자연 분할 — `<thead>` 는 매 페이지 반복되지만 빈 행 한 줄만
+     * 떨어져 새 페이지가 생기는 것은 비효율. table 자체에 break-inside: auto. */
+    .q-vocabulary__table {
+      break-inside: auto !important;
+      page-break-inside: auto !important;
     }
 
     /* (C-부분) 큰 박스 시작 시 헤딩이 외톨이로 페이지 끝에 남지 않도록 */
@@ -100,24 +126,9 @@
       page-break-after: avoid;
     }
 
-    /* (C-부분) footer — 매 페이지 하단 고정 시도.
-     * @page margin: 0 환경에서 position: fixed; bottom: 0 이 Chromium PDF 에서
-     * 매 페이지 반복된다 (Paged Media level 3 fallback). */
-    .footer {
-      position: fixed !important;
-      bottom: 0 !important;
-      left: 0 !important;
-      right: 0 !important;
-      margin-top: 0 !important;
-      padding: 8mm var(--page-side) 8mm !important;
-      background: #fff;
-      border-top: 1px solid var(--line);
-      display: flex !important;
-    }
-
-    /* footer 가 fixed 이므로 본문 마지막에 footer 높이만큼 padding 확보 (마지막
-     * 페이지 콘텐츠가 footer 와 겹치지 않도록). */
-    .body { padding-bottom: 22mm !important; }
+    /* footer 처리는 Playwright Chromium native (display_header_footer +
+     * footer_template) 로 위임 — `_pdf_footer.html` 부분 템플릿이 매 페이지
+     * 하단에 자동 그려짐. fixed footer / .body padding-bottom 모두 불필요. */
   }
 
   .page {
@@ -137,6 +148,10 @@
     display: flex;
     align-items: center;
     gap: 14px;
+    /* page1 banner 만 종이 위에 바로 붙는 디자인 — Playwright margin.top: 12mm
+     * 가 모든 페이지에 일괄 적용되므로 첫 페이지에서 음수 마진으로 끌어올림.
+     * page2+ 는 banner 가 없으므로 영향 없음. */
+    margin-top: -12mm;
   }
   .banner .badge {
     width: 44px;
@@ -246,8 +261,8 @@
     color: var(--muted);
   }
   .q-content {
-    font-size: 13px;
-    line-height: 1.85;
+    font-size: 16px;
+    line-height: 2.78;
     color: var(--ink);
   }
 
@@ -337,6 +352,43 @@
     border-radius: 8px;
     line-height: 1.6;
   }
+
+  /* 어휘 표 — 단어/품사 | 뜻 | 유의어 | 반의어 | 예문.
+     v0.2-γ 컬럼 (synonyms / antonyms / example_sentences) 미구현 시 빈 칸. */
+  .q-vocabulary__table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--ink);
+    table-layout: fixed;
+  }
+  .q-vocabulary__table th,
+  .q-vocabulary__table td {
+    border: 0.5px solid var(--line);
+    padding: 6px 8px;
+    vertical-align: top;
+    word-break: break-word;
+  }
+  .q-vocabulary__table thead th {
+    background: var(--theme-soft);
+    color: var(--theme);
+    font-weight: 600;
+    font-size: 10.5px;
+    letter-spacing: 0.02em;
+  }
+  .q-vocabulary__table .col-word { width: 18%; }
+  .q-vocabulary__table .col-meaning { width: 18%; }
+  .q-vocabulary__table .col-syn { width: 18%; }
+  .q-vocabulary__table .col-ant { width: 18%; }
+  .q-vocabulary__table .col-ex { width: 28%; }
+  .q-vocabulary__table .q-vocabulary__word { font-weight: 600; }
+  .q-vocabulary__table .q-vocabulary__pos {
+    color: var(--muted);
+    font-style: italic;
+    font-size: 10px;
+    margin-left: 3px;
+  }
 </style>
 </head>
 <body>
@@ -385,30 +437,44 @@
           <p class="q-translation__text">{{ q.translation }}</p>
         </div>
         {% endif %}
-        {% if q.vocabulary %}
-        <div class="q-vocabulary">
-          <h4 class="q-vocabulary__heading">어휘</h4>
-          <ul class="q-vocabulary__list">
-            {% for v in q.vocabulary %}
-            <li class="q-vocabulary__item">
-              <span class="q-vocabulary__word">{{ v.word }}</span>
-              {% if v.pos %}<span class="q-vocabulary__pos">({{ v.pos }})</span>{% endif %}
-              <span class="q-vocabulary__meaning">{{ v.meaning_ko }}</span>
-              {% if v.level_label %}<span class="q-vocabulary__level">{{ v.level_label }}</span>{% endif %}
-            </li>
-            {% endfor %}
-          </ul>
-        </div>
-        {% endif %}
       </div>
+      {# 어휘 박스 — 큰 q 박스 *밖* (학원 자료 표준 표 형태). v0.2-γ 에서
+         synonyms / antonyms / example_sentences 컬럼 추가 예정. #}
+      {% if q.vocabulary %}
+      <div class="q-vocabulary">
+        <h4 class="q-vocabulary__heading">어휘</h4>
+        <table class="q-vocabulary__table">
+          <thead>
+            <tr>
+              <th class="col-word">단어 (품사)</th>
+              <th class="col-meaning">한글 뜻</th>
+              <th class="col-syn">유의어</th>
+              <th class="col-ant">반의어</th>
+              <th class="col-ex">예문</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for v in q.vocabulary %}
+            <tr>
+              <td class="col-word">
+                <span class="q-vocabulary__word">{{ v.word }}</span>
+                {% if v.pos %}<span class="q-vocabulary__pos">({{ v.pos }})</span>{% endif %}
+              </td>
+              <td class="col-meaning">{{ v.meaning_ko }}</td>
+              <td class="col-syn">{{ ((v.synonyms or []) | join(', ')) if v.synonyms is defined else '' }}</td>
+              <td class="col-ant">{{ ((v.antonyms or []) | join(', ')) if v.antonyms is defined else '' }}</td>
+              <td class="col-ex">{{ ((v.example_sentences or []) | join(' / ')) if v.example_sentences is defined else '' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
       {% endfor %}
     </main>
   </div>
-
-  <footer class="footer">
-    <span>{{ academy.name }}</span>
-    <span class="pg">{{ worksheet.page_number }} / {{ worksheet.total_pages }}</span>
-  </footer>
+  {# footer 는 Playwright Chromium native footer_template (`_pdf_footer.html`)
+     로 매 페이지 하단에 자동 주입 — 본 템플릿에 inline footer 두지 않음. #}
 </div>
 </body>
 </html>
