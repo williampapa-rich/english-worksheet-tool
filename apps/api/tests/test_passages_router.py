@@ -1425,3 +1425,141 @@ async def test_patch_vocabulary_422_extra_field(async_client: AsyncClient) -> No
         )
 
     assert resp.status_code == 422
+
+
+# ─── E1-c — POST /passages/{id}/vocabulary/manual ───────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_post_vocab_manual_creates_with_user_selected_by(
+    async_client: AsyncClient,
+) -> None:
+    """E1-c: 직접 추가 → selected_by=USER, user_edited=False."""
+    saved_passage = _make_saved_passage()
+
+    captured: dict = {}
+
+    async def _capture(domain):
+        captured["domain"] = domain
+        return domain
+
+    with (
+        patch("worksheet_api.routers.passages.PassageRepository") as mock_prepo,
+        patch("worksheet_api.routers.passages.VocabularyRepository") as mock_vrepo,
+    ):
+        mock_prepo.return_value.get = AsyncMock(return_value=saved_passage)
+        mock_vrepo.return_value.create = AsyncMock(side_effect=_capture)
+
+        resp = await async_client.post(
+            f"/passages/{saved_passage.id}/vocabulary/manual",
+            json={
+                "word": "smokeword",
+                "meaning_ko": "스모크 단어",
+                "pos": "noun",
+                "level_label": "수능 빈출",
+            },
+        )
+
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["word"] == "smokeword"
+    assert body["selected_by"] == "user"
+    assert body["user_edited"] is False
+    # headword_normalized 자동 lower
+    assert body["headword_normalized"] == "smokeword"
+    # repo.create 가 받은 도메인이 USER + False
+    assert captured["domain"].selected_by == VocabularySelectedBy.USER
+    assert captured["domain"].user_edited is False
+
+
+@pytest.mark.asyncio
+async def test_post_vocab_manual_explicit_headword_used(
+    async_client: AsyncClient,
+) -> None:
+    """E1-c: headword_normalized 명시 시 word.lower() 대신 그 값 사용."""
+    saved_passage = _make_saved_passage()
+
+    captured: dict = {}
+
+    async def _capture(domain):
+        captured["domain"] = domain
+        return domain
+
+    with (
+        patch("worksheet_api.routers.passages.PassageRepository") as mock_prepo,
+        patch("worksheet_api.routers.passages.VocabularyRepository") as mock_vrepo,
+    ):
+        mock_prepo.return_value.get = AsyncMock(return_value=saved_passage)
+        mock_vrepo.return_value.create = AsyncMock(side_effect=_capture)
+
+        resp = await async_client.post(
+            f"/passages/{saved_passage.id}/vocabulary/manual",
+            json={
+                "word": "Running",
+                "meaning_ko": "달리기",
+                "headword_normalized": "run",
+            },
+        )
+
+    assert resp.status_code == 201
+    assert captured["domain"].headword_normalized == "run"
+
+
+@pytest.mark.asyncio
+async def test_post_vocab_manual_404_when_passage_missing(
+    async_client: AsyncClient,
+) -> None:
+    """E1-c: passage 없으면 404."""
+    with (
+        patch("worksheet_api.routers.passages.PassageRepository") as mock_prepo,
+        patch("worksheet_api.routers.passages.VocabularyRepository") as mock_vrepo,
+    ):
+        mock_prepo.return_value.get = AsyncMock(return_value=None)
+        mock_vrepo.return_value.create = AsyncMock()
+
+        resp = await async_client.post(
+            f"/passages/{uuid.uuid4()}/vocabulary/manual",
+            json={"word": "x", "meaning_ko": "x"},
+        )
+
+    assert resp.status_code == 404
+    mock_vrepo.return_value.create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_post_vocab_manual_422_missing_required(
+    async_client: AsyncClient,
+) -> None:
+    """E1-c: word 또는 meaning_ko 누락 시 422."""
+    saved_passage = _make_saved_passage()
+
+    with patch("worksheet_api.routers.passages.PassageRepository"):
+        resp1 = await async_client.post(
+            f"/passages/{saved_passage.id}/vocabulary/manual",
+            json={"meaning_ko": "x"},
+        )
+        resp2 = await async_client.post(
+            f"/passages/{saved_passage.id}/vocabulary/manual",
+            json={"word": "x"},
+        )
+
+    assert resp1.status_code == 422
+    assert resp2.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_post_vocab_manual_422_extra_field(async_client: AsyncClient) -> None:
+    """E1-c: extra='forbid' — 정의되지 않은 필드 422."""
+    saved_passage = _make_saved_passage()
+
+    with patch("worksheet_api.routers.passages.PassageRepository"):
+        resp = await async_client.post(
+            f"/passages/{saved_passage.id}/vocabulary/manual",
+            json={
+                "word": "x",
+                "meaning_ko": "x",
+                "selected_by": "llm",
+            },
+        )
+
+    assert resp.status_code == 422
