@@ -37,9 +37,17 @@ export function WorksheetListPage(): ReactElement {
       <div className="max-w-4xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold text-gray-900">학생 자료 목록</h1>
-          <Link to="/" className="text-sm text-gray-500 hover:text-gray-700 transition-colors">
-            ← 홈
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link
+              to="/worksheets/new"
+              className="bg-blue-600 text-white text-sm font-medium px-4 py-2 rounded-xl hover:bg-blue-700 transition-colors"
+            >
+              + 신규 생성
+            </Link>
+            <Link to="/" className="text-sm text-gray-500 hover:text-gray-700 transition-colors">
+              ← 홈
+            </Link>
+          </div>
         </div>
 
         {error && (
@@ -54,9 +62,12 @@ export function WorksheetListPage(): ReactElement {
         {worksheets !== null && worksheets.length === 0 && (
           <div className="bg-white border border-gray-100 rounded-2xl p-10 text-center">
             <p className="text-gray-600 mb-3">아직 학생 자료가 없습니다.</p>
-            <p className="text-sm text-gray-400">
-              생성 라우트는 후속 PR (Stage E2-2) 에서 추가됩니다.
-            </p>
+            <Link
+              to="/worksheets/new"
+              className="inline-block bg-blue-600 text-white text-sm font-medium px-5 py-2 rounded-xl hover:bg-blue-700 transition-colors"
+            >
+              + 첫 자료 만들기
+            </Link>
           </div>
         )}
 
