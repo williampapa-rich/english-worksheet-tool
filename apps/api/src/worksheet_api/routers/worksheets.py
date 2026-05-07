@@ -93,7 +93,10 @@ from template_renderer.adapters import worksheet_to_template_context
 from template_renderer.pdf import render_worksheet_pdf
 from template_renderer.render import render_worksheet_html
 
+from shared.schemas.annotation import SyntaxAnnotation
 from shared.schemas.passage import Passage
+from shared.schemas.translation import Translation
+from shared.schemas.vocabulary import Vocabulary
 from shared.schemas.worksheet import (
     Branding,
     Worksheet,
@@ -104,7 +107,10 @@ from shared.schemas.worksheet import (
 from worksheet_api.db import get_db
 from worksheet_api.repositories import (
     PassageRepository,
+    SyntaxAnnotationRepository,
     TenantContext,
+    TranslationRepository,
+    VocabularyRepository,
     WorksheetRepository,
     get_tenant_context,
 )
@@ -287,8 +293,7 @@ async def create_worksheet(
         raise HTTPException(
             status_code=422,
             detail=(
-                "items 의 passage_id 중 하나 이상이 존재하지 않습니다. "
-                "passage_id 를 확인하세요."
+                "items 의 passage_id 중 하나 이상이 존재하지 않습니다. passage_id 를 확인하세요."
             ),
         ) from exc
 
@@ -812,9 +817,7 @@ async def preview_worksheet(
     # 2~5. 조회 + 렌더 — export_pdf 와 동일 흐름 (DRY: _build_worksheet_html 공유)
     # style 검증은 preview 전용이므로 이 라우트에서 처리.
     # _build_worksheet_html 은 style=playful 고정 — MVP 단일 스타일 정책 준수.
-    _worksheet, html_content = await _build_worksheet_html(
-        worksheet_id, tenant_ctx, session
-    )
+    _worksheet, html_content = await _build_worksheet_html(worksheet_id, tenant_ctx, session)
 
     return HTMLResponse(content=html_content, status_code=200)
 
@@ -846,6 +849,9 @@ async def _build_worksheet_html(
     """
     worksheet_repo = WorksheetRepository(session, tenant_ctx)
     passage_repo = PassageRepository(session, tenant_ctx)
+    annotation_repo = SyntaxAnnotationRepository(session, tenant_ctx)
+    translation_repo = TranslationRepository(session, tenant_ctx)
+    vocabulary_repo = VocabularyRepository(session, tenant_ctx)
 
     # Worksheet 조회 — tenant_id 필터 자동 적용
     worksheet = await worksheet_repo.get(worksheet_id)
@@ -858,25 +864,65 @@ async def _build_worksheet_html(
     # WorksheetItems 조회 — W-2 가드 패턴 (tenant 재검증 포함)
     items_orm = await worksheet_repo.list_items_for_worksheet(worksheet_id)
 
-    # 각 item 의 Passage 조회 (tenant 필터 자동 적용)
-    # passage 가 None 이면 데이터 무결성 이상 (cross-tenant FK 또는 삭제된 passage).
-    # graceful degradation: 렌더는 계속하되 warning 로그로 추적.
+    # ORM → 도메인 WorksheetItem 변환 — GET /worksheets/{id} 와 동일 패턴.
+    # 어댑터는 worksheet.items 의 include_* flag 를 source-of-truth 로 사용.
+    items = [
+        WorksheetItem(
+            id=item_orm.id,
+            passage_id=item_orm.passage_id,
+            order=item_orm.order,
+            label=item_orm.label,
+            include_translation=item_orm.include_translation,
+            include_vocabulary=item_orm.include_vocabulary,
+            include_syntax_annotations=item_orm.include_syntax_annotations,
+            include_questions=item_orm.include_questions,
+            include_variants=item_orm.include_variants,
+        )
+        for item_orm in items_orm
+    ]
+    worksheet = worksheet.model_copy(update={"items": items})
+
+    # 각 item 의 Passage / annotations / translation / vocabulary batch 조회.
+    # tenant 필터 자동 적용 — cross-tenant 누수 차단.
+    # B4: include_translation / include_vocabulary flag 가 True 인 item 만 보강 조회
+    # 호출 (불필요 DB 비용 회피).
     passages: list[Passage] = []
-    for item_orm in items_orm:
-        passage = await passage_repo.get(item_orm.passage_id)
+    annotations_by_passage: dict[uuid.UUID, list[SyntaxAnnotation]] = {}
+    translations_by_passage: dict[uuid.UUID, Translation | None] = {}
+    vocabulary_by_passage: dict[uuid.UUID, list[Vocabulary]] = {}
+
+    for item in items:
+        passage = await passage_repo.get(item.passage_id)
         if passage is None:
+            # passage 없음 = 데이터 무결성 이상 (cross-tenant FK 또는 삭제된 passage).
+            # graceful degradation: 렌더는 계속, warning 로그.
             logger.warning(
                 "worksheet item passage missing — possible data integrity issue: "
                 "worksheet_id=%s, item_id=%s, passage_id=%s",
                 worksheet_id,
-                item_orm.id,
-                item_orm.passage_id,
+                item.id,
+                item.passage_id,
             )
             continue
         passages.append(passage)
 
+        # annotations 는 ADR-0014 content_html 정밀 렌더에 필수 — 항상 조회.
+        # include_syntax_annotations flag 와 별개 (flag 는 분석표 행 노출 결정 — 별 영역).
+        annotations_by_passage[passage.id] = await annotation_repo.list_by_passage(passage.id)
+
+        if item.include_translation:
+            translations_by_passage[passage.id] = await translation_repo.get_by_passage(passage.id)
+        if item.include_vocabulary:
+            vocabulary_by_passage[passage.id] = await vocabulary_repo.list_by_passage(passage.id)
+
     # 템플릿 컨텍스트 생성 + 렌더링 (MVP: style=playful 고정)
-    context = worksheet_to_template_context(worksheet, passages)
+    context = worksheet_to_template_context(
+        worksheet,
+        passages,
+        annotations_by_passage=annotations_by_passage,
+        translations_by_passage=translations_by_passage,
+        vocabulary_by_passage=vocabulary_by_passage,
+    )
     html_content = render_worksheet_html(context, style="playful")
 
     return worksheet, html_content
@@ -924,9 +970,7 @@ async def export_worksheet_pdf(
         HTTPException 404: Worksheet 가 존재하지 않거나 다른 tenant 소유.
     """
     # preview 와 동일한 조회 + 렌더 흐름 (DRY: _build_worksheet_html 공유)
-    worksheet, html_content = await _build_worksheet_html(
-        worksheet_id, tenant_ctx, session
-    )
+    worksheet, html_content = await _build_worksheet_html(worksheet_id, tenant_ctx, session)
 
     # Worksheet.orientation → Playwright landscape 파라미터
     landscape = worksheet.orientation == WorksheetOrientation.LANDSCAPE
