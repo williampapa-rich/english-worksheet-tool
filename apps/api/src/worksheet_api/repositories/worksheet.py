@@ -20,10 +20,23 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from shared.schemas.worksheet import Worksheet, WorksheetItem
+from worksheet_api.models.base import _utc_now
 from worksheet_api.models.passage import PassageORM
 from worksheet_api.models.worksheet import WorksheetItemORM, WorksheetORM
 from worksheet_api.repositories.base import BaseRepository
 from worksheet_api.repositories.tenant_context import TenantContext
+
+# update_meta 허용 필드 (R-3 — 호출 시점 재생성 회피, 모듈 레벨 상수).
+_ALLOWED_META_FIELDS: frozenset[str] = frozenset({
+    "title", "subtitle", "kind", "template_id", "orientation",
+    "instruction", "branding", "school", "grade", "exam_date", "time_limit",
+})
+
+# WorksheetORM 에서 nullable=False 인 메타 필드 (W-1 — null patch 차단 대상).
+# WorksheetORM 컬럼 정의의 nullable=False 와 1:1 동기화 — 변경 시 함께 수정.
+_NONNULL_META_FIELDS: frozenset[str] = frozenset({
+    "title", "kind", "template_id", "orientation",
+})
 
 
 class WorksheetRepository(BaseRepository[WorksheetORM, Worksheet]):
@@ -250,10 +263,13 @@ class WorksheetRepository(BaseRepository[WorksheetORM, Worksheet]):
 
         흐름:
           1. ``items`` 키 포함 여부 사전 차단 (도메인 정책 강제).
-          2. BaseRepository.get() 으로 tenant_id + workspace_id 필터를 적용해 조회
-             (cross-tenant 이면 None 반환).
-          3. 허용 필드만 ORM 에 직접 패치 (setattr).
-          4. session.flush() 후 refresh → 최신 상태 반환.
+          2. NOT NULL 메타 필드에 ``None`` 설정 시도 차단 (W-1 — IntegrityError 500 회피).
+          3. ``self._get_orm()`` 으로 tenant_id + workspace_id 필터를 적용해 ORM
+             인스턴스 조회 (cross-tenant 이면 None 반환). ``BaseRepository.get()`` 은
+             도메인 모델을 반환하므로 ORM 직접 setattr 패턴에 부적합 (R-1).
+          4. 허용 필드만 ORM 에 직접 패치 (setattr).
+          5. updated_at 갱신 (R-2 (a) — PATCH 한정 부분 fix, ORM-wide 자동 갱신 별 ADR).
+          6. session.flush() 후 refresh → 최신 상태 반환.
 
         호출 전제: 호출자가 ``async with session.begin():`` 컨텍스트 안에 있어야 한다.
         commit 은 caller 책임.
@@ -268,7 +284,8 @@ class WorksheetRepository(BaseRepository[WorksheetORM, Worksheet]):
             worksheet_id 가 없거나 cross-tenant 이면 None.
 
         Raises:
-            ValueError: patch 에 ``items`` 키가 포함된 경우 (명시 차단).
+            ValueError: patch 에 ``items`` 키가 포함된 경우 (명시 차단) 또는
+                NOT NULL 메타 필드를 ``None`` 으로 설정하려는 경우 (W-1).
         """
         # 1. items 키 사전 차단 (A2-b 별 라우트 정책 강제)
         if "items" in patch:
@@ -277,16 +294,25 @@ class WorksheetRepository(BaseRepository[WorksheetORM, Worksheet]):
                 "items 변경은 POST/PATCH/DELETE /worksheets/{id}/items 를 사용하세요 (A2-b 예정)."
             )
 
-        # 2. tenant 검증 포함 단건 조회 (cross-tenant → None)
+        # 2. NOT NULL 메타 필드에 None 설정 시도 차단 (W-1)
+        #    WorksheetUpdateRequest 의 None default 는 "변경 없음" 을 의미하며 (R-4),
+        #    명시적 null 전송은 NOT NULL 컬럼 위반 → IntegrityError 500 으로 노출되므로
+        #    Repository 레이어에서 명시 차단해 422 로 매핑한다.
+        for field in _NONNULL_META_FIELDS:
+            if field in patch and patch[field] is None:
+                raise ValueError(
+                    f"'{field}' 필드는 null 로 설정할 수 없습니다 (NOT NULL 메타 필드). "
+                    f"변경하지 않으려면 요청 body 에서 키를 제외하세요."
+                )
+
+        # 3. tenant 검증 포함 단건 조회 (cross-tenant → None)
+        #    self._get_orm() 으로 ORM 인스턴스 직접 반환 — setattr 패치를 위해.
+        #    BaseRepository.get() 은 도메인 모델로 변환하므로 setattr 패턴에 부적합 (R-1).
         orm = await self._get_orm(worksheet_id)
         if orm is None:
             return None
 
-        # 3. 허용 필드 패치 — branding 은 Pydantic 모델 또는 dict 모두 수용
-        _ALLOWED_META_FIELDS = frozenset({
-            "title", "subtitle", "kind", "template_id", "orientation",
-            "instruction", "branding", "school", "grade", "exam_date", "time_limit",
-        })
+        # 4. 허용 필드 패치 — branding 은 Pydantic 모델 또는 dict 모두 수용
         for field, value in patch.items():
             if field not in _ALLOWED_META_FIELDS:
                 continue  # 미래 확장 필드는 silently 무시 (items 는 위에서 이미 차단)
@@ -295,7 +321,11 @@ class WorksheetRepository(BaseRepository[WorksheetORM, Worksheet]):
                 value = value.model_dump(mode="python")
             setattr(orm, field, value)
 
-        # 4. flush + refresh → 최신 DB 상태 반영
+        # 5. updated_at 갱신 (R-2 (a) — PATCH 한정 부분 fix)
+        #    ORM 의 onupdate 훅이 없는 현재 구조의 미봉책. ORM-wide 자동 갱신은 별 ADR.
+        orm.updated_at = _utc_now()
+
+        # 6. flush + refresh → 최신 DB 상태 반영
         await self._session.flush()
         await self._session.refresh(orm)
         return self._to_domain(orm)

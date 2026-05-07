@@ -169,6 +169,13 @@ class WorksheetUpdateRequest(BaseModel):
     클라이언트가 items 키를 보내면 extra="forbid" 로 422 반환한다.
 
     branding 은 통째 교체 (부분 patch 미지원) — 클라이언트가 full Branding 을 보내야 한다.
+
+    null 의미론 (R-4): 본 모델의 ``None`` default 는 "변경 없음" 을 의미한다.
+    JSON 으로 명시적 ``null`` 을 보내는 것은 다음 두 경우로 나뉜다:
+      - nullable 컬럼 (subtitle / instruction / branding / school 등): null 로 설정 가능.
+      - NOT NULL 컬럼 (title / kind / template_id / orientation): Repository 레이어에서
+        ValueError → 422 매핑 (W-1 차단).
+    "변경하지 않음" 을 표현하려면 요청 body 에서 키를 **제외** 하세요.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -420,8 +427,18 @@ async def patch_worksheet(
 
     worksheet_repo = WorksheetRepository(session, tenant_ctx)
 
-    async with session.begin():
-        updated = await worksheet_repo.update_meta(worksheet_id, patch)
+    # W-2 — Repository 의 ValueError (items 키 / NOT NULL null) 와 IntegrityError 를
+    # 422 로 매핑. create_worksheet 와 동일한 방어 패턴.
+    try:
+        async with session.begin():
+            updated = await worksheet_repo.update_meta(worksheet_id, patch)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except IntegrityError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="변경 값이 DB 제약 조건을 위반합니다.",
+        ) from exc
 
     if updated is None:
         raise HTTPException(

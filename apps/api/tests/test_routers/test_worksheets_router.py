@@ -1065,6 +1065,48 @@ async def test_patch_worksheet_invalid_kind_422(async_client: AsyncClient) -> No
     assert resp.status_code == 422
 
 
+@pytest.mark.asyncio
+async def test_patch_worksheet_nonnull_field_null_422(async_client: AsyncClient) -> None:
+    """W-1 회귀 — NOT NULL 메타 필드에 null 전송 → 422.
+
+    Repository.update_meta 가 ValueError ("'title' 필드는 null 로 설정할 수 없습니다") 를
+    raise 하면 라우터 try/except 가 422 로 매핑한다 (W-2). IntegrityError 500 노출 차단.
+    """
+    with patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls:
+        mock_ws_repo_cls.return_value.update_meta = AsyncMock(
+            side_effect=ValueError("'title' 필드는 null 로 설정할 수 없습니다 (NOT NULL).")
+        )
+
+        resp = await async_client.patch(
+            f"/worksheets/{WORKSHEET_ID_1}",
+            json={"title": None},
+        )
+
+    assert resp.status_code == 422
+    assert "null" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_patch_worksheet_integrity_error_422(async_client: AsyncClient) -> None:
+    """W-2 — Repository 가 IntegrityError raise → 라우터 422 매핑.
+
+    DB 제약 조건 위배 (예: 이론적으로 unique constraint 추가될 경우) 도 500 대신
+    422 로 매핑된다. create_worksheet 와 동일한 방어 패턴.
+    """
+    with patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls:
+        mock_ws_repo_cls.return_value.update_meta = AsyncMock(
+            side_effect=IntegrityError("constraint violation", None, None)
+        )
+
+        resp = await async_client.patch(
+            f"/worksheets/{WORKSHEET_ID_1}",
+            json={"title": "new title"},
+        )
+
+    assert resp.status_code == 422
+    assert "DB 제약" in resp.json()["detail"]
+
+
 # ─── DELETE /worksheets/{id} 테스트 ──────────────────────────────────────────
 
 

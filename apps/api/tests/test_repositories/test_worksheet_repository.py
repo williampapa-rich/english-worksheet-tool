@@ -339,6 +339,27 @@ class TestWorksheetRepositoryUnit:
         assert orm_mock.title == "새 제목"
         # flush 가 호출되어야 한다
         mock_session.flush.assert_called_once()
+        # R-2 (a) — updated_at 이 새로 갱신되어야 한다 (호출 전 None → 호출 후 datetime).
+        assert orm_mock.updated_at is not None
+
+    @pytest.mark.asyncio
+    async def test_update_meta_nonnull_field_null_raises(self) -> None:
+        """W-1 — NOT NULL 메타 필드에 None 설정 시도 → ValueError (DB 쓰기 전 차단).
+
+        WorksheetORM.title / kind / template_id / orientation 은 nullable=False.
+        Repository 가 명시 차단하지 않으면 flush 시 IntegrityError 500 노출.
+        """
+        mock_session = AsyncMock()
+        repo = WorksheetRepository(mock_session, _ctx_a())
+
+        with pytest.raises(ValueError, match="null 로 설정할 수 없습니다"):
+            await repo.update_meta(
+                uuid.UUID("11111111-1111-1111-1111-111111111111"),
+                {"title": None},
+            )
+
+        # null 차단은 _get_orm() 호출 전 — DB 쿼리 0회
+        mock_session.exec.assert_not_called()
 
     # ─── delete 단위 테스트 ──────────────────────────────────────────────────
 
