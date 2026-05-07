@@ -1,8 +1,8 @@
 # ADR 0015 — Phase 2-edit Sprint 정의 (사용자 편집 UI)
 
-- **상태(Status)**: Proposed
+- **상태(Status)**: Accepted
 - **작성일**: 2026-05-07
-- **결정일**: TBD (PM 검토 대기)
+- **결정일**: 2026-05-07 (PM Dennis — D3-D6 모두 권장안 채택)
 - **작성자**: architect (Claude — PM 직접 작성 전용)
 - **결정자**: PM (Dennis)
 - **유형**: Phase 2 baseline 종료 후 신규 sprint 정의 — 학생 자료 워크플로우의
@@ -196,6 +196,9 @@ E1-d (`DELETE /passages/{id}/vocabulary/{vid}`) 에서:
 default 라 사용자 의도 명시적 — 삭제도 사용자 의도. 추가 메타 (숨김 플래그)
 없는 단순한 모델. PM 결정 영역.
 
+**결정 (2026-05-07, PM)**: **(b) 채택** — 모든 항목 사용자 삭제 허용. Stage E1-d
+구현 시 LLM/USER 구분 없이 DELETE 허용.
+
 ### D4. 결정 항목 — Passage user_edited 메타
 
 Passage 자체 (body_text / paragraphs) 에는 현재 `user_edited` 메타 없음.
@@ -207,6 +210,10 @@ Translation/Vocabulary 와 달리 Passage 는 *원본 자료* 라 LLM 재실행 
 
 **권장**: (b). 단순. Phase 3 변형문제 진입 시 *원본 보존* 이 필요해지면 그때
 별 ADR.
+
+**결정 (2026-05-07, PM)**: **(b) 채택** — Passage 새 메타 도입 안 함. UI 가
+PATCH 만 허용하므로 LLM 덮어쓰기 충돌 없음. Phase 3 진입 시 원본 보존 필요해
+지면 별 ADR.
 
 ### D5. 결정 항목 — TranslationEditor / PassageBodyEditor 의 Tiptap 재사용 vs textarea
 
@@ -221,6 +228,11 @@ Phase 1 EditorPoc 의 Tiptap 셋업을 재사용할지 vs 단순 textarea/conten
 Tiptap config 를 Phase 2-edit 모드용으로 fork 하지 않고 *prop 기반 분기*
 (annotation 마크 enable 플래그) 로 가는 것이 NRTW 정합.
 
+**결정 (2026-05-07, PM)**: **(a) 채택** — Tiptap 재사용 + prop 분기. Stage E2
+의 `<TranslationEditor>` 와 Stage E3 의 `<PassageBodyEditor>` 는 EditorPoc 와
+동일 Tiptap base 사용, annotation 마크 활성화 prop (`enableAnnotations: boolean`)
+으로 분기.
+
 ### D6. 결정 항목 — Vocabulary 추가/삭제 UX 패턴
 
 (a) 표 마지막 행 *항상 빈 행* — 입력 시 자동 추가 행 생성 (Excel 패턴)
@@ -230,9 +242,19 @@ Tiptap config 를 Phase 2-edit 모드용으로 fork 하지 않고 *prop 기반 �
 **권장**: (b) "+" 버튼. (a) 는 의도하지 않은 빈 행 저장 위험. (c) 는
 본격적인 표면 형태로 본 sprint 외.
 
+**결정 (2026-05-07, PM)**: **(b) 채택** — `<VocabularyTable>` 하단 "+" 버튼
+명시 추가. Stage E2 구현 시 `<button onClick={addEmptyRow}>+ 어휘 추가</button>`
+패턴.
+
 ### D7. Sprint 시작 트리거 / 종료 조건
 
 **시작**: B5 와이프 검수 결과 = A/B/C 등급 + v0.2 미세 조정 PR 머지 완료.
+
+**현재 상태 (2026-05-07)**:
+- B5 검수 OK — PDF 퀄리티 A 등급 (합격선 "C까지" 훌쩍 초과). ✓
+- v0.2-α PR open (PR #58) — 머지 대기. PR 머지 후 Stage E1 시작 가능.
+- D3-D6 모두 채택 (b/b/a/b) — 본 ADR Accepted. ✓
+- Phase 1 baseline 와이프 OK 별도 대기 — Stage E1/E2 와 병렬 진행 가능 (E3 직전 정합 필요).
 
 **종료 (Phase 2-edit DoD)**:
 1. Stage E1 5개 라우트 머지 + 단위 테스트 100% green.
@@ -253,11 +275,11 @@ Tiptap config 를 Phase 2-edit 모드용으로 fork 하지 않고 *prop 기반 �
 
 ## Open Questions
 
-- [ ] D3: Vocabulary DELETE 정책 (a) vs (b)
-- [ ] D4: Passage user_edited 메타 (a) vs (b)
-- [ ] D5: TranslationEditor Tiptap vs textarea — Tiptap 재사용 시 EditorPoc
-      config 분기 정책 구체화
-- [ ] D6: Vocabulary 추가 UX (a) vs (b)
+- [x] D3: Vocabulary DELETE 정책 — **(b) 채택** (모든 항목 삭제 허용, 2026-05-07)
+- [x] D4: Passage user_edited 메타 — **(b) 채택** (메타 도입 없음, 2026-05-07)
+- [x] D5: TranslationEditor Tiptap vs textarea — **(a) 채택** (Tiptap 재사용 +
+      `enableAnnotations: boolean` prop 분기, 2026-05-07)
+- [x] D6: Vocabulary 추가 UX — **(b) 채택** ("+" 버튼 명시 추가, 2026-05-07)
 - [ ] Stage E1-e (PATCH passage) 시 annotation 강제 삭제 vs 사용자 알림 후
       삭제 vs 정밀 offset 재계산 — 단순 강제 삭제로 가되 향후 정밀 보존 ADR
       후속
