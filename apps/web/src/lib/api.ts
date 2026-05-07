@@ -384,6 +384,43 @@ export async function getWorksheet(id: string): Promise<Worksheet> {
 }
 
 /**
+ * downloadWorksheetPdf — POST /worksheets/{id}/export.pdf → 브라우저 다운로드.
+ *
+ * Content-Disposition: attachment; filename*=UTF-8''<encoded>.pdf 헤더 사용.
+ */
+export async function downloadWorksheetPdf(worksheetId: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/worksheets/${worksheetId}/export.pdf`, {
+    method: "POST",
+  });
+  await checkOk(response);
+  const blob = await response.blob();
+
+  // RFC 5987 filename* 추출 시도. 실패 시 fallback.
+  const disposition = response.headers.get("content-disposition") ?? "";
+  const m5987 = disposition.match(/filename\*=UTF-8''([^;]+)/);
+  const mPlain = disposition.match(/filename="([^"]+)"/);
+  let filename = `worksheet_${worksheetId}.pdf`;
+  if (m5987?.[1]) {
+    try {
+      filename = decodeURIComponent(m5987[1]);
+    } catch {
+      // ignore decode error, use fallback
+    }
+  } else if (mPlain?.[1]) {
+    filename = mPlain[1];
+  }
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/**
  * extractPassageText — POST /passages/extract (kind=text)
  *
  * 텍스트 1건을 정규화된 Passage 로 변환 + 영속화. 응답의 첫 결과만 반환.
