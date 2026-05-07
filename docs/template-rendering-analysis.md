@@ -2,7 +2,8 @@
 
 - **작성일**: 2026-05-06
 - **작성자**: Claude (PM 검토 대기)
-- **상태**: Accepted (PM 결정 완료, 2026-05-06) — Stage 0 진행, ADR-0011 은 Stage 1 진입 시 승격
+- **상태**: Accepted (PM 결정 완료, 2026-05-06) — Stage 0~2 머지 완료. ADR-0011
+  사후 정리됨 (`docs/adr/0011-worksheet-html-pdf-pipeline.md`, 2026-05-07).
 - **목적**: `~/Downloads/템플릿/` 으로 받은 외부 워크시트 템플릿 3종을 분석하고,
   현재 진행 중인 Phase 1 (구문분석 에디터) 과 **병렬 진행 가능성** 을 평가한다.
 - **관련 문서**:
@@ -197,7 +198,8 @@ Tiptap 에디터 → split-mark HTML  ──────→  q.content_html
 
 **다음 액션**:
 1. ✅ PM 결정 완료 (§5)
-2. ▶️ Stage 0 PR — `packages/template_renderer/templates/` 에 3종 HTML + README 도입,
-   코드 변경 0
-3. ⏳ ADR-0011 승격은 **Stage 1 진입 시점** 으로 미룸 — Stage 2 PoC 결과 (Playwright
-   실측, 폰트 동작, 에디터 산출 HTML 호환성) 를 ADR 에 반영하기 위해.
+2. ✅ Stage 0 PR (#40, 2026-05-06) — `packages/template_renderer/templates/` 에 3종
+   HTML + README 도입, 코드 변경 0.
+3. ✅ Stage 1 / Stage 2 머지 (PR #41 / #42 / #44 / #45, 2026-05-07).
+4. ✅ ADR-0011 사후 정리 (`docs/adr/0011-worksheet-html-pdf-pipeline.md`,
+   2026-05-07) — Stage 0~2 결정 사항 통합 + dangling reference 닫음.

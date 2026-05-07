@@ -3,9 +3,9 @@
 > 이 문서는 Claude Code CLI가 프로젝트 컨텍스트를 이해하기 위한 헌장(charter)이자, subagent들의 협업 규칙서다.
 > 변경 시 PR로 관리한다. 모든 핵심 의사결정은 여기 반영된다.
 
-**버전**: v0.8
+**버전**: v0.8.1
 **최종 갱신**: 2026-05-07
-**상태**: Phase 1 진행 중 — 구문분석 에디터 베이스 + Worksheet 출력 파이프라인 (Stage 0~2) 머지 완료, Phase 1 baseline 와이프 OK 대기
+**상태**: Phase 1 진행 중 — 구문분석 에디터 베이스 + Worksheet 출력 파이프라인 (Stage 0~2 / ADR-0011 사후 정리) 머지 완료, Phase 1 baseline 와이프 OK 대기. Phase 2 진입 (B 시리즈) 부분 진행 중 (B1 영속화 / B2 ADR-0013 + 보강 프롬프트 — PR #51 / #52 검토 대기)
 
 ---
 
@@ -107,7 +107,7 @@ DoD 5개 모두 충족:
 
 **머지된 베이스**:
 - 구문분석 에디터 — Tiptap 기반 highlight / underline / inline_note / top_label / bottom_label /
-  bracket 마크 + ADR-0011 (bracket / label inline node 전환) 적용. `apps/web/` + `packages/editor/`.
+  bracket 마크. `apps/web/` + `packages/editor/`.
 - HWPX 매핑 카탈로그 — `docs/annotation-hwpx-mapping.md` (P1-7) + 핵심 마크 HWPX 매핑 구현
   (`packages/hwpx_renderer/` — P1-8a inline run 후보 A 채택).
 - Worksheet 출력 파이프라인 (Phase 2 산출에 선반영, Phase 1 검수 부담 분산):
@@ -486,9 +486,11 @@ Phase 0를 시작할 수 있는 기반을 깔고, architect + domain-expert의 a
   검수 후 또는 Phase 2 진입과 묶어 ADR 신규.
 - [ ] **Worksheet CRUD 라우트** — `POST /worksheets` / `PATCH /worksheets/{id}` / `DELETE`
   / `GET /worksheets/{id}` (current: preview / export.pdf 만 존재). Phase 2 본격 진입 시점.
-- [ ] **ADR-0011 / ADR-0012 파일 부재** — 관련 머지 commit (PR #36, PR #41 등) 은 ADR 번호를
-  참조하지만 `docs/adr/0011-*.md` / `0012-*.md` 가 실제로 존재하지 않음. 결정 사항이 PR
-  본문 / commit message / 메모리에 흩어져 있음. 두 ADR 모두 사후 정리 필요 (별 chore PR).
+- [x] **ADR-0011 사후 작성** — `docs/adr/0011-worksheet-html-pdf-pipeline.md`
+  (Accepted, 2026-05-07). Worksheet HTML 템플릿 + Jinja2 + Playwright PDF
+  파이프라인 결정 사항을 단일 ADR 로 통합. dangling reference (`README.md`,
+  `template-rendering-analysis.md`, 본 §11) 닫음. ADR-0012 는 v0.8 작성 시 메모리
+  가정과 달리 코드 어디에도 참조 없음 — B2 의 ADR-0013 으로 다음 번호 자연 사용.
 - [ ] **AnnotationSpan / AnnotationCategory 영속화 검증** — 에디터에서 직렬화된 결과를 DB
   에 저장 / 복원 라운드트립 검증 (Phase 1 baseline 검수 시 자연스럽게 검증됨).
 
@@ -506,3 +508,4 @@ Phase 0를 시작할 수 있는 기반을 깔고, architect + domain-expert의 a
 | v0.6 | 2026-05-03 | §3.5 라벨 결정 갱신 (P1-0b PoC 반영) + bracket 표현 결정 미정 명시 + inline_note 잠정 표기. P1-7 매핑 카탈로그 (`docs/annotation-hwpx-mapping.md`) 반영. |
 | v0.7 | 2026-05-03 | §3.5 inline_note "잠정" 표기 제거 — P1-8a (PR #14) 머지로 inline run 후보 A 채택 확정. 12색 highlight 사전 정의 / underline `#000000` 고정 명시. |
 | v0.8 | 2026-05-07 | §2.2 "현재 위치" 전면 갱신 — Phase 1 진행 중 (구문분석 에디터 베이스 + Worksheet 출력 파이프라인 Stage 0~2 머지 완료, baseline 와이프 OK 대기). user_preferences (PR #33~38), Worksheet Stage 0~2 (PR #40~45), bracket / label inline node 전환 (PR #36 / ADR-0011) 흔적 반영. §11 Open Questions 갱신: annotation split-mark 정밀 렌더 ADR / Worksheet CRUD 라우트 / ADR-0011·0012 파일 부재 / AnnotationSpan 영속화 검증 항목 추가. |
+| v0.8.1 | 2026-05-07 | (1) ADR-0011 사후 작성 (`docs/adr/0011-worksheet-html-pdf-pipeline.md`) — Worksheet HTML/PDF 파이프라인 결정 사항 통합. (2) §2.2 "구문분석 에디터" 베이스의 잘못된 ADR-0011 참조 (bracket / label inline node 전환 — v0.8 메모리 가정 오류) 제거. (3) §11 "ADR-0011 / ADR-0012 파일 부재" 항목 닫음 — ADR-0011 작성됨, ADR-0012 는 코드 어디에도 참조 없음 (B2 의 ADR-0013 으로 다음 번호 자연 사용). |
