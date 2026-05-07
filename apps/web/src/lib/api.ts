@@ -297,6 +297,92 @@ export async function setPreference<T = Record<string, unknown>>(
  * 저장 직후 호출하는 것이 일반적 — 에디터의 미저장 변경이 있으면 호출자가
  * 저장 후 본 함수를 호출해야 한다 (본 함수 자체는 저장 책임 없음).
  */
+// ---------------------------------------------------------------------------
+// Worksheet API (Stage E2 — 학생 자료 편집 UI)
+// ---------------------------------------------------------------------------
+
+/**
+ * Worksheet — backend Worksheet 의 TypeScript 미러 (최소 필드).
+ * shared/schemas/worksheet.py 가 source of truth. UI 가 사용하는 필드만 선언.
+ */
+export interface Worksheet {
+  id: string;
+  title: string;
+  subtitle: string | null;
+  kind: "student" | "teacher" | "variant";
+  template_id: string;
+  orientation: "portrait" | "landscape";
+  instruction: string | null;
+  branding: {
+    academy_name?: string | null;
+    primary_color?: string | null;
+    secondary_color?: string | null;
+    logo_url?: string | null;
+  };
+  school: string | null;
+  grade: string | null;
+  exam_date: string | null;
+  time_limit: string | null;
+  items: WorksheetItem[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorksheetItem {
+  id: string;
+  passage_id: string;
+  order: number;
+  label: string | null;
+  include_translation: boolean;
+  include_vocabulary: boolean;
+  include_syntax_annotations: boolean;
+  include_questions: boolean;
+  include_variants: boolean;
+}
+
+export interface WorksheetListResponse {
+  worksheets: Worksheet[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+/**
+ * listWorksheets — GET /worksheets
+ *
+ * 목록 조회. 각 Worksheet 의 items 는 빈 리스트 (단건 조회로 별도 가져옴).
+ *
+ * @param params.limit  1~100 (default 20)
+ * @param params.offset >= 0 (default 0)
+ * @param params.kind   필터 (선택)
+ */
+export async function listWorksheets(params?: {
+  limit?: number;
+  offset?: number;
+  kind?: "student" | "teacher" | "variant";
+}): Promise<WorksheetListResponse> {
+  // FastAPI 라우터의 trailing slash 정책 — `/worksheets/` 명시 (없으면 307 redirect).
+  const url = new URL(`${API_BASE_URL}/worksheets/`);
+  if (params?.limit != null) url.searchParams.set("limit", String(params.limit));
+  if (params?.offset != null) url.searchParams.set("offset", String(params.offset));
+  if (params?.kind) url.searchParams.set("kind", params.kind);
+
+  const response = await fetch(url.toString());
+  await checkOk(response);
+  return (await response.json()) as WorksheetListResponse;
+}
+
+/**
+ * getWorksheet — GET /worksheets/{id}
+ *
+ * 단건 조회 (items 포함).
+ */
+export async function getWorksheet(id: string): Promise<Worksheet> {
+  const response = await fetch(`${API_BASE_URL}/worksheets/${id}`);
+  await checkOk(response);
+  return (await response.json()) as Worksheet;
+}
+
 export async function downloadPassageHwpx(passageId: string): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/passages/${passageId}/hwpx`);
   await checkOk(response);
