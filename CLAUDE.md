@@ -3,9 +3,9 @@
 > 이 문서는 Claude Code CLI가 프로젝트 컨텍스트를 이해하기 위한 헌장(charter)이자, subagent들의 협업 규칙서다.
 > 변경 시 PR로 관리한다. 모든 핵심 의사결정은 여기 반영된다.
 
-**버전**: v0.10
+**버전**: v0.10.1
 **최종 갱신**: 2026-05-07
-**상태**: **Phase 2 baseline 종료** — B5 와이프 검수 OK (PDF 퀄리티 A 등급, 합격선 "C까지" 훌쩍 초과). v0.2-α (Chromium native footer + 박스 한계선 + 어휘 표 분리 + 본문 12pt/line-height 2.78) 머지 대기. **Phase 2-edit sprint** (ADR-0015 — 사용자 편집 UI: translation 인라인 / vocabulary 행 / passage paragraph 분할 / worksheet 관리 UI) 시작 신호. Phase 1 baseline (구문분석 단독 HWPX 출력) 와이프 OK 별도 대기.
+**상태**: **Phase 2 baseline 종료** — B5 와이프 검수 OK (PDF 퀄리티 A 등급, 합격선 "C까지" 훌쩍 초과). v0.2-α (Chromium native footer + 박스 한계선 + 어휘 표 분리 + 본문 12pt/line-height 2.78) PR #58 open. ADR-0015 D3-D6 결정 완료 (Accepted). **Phase 2-edit sprint** Stage E1 시작 가능 (PR #58 머지 후). Phase 1 baseline = Editor 기능 OK (`docs/phase-1-wife-feedback.md` 2026-05-04) + HWPX 폐기 (ADR-0008) → 출력 경로는 Phase 2 PDF 로 통합 흡수.
 
 ---
 
@@ -92,9 +92,12 @@
 **Phase 2 baseline 종료 — Phase 2-edit sprint 진입 신호** (2026-05-07).
 
 - B5 와이프 검수 OK — PDF 퀄리티 A 등급, 합격선 "C까지" 훌쩍 초과.
-- v0.2-α (Chromium native footer + 박스 한계선 + 어휘 표 분리) 머지 대기.
-- ADR-0015 Phase 2-edit sprint — 사용자 편집 UI (Stage E1/E2/E3) 시작 신호.
-- Phase 1 baseline (구문분석 단독 HWPX 출력) 와이프 OK 별도 대기.
+- v0.2-α (Chromium native footer + 박스 한계선 + 어휘 표 분리) PR #58 open — 머지 대기.
+- ADR-0015 Phase 2-edit sprint **Accepted** (D3 b / D4 b / D5 a / D6 b) — Stage E1 시작 가능 (PR #58 머지 후).
+- Phase 1 baseline 결과 (2026-05-04, `docs/phase-1-wife-feedback.md`):
+  - Editor 기능 = A 등급 (1차 사용 가능 수준).
+  - HWPX 출력 = D 등급 (사용 불가) → ADR-0008 Accepted (HWPX 폐기, HTML→PDF 채택안 A 전환).
+  - **Phase 1 baseline 출력 경로는 Phase 2 PDF 로 통합 흡수** — 별도 baseline 검수 없음.
 
 #### Phase 0 — 종료 (2026-05-02)
 
@@ -565,3 +568,4 @@ Phase 0를 시작할 수 있는 기반을 깔고, architect + domain-expert의 a
 | v0.8.1 | 2026-05-07 | (1) ADR-0011 사후 작성 (`docs/adr/0011-worksheet-html-pdf-pipeline.md`) — Worksheet HTML/PDF 파이프라인 결정 사항 통합. (2) §2.2 "구문분석 에디터" 베이스의 잘못된 ADR-0011 참조 (bracket / label inline node 전환 — v0.8 메모리 가정 오류) 제거. (3) §11 "ADR-0011 / ADR-0012 파일 부재" 항목 닫음 — ADR-0011 작성됨, ADR-0012 는 코드 어디에도 참조 없음 (B2 의 ADR-0013 으로 다음 번호 자연 사용). |
 | v0.9 | 2026-05-07 | Phase 2 진입 — B 시리즈 자동 진행 마감. (1) §2.2 Phase 2 섹션 신설 (B1~B4 + ADR-0013 + ADR-0014 머지 완료, PR #51~56). (2) Stage / Phase 트리거 갱신 (B5 와이프 검수 → Phase 3 진입 트리거 명시). (3) §11 Open Questions 갱신 — annotation split-mark ADR / Worksheet CRUD 라우트 / B 시리즈 항목 close. (4) `docs/phase-2-wife-review-prep.md` 신규 — 검수 시나리오 + 11건 결정 항목. |
 | v0.10 | 2026-05-07 | **Phase 2 baseline 종료** — B5 와이프 검수 OK (PDF 퀄리티 A 등급, 합격선 "C까지" 훌쩍 초과). (1) §2.2 "현재 위치" Phase 2 baseline 종료 + Phase 2-edit 진입 신호로 갱신. (2) v0.2-α 채택안 = D안 (Chromium native `display_header_footer` + `margin`) — fixed footer 트릭 폐기, `pdf.py` + `_pdf_footer.html` 신규, 박스 한계선 footer 위 11mm 자동 분할. v0.2-β 자동 해소 (Chromium native pageNumber/totalPages). (3) ADR-0015 신규 — Phase 2-edit sprint (Stage E1 백엔드 PATCH 라우트 / E2 학생 자료 편집 UI / E3 Passage 편집 UI) 정의. CLAUDE.md §1.3 핵심 가치 명제 #3 "편집 가능한 출력" 실현. (4) §6.4 PDF 등급 기록 + §6.5 v0.2 PR 분리 갱신. |
+| v0.10.1 | 2026-05-07 | (1) ADR-0015 Accepted — D3-D6 모두 권장안 채택 (Vocabulary DELETE 모든 항목 / Passage 메타 없음 / Tiptap 재사용 + prop 분기 / "+" 버튼). Stage E1 시작 가능 (PR #58 머지 후). (2) §2.2 "Phase 1 baseline 와이프 OK 별도 대기" 표기 정정 — 2026-05-04 검수 완료 (Editor A / HWPX D), ADR-0008 로 HWPX 폐기 + HTML→PDF 전환. Phase 1 출력 경로는 Phase 2 PDF 로 통합 흡수. |
