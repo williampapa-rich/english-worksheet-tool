@@ -162,20 +162,24 @@ export function WorksheetDetailPage(): ReactElement {
                 )}
               </div>
 
-              <div className="mt-5 pt-5 border-t border-gray-100 flex gap-3">
+              <div className="mt-5 pt-5 border-t border-gray-100 flex gap-3 flex-wrap">
+                <Link
+                  to={`/worksheets/${worksheet.id}/edit`}
+                  className="bg-blue-600 text-white text-sm font-medium px-4 py-2 rounded-xl hover:bg-blue-700 transition-colors"
+                >
+                  통합 편집
+                </Link>
                 <button
                   type="button"
                   onClick={handlePdfDownload}
                   disabled={downloading}
-                  className="bg-blue-600 text-white text-sm font-medium px-4 py-2 rounded-xl hover:bg-blue-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+                  className="bg-white border border-gray-200 text-gray-700 text-sm font-medium px-4 py-2 rounded-xl hover:bg-gray-50 transition-colors disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
                 >
                   {downloading ? "PDF 생성 중…" : "PDF 다운로드"}
                 </button>
               </div>
 
-              <p className="text-xs text-gray-400 mt-4">
-                메타 편집 / 본문 편집은 후속 PR (E2-3c, E3) 에서 추가됩니다.
-              </p>
+              <p className="text-xs text-gray-400 mt-4">메타 편집은 후속 PR 에서 추가됩니다.</p>
             </section>
 
             {/* Preview iframe */}

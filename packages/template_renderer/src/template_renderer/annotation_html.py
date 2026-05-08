@@ -8,8 +8,10 @@ ADR-0014 D2 — HTML class 매핑:
   highlight     -> <mark class="annot-highlight annot-highlight--{idx}">
   underline     -> <span class="annot-underline">
   inline_note   -> <span class="annot-inline-note">{본문}<sup class="annot-inline-note__text">{text}</sup></span>
-  top_label     -> <ruby class="annot-top-label">{본문}<rt>{text}</rt></ruby>
-  bottom_label  -> <span class="annot-bottom-label" data-label="{text}">{본문}</span>
+  top_label     -> <span class="annot-top-label" data-label="{text}" data-color-index="{N}">{본문}</span>
+  bottom_label  -> <span class="annot-bottom-label" data-label="{text}" data-color-index="{N}">{본문}</span>
+                   * 이전 <ruby> 표현 폐기 (2026-05-08) — 에디터와 시각 정합 위해
+                     글자 폭 borderline + ::after/::before 라벨 텍스트로 통일.
   bracket       -> Unicode 본문 양 끝 inline (ADR-0007) — wrap class 없음
   arrow         -> 명시적 skip (D4) + 로그
 
@@ -80,14 +82,14 @@ _BRACKET_OPEN_CLOSE: dict[str, tuple[str, str]] = {
 def _collect_brackets(
     annotations: list[SyntaxAnnotation],
     body_len: int,
-) -> tuple[dict[int, list[str]], dict[int, list[str]]]:
-    """bracket annotation 의 open/close 글자 위치별 매핑.
+) -> tuple[dict[int, list[tuple[str, int | None]]], dict[int, list[tuple[str, int | None]]]]:
+    """bracket annotation 의 open/close 글자 + color_index 위치별 매핑.
 
     Returns:
-        (open_at, close_at) — char position → 삽입할 글자 list.
+        (open_at, close_at) — char position → [(글자, color_index), ...].
     """
-    open_at: dict[int, list[str]] = {}
-    close_at: dict[int, list[str]] = {}
+    open_at: dict[int, list[tuple[str, int | None]]] = {}
+    close_at: dict[int, list[tuple[str, int | None]]] = {}
     for ann in annotations:
         if ann.kind != AnnotationKind.BRACKET:
             continue
@@ -106,10 +108,11 @@ def _collect_brackets(
                 body_len,
             )
             continue
-        open_at.setdefault(ann.span.start, []).append(pair[0])
+        ci = ann.color_index
+        open_at.setdefault(ann.span.start, []).append((pair[0], ci))
         # close 는 end 위치 *직전* (end exclusive 라 end-1 의 *다음* 에 삽입)
         # 단순화: close 도 end position 에 삽입 → 본문 마지막 글자와 분리되지 않게.
-        close_at.setdefault(ann.span.end, []).append(pair[1])
+        close_at.setdefault(ann.span.end, []).append((pair[1], ci))
     return open_at, close_at
 
 
@@ -191,12 +194,14 @@ def _slice_text_runs(
 def _collect_labels(
     annotations: list[SyntaxAnnotation],
     body_len: int,
-) -> dict[tuple[int, int], list[tuple[AnnotationKind, str]]]:
-    """라벨 annotation 의 (start, end) → [(kind, text), ...] 매핑.
+) -> dict[tuple[int, int], list[tuple[AnnotationKind, str, int | None, str | None]]]:
+    """라벨 annotation 의 (start, end) → [(kind, text, color_index, category), ...] 매핑.
 
     같은 span 에 라벨 여러 개 (top + bottom 또는 top 2개) 도 list 로 누적.
+    color_index 는 borderline + 라벨 텍스트 색상 (12색 팔레트) 결정.
+    category 는 정렬 정책 분기 (sentence_role 만 중앙, 나머지 좌정렬).
     """
-    labels: dict[tuple[int, int], list[tuple[AnnotationKind, str]]] = {}
+    labels: dict[tuple[int, int], list[tuple[AnnotationKind, str, int | None, str | None]]] = {}
     for ann in annotations:
         if ann.kind not in (AnnotationKind.TOP_LABEL, AnnotationKind.BOTTOM_LABEL):
             continue
@@ -209,7 +214,10 @@ def _collect_labels(
             )
             continue
         text = ann.text or ""
-        labels.setdefault((ann.span.start, ann.span.end), []).append((ann.kind, text))
+        category_str = ann.category.value if ann.category is not None else None
+        labels.setdefault((ann.span.start, ann.span.end), []).append(
+            (ann.kind, text, ann.color_index, category_str)
+        )
     return labels
 
 
@@ -276,16 +284,26 @@ def render_annotations_to_html(
     open_events: dict[int, list[tuple[str, AnnotationKind | None]]] = {}
     close_events: dict[int, list[tuple[str, AnnotationKind | None]]] = {}
 
-    # 라벨 open/close
+    # 라벨 open/close — top/bottom 둘 다 inline span + data-label + data-color-index.
+    # CSS 가 mark 글자 폭 위/아래 borderline + ::before/::after 로 라벨 텍스트 그림.
+    # color_index 는 글로벌 [data-color-index] 매핑이 --current-anno-color 설정.
+    # category 는 sentence_role 일 때만 라벨 텍스트 중앙 정렬 (그 외 좌정렬).
     for (start, end), items in labels.items():
-        for kind, text in items:
-            if kind == AnnotationKind.TOP_LABEL:
-                open_tag = '<ruby class="annot-top-label">'
-                close_tag = f"<rt>{escape(text)}</rt></ruby>"
-            else:  # BOTTOM_LABEL
-                # CSS ::after 가 data-label 을 표시
-                open_tag = f'<span class="annot-bottom-label" data-label="{escape(text)}">'
-                close_tag = "</span>"
+        for kind, text, color_index, category in items:
+            css_classes = (
+                "annot-top-label" if kind == AnnotationKind.TOP_LABEL else "annot-bottom-label"
+            )
+            if kind == AnnotationKind.BOTTOM_LABEL and category == "sentence_role":
+                css_classes += " annot-label--centered"
+            color_attr = (
+                f' data-color-index="{color_index}"'
+                if color_index is not None and 1 <= color_index <= 12
+                else ""
+            )
+            open_tag = (
+                f'<span class="{css_classes}" data-label="{escape(text)}"{color_attr}>'
+            )
+            close_tag = "</span>"
             open_events.setdefault(start, []).append((open_tag, kind))
             close_events.setdefault(end, []).append((close_tag, kind))
 
@@ -302,8 +320,13 @@ def render_annotations_to_html(
         for pos in range(seg_start, seg_end + 1):
             # close 이벤트 (라벨 / bracket close) — pos 도착 시 처리
             if pos in close_brackets:
-                for c in close_brackets[pos]:
-                    seg_parts.append(f'<span class="annot-bracket">{escape(c)}</span>')
+                for c, ci in close_brackets[pos]:
+                    color_attr = (
+                        f' data-color-index="{ci}"' if ci is not None and 1 <= ci <= 12 else ""
+                    )
+                    seg_parts.append(
+                        f'<span class="annot-bracket"{color_attr}>{escape(c)}</span>'
+                    )
             if pos in close_events:
                 for tag, _kind in close_events[pos]:
                     seg_parts.append(tag)
@@ -316,8 +339,13 @@ def render_annotations_to_html(
                 for tag, _kind in open_events[pos]:
                     seg_parts.append(tag)
             if pos in open_brackets:
-                for c in open_brackets[pos]:
-                    seg_parts.append(f'<span class="annot-bracket">{escape(c)}</span>')
+                for c, ci in open_brackets[pos]:
+                    color_attr = (
+                        f' data-color-index="{ci}"' if ci is not None and 1 <= ci <= 12 else ""
+                    )
+                    seg_parts.append(
+                        f'<span class="annot-bracket"{color_attr}>{escape(c)}</span>'
+                    )
 
             # segment 시작 위치에서 css wrap 시작
             if pos == seg_start and seg.css_token != _CSS_BODY:
@@ -343,8 +371,11 @@ def render_annotations_to_html(
 
     # 본문 끝 위치의 close 이벤트 (end-of-body 라벨 / bracket)
     if n in close_brackets:
-        for c in close_brackets[n]:
-            parts.append(f'<span class="annot-bracket">{escape(c)}</span>')
+        for c, ci in close_brackets[n]:
+            color_attr = (
+                f' data-color-index="{ci}"' if ci is not None and 1 <= ci <= 12 else ""
+            )
+            parts.append(f'<span class="annot-bracket"{color_attr}>{escape(c)}</span>')
     if n in close_events:
         for tag, _kind in close_events[n]:
             parts.append(tag)
