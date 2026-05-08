@@ -16,7 +16,7 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { HexColorPicker } from "react-colorful";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import {
   AnalysisTable,
   type AnnotationChip,
@@ -109,6 +109,10 @@ export function EditorPoc() {
   // URL param — passageId 있으면 API 로드 모드, 없으면 fixture 모드
   const { passageId } = useParams<{ passageId?: string }>();
   const isLoadMode = !!passageId;
+  // ?embed=1 — 통합 편집 페이지 (WorksheetEditPage) iframe 임베드 모드.
+  // 헤더/홈 링크 숨기고 저장 성공 시 부모에게 postMessage 송출.
+  const [searchParams] = useSearchParams();
+  const isEmbed = searchParams.get("embed") === "1";
 
   const [selectedColorIndex, setSelectedColorIndex] = useState<number | null>(1);
   const [customColor, setCustomColor] = useState<string | null>(null);
@@ -297,11 +301,18 @@ export function EditorPoc() {
       const annotations = docToAnnotations(doc);
       await replaceAnnotations(passageId, annotations);
       showToast("저장 완료", "success");
+      // embed 모드: 부모 (통합 편집 페이지) 에 알려 우측 미리보기 reload.
+      if (isEmbed && window.parent !== window) {
+        window.parent.postMessage(
+          { type: "ewt:annotations-saved", passageId },
+          window.location.origin
+        );
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       showToast(`저장 실패: ${message}`, "error");
     }
-  }, [editor, passageId, showToast]);
+  }, [editor, passageId, showToast, isEmbed]);
 
   /**
    * handleDownloadPdf — ADR-0008 §5 채택안 A 구현.
@@ -1078,23 +1089,25 @@ export function EditorPoc() {
           {toast.message}
         </output>
       )}
-      <main className="min-h-screen bg-gray-50 p-8">
-        <div className="max-w-4xl mx-auto space-y-6">
-          {/* 헤더 */}
-          <div data-print-hide className="flex items-center gap-4">
-            <Link to="/" className="text-blue-600 hover:underline text-sm">
-              ← 홈으로
-            </Link>
-            <h1 className="text-xl font-bold text-gray-900">구문분석 에디터 드래프트 (P1-2c)</h1>
-            <span className="text-xs text-gray-400 bg-yellow-100 px-2 py-0.5 rounded">
-              드래프트 — PM 검수용
-            </span>
-            {isLoadMode && (
-              <span className="text-xs text-blue-500 bg-blue-50 px-2 py-0.5 rounded">
-                API 모드 — passage {passageId}
+      <main className={isEmbed ? "min-h-screen bg-gray-50 p-4" : "min-h-screen bg-gray-50 p-8"}>
+        <div className={isEmbed ? "space-y-4" : "max-w-4xl mx-auto space-y-6"}>
+          {/* 헤더 — embed 모드에서는 숨김 (부모 페이지 헤더가 컨텍스트 제공) */}
+          {!isEmbed && (
+            <div data-print-hide className="flex items-center gap-4">
+              <Link to="/" className="text-blue-600 hover:underline text-sm">
+                ← 홈으로
+              </Link>
+              <h1 className="text-xl font-bold text-gray-900">구문분석 에디터 드래프트 (P1-2c)</h1>
+              <span className="text-xs text-gray-400 bg-yellow-100 px-2 py-0.5 rounded">
+                드래프트 — PM 검수용
               </span>
-            )}
-          </div>
+              {isLoadMode && (
+                <span className="text-xs text-blue-500 bg-blue-50 px-2 py-0.5 rounded">
+                  API 모드 — passage {passageId}
+                </span>
+              )}
+            </div>
+          )}
 
           {/* 에디터 + 분석표 영역 */}
           <div className="flex flex-col gap-4">

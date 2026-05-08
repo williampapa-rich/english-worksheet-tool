@@ -63,51 +63,111 @@
   line-height: 1;
 }
 
-/* ─── top_label (본문 위 라벨 — <ruby>) ─────────────────────────────── */
+/* ─── top_label / bottom_label (본문 위/아래 라벨 + 글자 폭 borderline) ──
+ *
+ * 에디터 (`apps/web/src/pages/EditorPoc.css`) 와 시각 정합 (2026-05-08 사용자
+ * 확정). mark 글자 폭 전체에 borderline + ::after / ::before 로 라벨 텍스트
+ * 표시. color_index → --label-color (12색 팔레트) 매핑.
+ *
+ * 정렬 정책:
+ *   - top_label (phrase / clause / note): 좌정렬
+ *   - bottom_label sentence_role (성분): 중앙 정렬 (annot-label--centered)
+ *   - bottom_label note: 좌정렬
+ */
 
-.annot-top-label {
-  ruby-position: over;
-  ruby-align: center;
-}
-
-.annot-top-label rt {
-  font-size: 0.55em;
-  color: var(--theme, #2563eb);
-  font-weight: 600;
-  line-height: 1.2;
-  letter-spacing: -0.02em;
-}
-
-/* ─── bottom_label (본문 아래 라벨 — CSS ::after) ─────────────────── */
-
+.annot-top-label,
 .annot-bottom-label {
   position: relative;
+  /* inline-block 이면 본문 줄바꿈 / 행간 정상화. mark 글자 폭만큼 box. */
   display: inline-block;
+  /* color_index 별 변수 — 아래 매핑 셀렉터에서 설정. fallback = 회색. */
+  --label-color: #9ca3af;
 }
 
+/* borderline = ::before pseudo 로 absolute 배치 (border 속성 X).
+ * 이유: border 는 box 모서리에 고정 → top_label / bottom_label 이 같은 line-box
+ * 안에 만나면 border 끼리 시각적으로 겹쳐 보임 (2026-05-08 사용자 검수).
+ *
+ * 절대 배치 + line-box 외부 픽셀 단위 위치 조절로 borderline 끼리 분리.
+ * 라벨 텍스트 (::after) 는 mark span 안쪽 padding 영역 또는 외부 자유 배치. */
+.annot-top-label,
+.annot-bottom-label {
+  /* border 자체 없음 — pseudo 로 그림. */
+}
+
+.annot-top-label::before,
+.annot-bottom-label::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background-color: var(--label-color);
+}
+/* borderline 위치 — line-height 3.4 의 line-box (≈ 54px) 안에서 글자 윗선
+ * (ascender ~17px) / 아랫선 (~37px) 근처에 그어서 본문 글자에 *가깝게* 붙임.
+ * 작은 top 값은 box 윗변에 붙어 윗줄 descender 와 가까워짐 (반대 방향). */
+.annot-top-label::before {
+  top: 15px;
+}
+.annot-bottom-label::before {
+  bottom: 15px;
+}
+
+/* 라벨 텍스트 — mark span 의 padding 영역 *안* 에 absolute 배치 (line-box
+ * 외부로 안 나감). top_label = padding-top 영역 (border 와 본문 글자 사이),
+ * bottom_label = padding-bottom 영역. */
+.annot-top-label::after,
 .annot-bottom-label::after {
   content: attr(data-label);
   position: absolute;
   left: 0;
-  right: 0;
-  bottom: -1.4em;
-  font-size: 0.55em;
-  color: var(--theme, #2563eb);
+  font-size: 0.65em;
+  color: var(--label-color);
   font-weight: 600;
-  text-align: center;
-  line-height: 1.2;
   white-space: nowrap;
+  line-height: 1;
   letter-spacing: -0.02em;
+  padding: 0 3px;
+}
+/* 라벨 텍스트 — borderline (top:15px / bottom:15px) 바로 위/아래에. */
+.annot-top-label::after {
+  bottom: calc(100% - 15px + 2px);
+}
+.annot-bottom-label::after {
+  top: calc(100% - 15px + 2px);
 }
 
-/* bottom_label 이 있는 줄은 행간 보정 (라벨 공간 확보) */
-.annot-passage:has(.annot-bottom-label) {
-  line-height: 2.2;
+/* 중앙 정렬 (sentence_role) — top/bottom 둘 다 적용 가능하도록 만든 변형. */
+.annot-label--centered::after {
+  left: 50%;
+  transform: translateX(-50%);
 }
+
+/* color_index 매핑 — 12색 팔레트 (에디터 EditorPoc.css 와 동일). */
+[data-color-index="1"] { --label-color: #fef08a; }
+[data-color-index="2"] { --label-color: #86efac; }
+[data-color-index="3"] { --label-color: #93c5fd; }
+[data-color-index="4"] { --label-color: #f9a8d4; }
+[data-color-index="5"] { --label-color: #fdba74; }
+[data-color-index="6"] { --label-color: #c4b5fd; }
+[data-color-index="7"] { --label-color: #6ee7b7; }
+[data-color-index="8"] { --label-color: #fca5a5; }
+[data-color-index="9"] { --label-color: #67e8f9; }
+[data-color-index="10"] { --label-color: #d9f99d; }
+[data-color-index="11"] { --label-color: #fde68a; }
+[data-color-index="12"] { --label-color: #e9d5ff; }
+
+/* 라벨이 있는 본문 단락의 행간 보정은 *템플릿* 측 line-height 그대로 사용.
+ * playful.html `.q-content p { line-height: 2.78 }` 가 이미 라벨 영역 충분히
+ * 확보. 여기서 line-height 덮어쓰면 (예: 2.2) 본문이 *좁아져* 라벨이 line-box
+ * 안에 박혀버리는 회귀가 발생 (2026-05-08 확인). */
 
 /* ─── bracket (Unicode inline) ─────────────────────────────────────── */
 
 .annot-bracket {
   font-weight: 600;
-  color: var(--ink, #111);
+  /* color_index 가 있으면 --label-color (위 매핑 셀렉터) 가 12색 팔레트에서 설정.
+   * 없으면 본문 색상 fallback. */
+  color: var(--label-color, var(--ink, #111));
 }

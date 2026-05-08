@@ -822,7 +822,13 @@ async def preview_worksheet(
         worksheet_id, tenant_ctx, session
     )
 
-    return HTMLResponse(content=html_content, status_code=200)
+    # 통합 편집 페이지 iframe 이 편집 후 reload 할 때 브라우저 캐시 우회 — Translation/
+    # Vocabulary/Body/Annotation 변경이 즉시 반영되도록.
+    return HTMLResponse(
+        content=html_content,
+        status_code=200,
+        headers={"Cache-Control": "no-store, max-age=0"},
+    )
 
 
 # ─── 공유 헬퍼 ──────────────────────────────────────────────────────────────

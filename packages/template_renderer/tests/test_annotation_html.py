@@ -145,12 +145,16 @@ def test_inline_note_text_escaped() -> None:
 # ─── top_label ──────────────────────────────────────────────────────────────
 
 
-def test_top_label_ruby() -> None:
+def test_top_label_data_attribute() -> None:
+    """top_label 도 bottom_label 과 동일하게 inline span + data-label.
+
+    이전 <ruby> 표현 폐기 (2026-05-08) — 에디터 시각 정합 위해 글자 폭 borderline +
+    ::after 라벨 텍스트로 통일.
+    """
     passage = _make_passage("Hello world")
     ann = _make_annotation(AnnotationKind.TOP_LABEL, 0, 5, text="명사구")
     result = str(render_annotations_to_html(passage, [ann]))
-    assert '<ruby class="annot-top-label">' in result
-    assert "<rt>명사구</rt></ruby>" in result
+    assert '<span class="annot-top-label" data-label="명사구"' in result
     assert "Hello" in result
 
 
@@ -315,6 +319,6 @@ def test_complex_fixture_highlight_label_bracket() -> None:
     result = str(render_annotations_to_html(passage, annotations))
     assert "annot-highlight--1" in result
     assert 'class="annot-top-label"' in result
-    assert "<rt>명사구</rt>" in result
+    assert 'data-label="명사구"' in result
     assert ">[<" in result or '<span class="annot-bracket">[</span>' in result
     assert ">]<" in result or '<span class="annot-bracket">]</span>' in result
