@@ -230,22 +230,35 @@ def render_annotations_to_html(
 ) -> Markup:
     """SyntaxAnnotation 을 적용한 HTML <p> 문자열 반환.
 
-    출력 = 단일 paragraph (Passage.body_text). Phase 2 후반에 paragraph 분할이
-    필요하면 별 함수 (본 ADR 범위 밖).
+    paragraphs 가 여러 개면 각 paragraph 가 별 ``<p class="annot-passage">`` 로
+    그려진다 — 사용자 에디터 줄바꿈 (Enter) 이 PDF 줄바꿈에 그대로 반영됨.
 
     ADR-0014 D2 매핑 + D5 중첩 정책 + D6 XSS escape.
 
     Args:
-        passage: 대상 Passage. ``body_text`` 만 사용.
+        passage: 대상 Passage. ``paragraphs`` 가 있으면 그 값을 ``\n`` 으로 join 한
+            결과를 본문으로 사용 (frontend annotationSerializer 의 char offset 기준
+            과 일치). ``paragraphs`` 가 비어있을 때만 ``body_text`` fallback.
         annotations: 적용할 SyntaxAnnotation list. ``passage_id`` 일치 검증은
             호출자 책임 (라우트 레이어). arrow kind 는 명시적 skip + 로그 (D4).
 
     Returns:
-        ``<p>...</p>`` 으로 wrap 된 escape-safe HTML. ``markupsafe.Markup`` 타입 —
-        Jinja2 ``| safe`` 로 우회 escape 시 안전.
+        하나 이상의 ``<p class="annot-passage">...</p>`` 으로 wrap 된 escape-safe
+        HTML. ``markupsafe.Markup`` 타입 — Jinja2 ``| safe`` 로 우회 escape 시 안전.
+
+    Note (2026-05-09 사용자 보고 fix):
+        ``paragraphs`` 가 여러 개일 때 단일 ``<p>`` 안에 합쳐 그려지면 PDF 자동
+        wrap 위치가 좌측 에디터 (paragraph 분리됨) 와 어긋남. ``\n`` 위치마다
+        ``</p><p class="annot-passage">`` 로 치환해 paragraph 구조 유지.
     """
-    body_text = passage.body_text
+    if passage.paragraphs:
+        body_text = "\n".join(passage.paragraphs)
+    else:
+        body_text = passage.body_text
     n = len(body_text)
+
+    # paragraph 경계 (body_text 안의 ``\n`` 위치) — char 출력 시 ``</p><p>`` 로 치환.
+    paragraph_breaks: set[int] = {i for i, ch in enumerate(body_text) if ch == "\n"}
 
     # arrow 는 명시적 skip + 1회 로그 (D4)
     arrow_count = sum(1 for a in annotations if a.kind == AnnotationKind.ARROW)
@@ -316,9 +329,20 @@ def render_annotations_to_html(
 
         # segment 안의 char position 마다 open/close + bracket 이벤트 처리
         seg_parts: list[str] = []
-        # segment 시작 시 open 이벤트
+        # 이벤트 순서 정책 (2026-05-09 사용자 보고 fix):
+        #   같은 span 에 라벨 + bracket 이 함께 적용된 경우 — bracket 글자가 라벨
+        #   span *안*에 들어가면 라벨 box 폭 (= borderline 폭) 이 bracket 까지
+        #   확장되어 borderline 이 괄호 위까지 그려짐 ("borderline 이 한 글자
+        #   밀려서 시작" 증상). 사용자 의도는 borderline 이 본문 영역에만 걸리는 것.
+        #   → bracket 글자는 라벨 span 의 *밖*으로 emit:
+        #       open pos:  bracket open → label open
+        #       close pos: label close → bracket close
+        #   결과 DOM: <bracket>(</bracket><label>body</label><bracket>)</bracket>
         for pos in range(seg_start, seg_end + 1):
-            # close 이벤트 (라벨 / bracket close) — pos 도착 시 처리
+            # close 이벤트 — 라벨 close 먼저, bracket close 가 그 뒤.
+            if pos in close_events:
+                for tag, _kind in close_events[pos]:
+                    seg_parts.append(tag)
             if pos in close_brackets:
                 for c, ci in close_brackets[pos]:
                     color_attr = (
@@ -327,17 +351,11 @@ def render_annotations_to_html(
                     seg_parts.append(
                         f'<span class="annot-bracket"{color_attr}>{escape(c)}</span>'
                     )
-            if pos in close_events:
-                for tag, _kind in close_events[pos]:
-                    seg_parts.append(tag)
 
             if pos == seg_end:
                 break
 
-            # open 이벤트 (라벨 / bracket open) — pos 시작 시 처리
-            if pos in open_events:
-                for tag, _kind in open_events[pos]:
-                    seg_parts.append(tag)
+            # open 이벤트 — bracket open 먼저, 그 다음 라벨 open.
             if pos in open_brackets:
                 for c, ci in open_brackets[pos]:
                     color_attr = (
@@ -346,13 +364,20 @@ def render_annotations_to_html(
                     seg_parts.append(
                         f'<span class="annot-bracket"{color_attr}>{escape(c)}</span>'
                     )
+            if pos in open_events:
+                for tag, _kind in open_events[pos]:
+                    seg_parts.append(tag)
 
             # segment 시작 위치에서 css wrap 시작
             if pos == seg_start and seg.css_token != _CSS_BODY:
                 seg_parts.append(f'<span class="{seg.css_token}">')
 
-            # 본문 글자 1개
-            seg_parts.append(str(escape(body_text[pos])))
+            # 본문 글자 1개. paragraph 경계 (\n) 는 ``</p><p>`` 로 치환 — 사용자
+            # 에디터 줄바꿈 == PDF 줄바꿈 정합 (2026-05-09).
+            if pos in paragraph_breaks:
+                seg_parts.append('</p><p class="annot-passage">')
+            else:
+                seg_parts.append(str(escape(body_text[pos])))
 
             # segment 끝 직전에 css wrap 닫음 (다음 iteration 의 close 이벤트 *전*)
             if pos == seg_end - 1 and seg.css_token != _CSS_BODY:

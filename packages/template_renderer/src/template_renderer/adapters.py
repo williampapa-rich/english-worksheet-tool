@@ -129,7 +129,15 @@ def worksheet_to_template_context(
                 content_html = render_annotations_to_html(passage, anns)
             else:
                 # annotation 없는 경우 단순 wrap (XSS escape).
-                content_html = Markup(f"<p>{escape(passage.body_text)}</p>")
+                # paragraphs 가 있으면 각 단락을 별 <p> 로 분할 — 사용자 에디터
+                # 줄바꿈 == PDF 줄바꿈 정합 (2026-05-09).
+                if passage.paragraphs:
+                    paragraph_html = "".join(
+                        f"<p>{escape(p)}</p>" for p in passage.paragraphs
+                    )
+                    content_html = Markup(paragraph_html)
+                else:
+                    content_html = Markup(f"<p>{escape(passage.body_text)}</p>")
 
         question: dict[str, Any] = {
             "number": idx,

@@ -1,3 +1,7 @@
+/* PDF 와 동일한 본문 wrap 위치 보장 — 단일 source-of-truth (2026-05-08).
+ * vite alias `@templates/` → packages/template_renderer/templates/. */
+@import url("@templates/_passage_body.css");
+
 /*
  * EditorPoc.css — 7종 annotation mark 시각 스타일
  *
@@ -397,6 +401,32 @@ u[data-annotation-kind="underline"]:hover {
    * 추가 확보. 두 값 차이는 의도된 분리. */
   line-height: 2.78;
   padding: 0.5em 0;
+}
+
+/* ProseMirror 본문 자체에 .passage-body 효과 적용 (마크업은 EditorPoc.tsx 에서
+ * EditorContent 부모 div 에 class 추가). 추가로 ProseMirror / Tiptap / Tailwind
+ * 의 default 폭/패딩을 reset — partial 의 width/padding 이 깨지지 않도록.
+ *
+ * specificity: ``#editor-print-area .ProseMirror`` (1 id + 1 class) 가
+ * ``.passage-body`` (1 class) 와 ``.ProseMirror`` (1 class) 보다 높아 안전.
+ *
+ * 2026-05-08 — 본문 wrap 정합. PDF (.q-content) 와 동일한 .passage-body 스타일 →
+ * 자동 wrap 위치 정합. partial 은 파일 상단 @import 로 로드.
+ */
+#editor-print-area .ProseMirror {
+  /* Tiptap editorProps 의 ``p-4 prose prose-sm max-w-none`` reset.
+   * partial 의 width / font / padding / box-sizing 가 우선 적용되도록. */
+  padding: 0 !important;
+  margin: 0 auto !important;
+  max-width: none;
+}
+
+/* line-height 는 에디터만 2.78 (사용자 확정). partial 은 line-height 미정의 →
+ * .passage-body 자체에 line-height 가 없어 부모 (ProseMirror) 가 결정.
+ * partial 의 .passage-body p { line-height: inherit } 가 부모 line-height 를
+ * 따른다. */
+#editor-print-area .ProseMirror.passage-body {
+  line-height: 2.78;
 }
 
 /* ---------------------------------------------------------------------------

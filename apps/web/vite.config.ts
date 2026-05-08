@@ -7,9 +7,13 @@ import { defineConfig } from "vite";
 export default defineConfig({
   plugins: [react()],
   // @/ alias → src/ 디렉토리 단축 경로
+  // @templates/ alias → packages/template_renderer/templates/ — PDF 와 에디터가
+  // 공유하는 partial CSS (예: _passage_body.css) import 용. 본 alias 는 monorepo
+  // 안 단일 source-of-truth 를 보장 (양쪽 CSS 가 자동으로 동기화됨).
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "@templates": path.resolve(__dirname, "../../packages/template_renderer/templates"),
     },
   },
   server: {
