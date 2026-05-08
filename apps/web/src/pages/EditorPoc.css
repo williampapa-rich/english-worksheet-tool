@@ -100,8 +100,13 @@
  * 인라인 style 로 설정한다.
  * --------------------------------------------------------------------------- */
 [data-annotation-kind="top_label"] {
-  /* mark span 에는 시각 스타일 없음 — widget 이 담당 */
-  --current-anno-color: var(--anno-color-0);
+  /* mark 글자 폭 전체에 상단 borderline (2026-05-08 사용자 확정).
+   * mark span 자체에 border-top — ProseMirror 가 mark 를 segment 분할해도
+   * 인접 inline span border 가 시각적으로 자연 이어진다.
+   * 라벨 텍스트는 topLabel.ts widget 이 absolute 로 borderline 위에 배치.
+   * 색상: 글로벌 `[data-color-index="N"]` 매핑이 --current-anno-color 를 설정 —
+   * 여기서 디폴트로 덮어쓰면 회색 고정되므로 fallback 만 var() 인자로. */
+  border-top: 2px solid var(--current-anno-color, var(--anno-color-0));
 }
 
 /* top_label Decoration.widget DOM 요소 */
@@ -128,8 +133,9 @@
  * 인라인 style 로 설정한다.
  * --------------------------------------------------------------------------- */
 [data-annotation-kind="bottom_label"] {
-  /* mark span 에는 시각 스타일 없음 — widget 이 담당 */
-  --current-anno-color: var(--anno-color-0);
+  /* mark 글자 폭 전체에 하단 borderline (2026-05-08 사용자 확정).
+   * top_label 과 대칭 — 색상 처리도 동일 (디폴트 덮어쓰기 금지, fallback 만). */
+  border-bottom: 2px solid var(--current-anno-color, var(--anno-color-0));
 }
 
 /* bottom_label Decoration.widget DOM 요소 */

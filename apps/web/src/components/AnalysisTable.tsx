@@ -384,17 +384,19 @@ function AnnotationChipView({ chip, onRemove, onChipClick }: AnnotationChipViewP
   // arrow 는 수정 불가 — 칩 클릭 핸들러 없음
   const isEditable = chip.kind !== "arrow";
 
-  // NG 4: underline 칩은 배경색 gray-200 고정 (밑줄 mark 자체는 색상 없음 — black 고정)
+  // NG 4: underline 칩은 배경색 gray-200 고정 (밑줄 mark 자체는 색상 없음 — black 고정).
+  // inline_note 도 동일 정책 (사용자 요청 2026-05-08) — note mark 자체는 색상 없이
+  // 검정 small-text 렌더이므로 칩도 회색이 자연스러움.
   // DB colorIndex 저장은 그대로 유지, UI 표시만 회색 강제.
   const highlightBg = resolveHighlightBg();
-  const chipStyle =
-    chip.kind === "underline"
-      ? { backgroundColor: "#e5e7eb", borderColor: "#d1d5db" }
-      : chip.kind === "highlight" && highlightBg
-        ? { backgroundColor: highlightBg, borderColor: highlightBg }
-        : colorVar
-          ? { backgroundColor: colorVar, borderColor: colorVar }
-          : undefined;
+  const isGrayKind = chip.kind === "underline" || chip.kind === "inline_note";
+  const chipStyle = isGrayKind
+    ? { backgroundColor: "#e5e7eb", borderColor: "#d1d5db" }
+    : chip.kind === "highlight" && highlightBg
+      ? { backgroundColor: highlightBg, borderColor: highlightBg }
+      : colorVar
+        ? { backgroundColor: colorVar, borderColor: colorVar }
+        : undefined;
 
   return (
     <span
