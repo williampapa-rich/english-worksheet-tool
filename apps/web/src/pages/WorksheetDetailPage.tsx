@@ -1,6 +1,7 @@
 import type { ReactElement } from "react";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { PassageEditPanel } from "../components/PassageEditPanel";
 import { type Worksheet, downloadWorksheetPdf, getWorksheet } from "../lib/api";
 
 const API_BASE_URL =
@@ -15,16 +16,23 @@ const API_BASE_URL =
  *   - Preview iframe (GET /worksheets/{id}/preview?style=playful)
  *   - PDF 다운로드 버튼 (POST /worksheets/{id}/export.pdf)
  *
- * 후속 PR (E2-3b/c):
- *   - Translation / Vocabulary 인라인 편집 (E1-a/b/c/d 라우트 호출).
+ * E2-3b 추가:
+ *   - per-item 펼침 → PassageEditPanel (Translation/Vocabulary 인라인 편집).
+ *
+ * 후속 PR (E2-3c):
  *   - 메타 편집 + items 추가/삭제/순서 변경.
- *   - 구문분석 에디터 진입점 (per-item).
+ *
+ * E2-3b 합병 — 영어 본문 편집 (Stage E3 부분) 도 PassageEditPanel 에서 처리.
  */
 export function WorksheetDetailPage(): ReactElement {
   const { id } = useParams<{ id: string }>();
   const [worksheet, setWorksheet] = useState<Worksheet | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
+  /** 펼친 item id 집합 — per-item Passage 편집 panel 노출 제어. */
+  const [expandedItemIds, setExpandedItemIds] = useState<Set<string>>(new Set());
+  /** 미리보기 iframe cache-buster — Translation/Vocabulary/Body 변경 시 +1 → src 갱신. */
+  const [previewVersion, setPreviewVersion] = useState(0);
 
   useEffect(() => {
     if (!id) {
@@ -105,26 +113,51 @@ export function WorksheetDetailPage(): ReactElement {
                 {worksheet.items.length === 0 ? (
                   <p className="text-xs text-gray-400">지문이 없습니다.</p>
                 ) : (
-                  <ul className="space-y-1.5 text-xs text-gray-600">
-                    {worksheet.items.map((item) => (
-                      <li key={item.id} className="flex items-center gap-2 font-mono truncate">
-                        <span className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-500">
-                          {item.order}
-                        </span>
-                        <Link
-                          to={`/editor/${item.passage_id}`}
-                          className="text-blue-600 hover:underline truncate"
-                          title="구문분석 에디터로 이동"
-                        >
-                          {item.passage_id.slice(0, 8)}…
-                        </Link>
-                        {item.include_translation && <span className="text-gray-400">·해석</span>}
-                        {item.include_vocabulary && <span className="text-gray-400">·어휘</span>}
-                        {item.include_syntax_annotations && (
-                          <span className="text-gray-400">·구문</span>
-                        )}
-                      </li>
-                    ))}
+                  <ul className="space-y-2">
+                    {worksheet.items.map((item) => {
+                      const isOpen = expandedItemIds.has(item.id);
+                      return (
+                        <li key={item.id} className="text-xs text-gray-600">
+                          <div className="flex items-center gap-2 font-mono truncate">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setExpandedItemIds((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(item.id)) next.delete(item.id);
+                                  else next.add(item.id);
+                                  return next;
+                                });
+                              }}
+                              className="text-gray-400 hover:text-gray-700 transition-colors w-4 text-left"
+                              aria-label={isOpen ? "접기" : "펼치기"}
+                            >
+                              {isOpen ? "▾" : "▸"}
+                            </button>
+                            <span className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-500">
+                              {item.order}
+                            </span>
+                            <span className="text-gray-700 truncate" title={item.passage_id}>
+                              {item.passage_id.slice(0, 8)}…
+                            </span>
+                            {item.include_translation && (
+                              <span className="text-gray-400">·해석</span>
+                            )}
+                            {item.include_vocabulary && (
+                              <span className="text-gray-400">·어휘</span>
+                            )}
+                            {item.include_syntax_annotations && (
+                              <span className="text-gray-400">·구문</span>
+                            )}
+                          </div>
+                          <PassageEditPanel
+                            passageId={item.passage_id}
+                            expanded={isOpen}
+                            onContentChange={() => setPreviewVersion((v) => v + 1)}
+                          />
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
               </div>
@@ -141,7 +174,7 @@ export function WorksheetDetailPage(): ReactElement {
               </div>
 
               <p className="text-xs text-gray-400 mt-4">
-                해석 / 어휘 / 메타 편집은 후속 PR (E2-3b/c) 에서 추가됩니다.
+                메타 편집 / 본문 편집은 후속 PR (E2-3c, E3) 에서 추가됩니다.
               </p>
             </section>
 
@@ -160,7 +193,9 @@ export function WorksheetDetailPage(): ReactElement {
               </div>
               <iframe
                 title={`${worksheet.title} 미리보기`}
-                src={`${API_BASE_URL}/worksheets/${worksheet.id}/preview?style=playful`}
+                /* previewVersion query 가 갱신되면 iframe 이 새로 fetch.
+                 * 단순 reload 대신 query 로 cache 우회 (브라우저 / 서버 양쪽 안전). */
+                src={`${API_BASE_URL}/worksheets/${worksheet.id}/preview?style=playful&v=${previewVersion}`}
                 className="w-full h-[800px] bg-gray-50"
               />
             </section>

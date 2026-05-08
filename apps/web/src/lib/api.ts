@@ -112,6 +112,51 @@ export interface Passage {
   source_material?: string | null;
 }
 
+/** Translation — Passage 1건의 한국어 해석 (1:1).
+ *
+ * shared/schemas/translation.py Translation 의 TypeScript 미러 (최소 필드).
+ */
+export interface Translation {
+  id: string;
+  tenant_id: string;
+  workspace_id: string;
+  passage_id: string;
+  language: "ko";
+  text: string;
+  /** "llm" | "user" — 사용자 편집 시 자동으로 "user" 갱신. */
+  created_by: "llm" | "user";
+}
+
+/** Vocabulary — Passage 종속 어휘 항목.
+ *
+ * shared/schemas/vocabulary.py Vocabulary 의 TypeScript 미러 (최소 필드).
+ */
+export interface Vocabulary {
+  id: string;
+  tenant_id: string;
+  workspace_id: string;
+  passage_id: string;
+  word: string;
+  headword_normalized: string;
+  pos?: string | null;
+  meaning_ko: string;
+  level_label?: string | null;
+  /** "llm" | "user" | "frequency_filter". user_edited 와 함께 ADR-0013 보존 정책 입력. */
+  selected_by: "llm" | "user" | "frequency_filter";
+  user_edited: boolean;
+}
+
+/** PassageWithRelations — GET /passages/{id} 전체 응답.
+ *
+ * B1 (PR #51) 이후 translation / vocabulary 도 함께 반환된다.
+ */
+export interface PassageWithRelations {
+  passage: Passage;
+  translation: Translation | null;
+  vocabulary: Vocabulary[];
+  // questions 는 본 sprint 범위 외 — 필요 시 별도 호출.
+}
+
 /** SyntaxAnnotation — GET /passages/{id}/annotations 응답의 annotation item */
 export interface SyntaxAnnotation extends SerializedAnnotation {
   id?: string | null;
@@ -148,14 +193,146 @@ async function checkOk(response: Response): Promise<void> {
 /**
  * getPassage — GET /passages/{id}
  *
- * backend 응답 형태: { passage: Passage, questions: [...], ... }
- * passage 필드만 추출해 반환한다.
+ * backend 응답 형태: { passage: Passage, questions: [...], translation, vocabulary }
+ * passage 필드만 추출해 반환한다 (호환성 유지).
+ *
+ * translation / vocabulary 도 같이 필요하면 ``getPassageWithRelations`` 사용.
  */
 export async function getPassage(id: string): Promise<Passage> {
   const response = await fetch(`${API_BASE_URL}/passages/${id}`);
   await checkOk(response);
   const body = (await response.json()) as { passage: Passage };
   return body.passage;
+}
+
+/**
+ * getPassageWithRelations — GET /passages/{id}
+ *
+ * passage + translation + vocabulary 전체 반환. E2-3b TranslationEditor /
+ * VocabularyTable 진입 시 사용.
+ */
+export async function getPassageWithRelations(id: string): Promise<PassageWithRelations> {
+  const response = await fetch(`${API_BASE_URL}/passages/${id}`);
+  await checkOk(response);
+  const body = (await response.json()) as PassageWithRelations;
+  return {
+    passage: body.passage,
+    translation: body.translation ?? null,
+    vocabulary: body.vocabulary ?? [],
+  };
+}
+
+/**
+ * patchPassageBody — PATCH /passages/{id}
+ *
+ * 본문 + paragraph 분할 편집 (ADR-0015 Stage E1-e).
+ *
+ * **주의**: backend 가 동일 트랜잭션에서 ``SyntaxAnnotation`` 전체 삭제 — body_text
+ * 의 character offset 이 깨지므로. caller 는 호출 전 사용자에게 confirm 필수.
+ *
+ * paragraphs 빈 배열 = body_text 단일 paragraph 의도.
+ */
+export async function patchPassageBody(
+  passageId: string,
+  body: { body_text: string; paragraphs?: string[] }
+): Promise<Passage> {
+  const response = await fetch(`${API_BASE_URL}/passages/${passageId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      body_text: body.body_text,
+      paragraphs: body.paragraphs ?? [],
+    }),
+  });
+  await checkOk(response);
+  return (await response.json()) as Passage;
+}
+
+/**
+ * patchTranslation — PATCH /passages/{id}/translation
+ *
+ * 사용자 인라인 편집. backend 가 ``created_by="user"`` 자동 갱신.
+ * Translation 이 존재하지 않으면 404 — 먼저 LLM 보강 (POST /translation) 필요.
+ */
+export async function patchTranslation(passageId: string, text: string): Promise<Translation> {
+  const response = await fetch(`${API_BASE_URL}/passages/${passageId}/translation`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+  await checkOk(response);
+  return (await response.json()) as Translation;
+}
+
+/**
+ * VocabularyEditInput — patchVocabulary body. 모든 필드 optional, None=변경 없음.
+ */
+export interface VocabularyEditInput {
+  word?: string;
+  pos?: string | null;
+  meaning_ko?: string;
+  level_label?: string | null;
+  headword_normalized?: string;
+}
+
+/**
+ * patchVocabulary — PATCH /passages/{passageId}/vocabulary/{vocabularyId}
+ *
+ * 행 단위 편집. backend 가 ``user_edited=true`` 자동 갱신.
+ */
+export async function patchVocabulary(
+  passageId: string,
+  vocabularyId: string,
+  patch: VocabularyEditInput
+): Promise<Vocabulary> {
+  const response = await fetch(`${API_BASE_URL}/passages/${passageId}/vocabulary/${vocabularyId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  await checkOk(response);
+  return (await response.json()) as Vocabulary;
+}
+
+/**
+ * VocabularyManualCreateInput — addVocabulary body. word / meaning_ko 필수.
+ */
+export interface VocabularyManualCreateInput {
+  word: string;
+  meaning_ko: string;
+  pos?: string | null;
+  level_label?: string | null;
+  headword_normalized?: string;
+}
+
+/**
+ * addVocabulary — POST /passages/{id}/vocabulary/manual
+ *
+ * 사용자 직접 어휘 행 추가. ``selected_by="user"`` 로 영속화.
+ */
+export async function addVocabulary(
+  passageId: string,
+  input: VocabularyManualCreateInput
+): Promise<Vocabulary> {
+  const response = await fetch(`${API_BASE_URL}/passages/${passageId}/vocabulary/manual`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  await checkOk(response);
+  return (await response.json()) as Vocabulary;
+}
+
+/**
+ * deleteVocabulary — DELETE /passages/{passageId}/vocabulary/{vocabularyId}
+ *
+ * 모든 항목 (LLM/USER) 삭제 허용 (ADR-0015 D3 결정 b).
+ */
+export async function deleteVocabulary(passageId: string, vocabularyId: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/passages/${passageId}/vocabulary/${vocabularyId}`, {
+    method: "DELETE",
+  });
+  await checkOk(response);
 }
 
 /**
