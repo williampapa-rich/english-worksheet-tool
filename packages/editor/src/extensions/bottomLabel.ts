@@ -25,7 +25,6 @@
 import { Mark, mergeAttributes } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
-import { colorVar } from "./colorUtils";
 
 export interface BottomLabelOptions {
   HTMLAttributes: Record<string, unknown>;
@@ -55,17 +54,25 @@ const bottomLabelPluginKey = new PluginKey("bottomLabelDecorations");
 
 /**
  * bottom_label Decoration.widget 용 DOM 요소 생성.
- * 라벨 텍스트 + 하단 보더라인을 포함하는 wrapper span 을 반환한다.
+ *
+ * 정렬 정책 (2026-05-08, 사용자 확정):
+ *  - category="sentence_role" (성분, S/V/O/...) → mark span 글자 폭 *중앙* 정렬.
+ *    widget 위치 = mid-point (from+to)/2, label `translateX(-50%)`.
+ *  - category="note" 등 그 외 → mark span 시작점 좌정렬 (top_label 과 동일).
+ *    widget 위치 = from, label transform 없음.
+ *
+ * 두 경우 모두 wrapper 는 zero-width inline anchor — label 만 absolute.
  */
-function makeBottomLabelWidget(text: string, colorIndex: number | null): HTMLElement {
+function makeBottomLabelWidget(
+  text: string,
+  colorIndex: number | null,
+  centered: boolean
+): HTMLElement {
+  void colorIndex;
   const wrapper = document.createElement("span");
   wrapper.setAttribute("data-bottom-label-widget", "true");
   wrapper.style.position = "relative";
-  wrapper.style.display = "inline-block";
-  wrapper.style.lineHeight = "1";
-  wrapper.style.paddingBottom = "1px";
-  wrapper.style.marginBottom = "calc(0.84em - 0.9px)";
-  wrapper.style.borderBottom = `2px solid ${colorVar(colorIndex)}`;
+  wrapper.style.display = "inline";
   wrapper.style.userSelect = "none";
   wrapper.style.pointerEvents = "none";
 
@@ -73,8 +80,10 @@ function makeBottomLabelWidget(text: string, colorIndex: number | null): HTMLEle
   label.setAttribute("data-bottom-label-text-widget", "true");
   label.style.position = "absolute";
   label.style.bottom = "calc(-1.1em - 3px)";
-  label.style.left = "50%";
-  label.style.transform = "translateX(-50%)";
+  label.style.left = "0";
+  if (centered) {
+    label.style.transform = "translateX(-50%)";
+  }
   label.style.fontSize = "0.65em";
   label.style.fontWeight = "600";
   label.style.color = "#1e3a5f";
@@ -186,10 +195,16 @@ export const BottomLabelMark = Mark.create<BottomLabelOptions>({
           decorations(state) {
             const { doc } = state;
 
-            // annotationId → { from, to, text, colorIndex }
+            // annotationId → { from, to, text, colorIndex, category }
             const labelMap = new Map<
               string,
-              { from: number; to: number; text: string; colorIndex: number | null }
+              {
+                from: number;
+                to: number;
+                text: string;
+                colorIndex: number | null;
+                category: string | null;
+              }
             >();
 
             // annotationId 없는 bottomLabel (레거시 / 누락) 별도 처리
@@ -198,6 +213,7 @@ export const BottomLabelMark = Mark.create<BottomLabelOptions>({
               to: number;
               text: string;
               colorIndex: number | null;
+              category: string | null;
             }> = [];
 
             doc.descendants((node, pos) => {
@@ -206,24 +222,38 @@ export const BottomLabelMark = Mark.create<BottomLabelOptions>({
                 if (mark.type.name !== "bottomLabel") continue;
                 const text = (mark.attrs.text as string | null) ?? "";
                 const colorIdx = (mark.attrs.colorIndex as number | null) ?? null;
+                const category = (mark.attrs.category as string | null | undefined) ?? null;
                 const annId = (mark.attrs.annotationId as string | null | undefined) ?? null;
                 const nodeFrom = pos;
                 const nodeTo = pos + node.nodeSize;
 
                 if (!annId) {
-                  anonLabels.push({ from: nodeFrom, to: nodeTo, text, colorIndex: colorIdx });
+                  anonLabels.push({
+                    from: nodeFrom,
+                    to: nodeTo,
+                    text,
+                    colorIndex: colorIdx,
+                    category,
+                  });
                   continue;
                 }
 
                 const existing = labelMap.get(annId);
                 if (!existing) {
-                  labelMap.set(annId, { from: nodeFrom, to: nodeTo, text, colorIndex: colorIdx });
+                  labelMap.set(annId, {
+                    from: nodeFrom,
+                    to: nodeTo,
+                    text,
+                    colorIndex: colorIdx,
+                    category,
+                  });
                 } else {
                   labelMap.set(annId, {
                     from: Math.min(existing.from, nodeFrom),
                     to: Math.max(existing.to, nodeTo),
                     text,
                     colorIndex: colorIdx,
+                    category,
                   });
                 }
               }
@@ -236,20 +266,24 @@ export const BottomLabelMark = Mark.create<BottomLabelOptions>({
 
             function addLabelDecoration(
               entry: {
+                from: number;
                 to: number;
                 text: string;
                 colorIndex: number | null;
+                category: string | null;
               },
               annotationId: string | null
             ) {
               if (!entry.text) return;
-              const el = makeBottomLabelWidget(entry.text, entry.colorIndex);
-              // annotationId 포함으로 동일 위치 겹침 시 key 충돌 방지 (#1 fix)
+              // sentence_role (성분) 만 mark 글자 폭 중앙 정렬, 그 외 (note) 는 좌정렬.
+              const centered = entry.category === "sentence_role";
+              const el = makeBottomLabelWidget(entry.text, entry.colorIndex, centered);
+              const pos = centered ? Math.floor((entry.from + entry.to) / 2) : entry.from;
               const idSegment = annotationId ?? `anon-${anonIndex++}`;
               decorations.push(
-                Decoration.widget(entry.to, el, {
+                Decoration.widget(pos, el, {
                   side: 1,
-                  key: `bottom-label-${idSegment}-${entry.to}`,
+                  key: `bottom-label-${idSegment}-${pos}`,
                 })
               );
             }

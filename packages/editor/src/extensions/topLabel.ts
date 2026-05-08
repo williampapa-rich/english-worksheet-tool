@@ -26,7 +26,6 @@
 import { Mark, mergeAttributes } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
-import { colorVar } from "./colorUtils";
 
 export interface TopLabelOptions {
   HTMLAttributes: Record<string, unknown>;
@@ -56,17 +55,18 @@ const topLabelPluginKey = new PluginKey("topLabelDecorations");
 
 /**
  * top_label Decoration.widget 용 DOM 요소 생성.
- * 라벨 텍스트 + 상단 보더라인을 포함하는 wrapper span 을 반환한다.
+ *
+ * widget 은 mark span 의 시작 지점 (from) 에 박힌다 (Plugin 쪽 참조).
+ * wrapper 는 zero-width inline anchor — label 만 absolute 로 mark 시작 좌측에
+ * 좌정렬. top_label 카테고리 (phrase / clause / note) 모두 좌정렬 정책
+ * (2026-05-08, 사용자 확정).
  */
 function makeTopLabelWidget(text: string, colorIndex: number | null): HTMLElement {
+  void colorIndex;
   const wrapper = document.createElement("span");
   wrapper.setAttribute("data-top-label-widget", "true");
   wrapper.style.position = "relative";
-  wrapper.style.display = "inline-block";
-  wrapper.style.lineHeight = "1";
-  wrapper.style.paddingTop = "1px";
-  wrapper.style.marginTop = "calc(0.84em - 0.9px)";
-  wrapper.style.borderTop = `2px solid ${colorVar(colorIndex)}`;
+  wrapper.style.display = "inline";
   wrapper.style.userSelect = "none";
   wrapper.style.pointerEvents = "none";
 
