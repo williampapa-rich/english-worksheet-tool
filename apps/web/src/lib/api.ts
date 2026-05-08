@@ -659,6 +659,92 @@ export async function createWorksheet(input: WorksheetCreateInput): Promise<Work
   return (await response.json()) as Worksheet;
 }
 
+// ---------------------------------------------------------------------------
+// Worksheet Items API (Stage E2-3e — items 추가 / 수정 / 삭제 / 순서 변경)
+// ---------------------------------------------------------------------------
+
+/**
+ * WorksheetItemCreateInput — POST /worksheets/{id}/items 입력.
+ *
+ * passage_id 와 order 는 필수 (백엔드 ge=0).
+ * include_* 플래그는 default false.
+ */
+export interface WorksheetItemCreateInput {
+  passage_id: string;
+  order: number;
+  label?: string | null;
+  include_translation?: boolean;
+  include_vocabulary?: boolean;
+  include_syntax_annotations?: boolean;
+  include_questions?: boolean;
+  include_variants?: boolean;
+}
+
+/**
+ * WorksheetItemPatchInput — PATCH /worksheets/{id}/items/{item_id} 입력.
+ *
+ * 모든 필드 optional. 보낸 키만 변경된다 (백엔드 exclude_unset).
+ * passage_id 는 변경 불가 (extra="forbid" 422). 변경하려면 DELETE + POST.
+ */
+export interface WorksheetItemPatchInput {
+  order?: number;
+  label?: string | null;
+  include_translation?: boolean;
+  include_vocabulary?: boolean;
+  include_syntax_annotations?: boolean;
+  include_questions?: boolean;
+  include_variants?: boolean;
+}
+
+/**
+ * addWorksheetItem — POST /worksheets/{worksheetId}/items
+ *
+ * 기존 Worksheet 에 item 1개 추가. 같은 passage_id 가 이미 존재하면 422.
+ */
+export async function addWorksheetItem(
+  worksheetId: string,
+  input: WorksheetItemCreateInput
+): Promise<WorksheetItem> {
+  const response = await fetch(`${API_BASE_URL}/worksheets/${worksheetId}/items`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  await checkOk(response);
+  return (await response.json()) as WorksheetItem;
+}
+
+/**
+ * patchWorksheetItem — PATCH /worksheets/{worksheetId}/items/{itemId}
+ *
+ * item 부분 수정 (order / label / include_* 플래그). 빈 patch ({}) → 422.
+ */
+export async function patchWorksheetItem(
+  worksheetId: string,
+  itemId: string,
+  patch: WorksheetItemPatchInput
+): Promise<WorksheetItem> {
+  const response = await fetch(`${API_BASE_URL}/worksheets/${worksheetId}/items/${itemId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  await checkOk(response);
+  return (await response.json()) as WorksheetItem;
+}
+
+/**
+ * deleteWorksheetItem — DELETE /worksheets/{worksheetId}/items/{itemId}
+ *
+ * item 1개 삭제. 204 응답.
+ */
+export async function deleteWorksheetItem(worksheetId: string, itemId: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/worksheets/${worksheetId}/items/${itemId}`, {
+    method: "DELETE",
+  });
+  await checkOk(response);
+}
+
 export async function downloadPassageHwpx(passageId: string): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/passages/${passageId}/hwpx`);
   await checkOk(response);

@@ -11,9 +11,10 @@
  *
  * 해석·어휘·본문 모드는 PassageEditPanel 그대로 재사용.
  */
-import { type ReactElement, useEffect, useState } from "react";
+import { type ReactElement, useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { PassageEditPanel } from "../components/PassageEditPanel";
+import { WorksheetItemList } from "../components/WorksheetItemList";
 import { type Worksheet, getWorksheet } from "../lib/api";
 
 const API_BASE_URL =
@@ -35,31 +36,32 @@ export function WorksheetEditPage(): ReactElement {
   /** 미리보기 cache-buster — content 편집 시 +1. */
   const [previewVersion, setPreviewVersion] = useState(0);
 
-  // id 변경 시 worksheet fetch + 첫 item 자동 선택. activeItemId 는 함수 안에서
-  // null check 만 하므로 의존성 X — id 가 바뀌어 새 worksheet 로드 시에만 재실행.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: 첫 fetch 1회만 자동 선택.
+  /**
+   * refetchWorksheet — items 추가/삭제/순서 변경 후 호출. 현재 activeItemId 가
+   * 새 응답에도 살아있으면 유지, 사라졌으면 (삭제됨) order 정렬 후 첫 item 으로 fallback.
+   */
+  const refetchWorksheet = useCallback(async (): Promise<void> => {
+    if (!id) return;
+    try {
+      const w = await getWorksheet(id);
+      setWorksheet(w);
+      setActiveItemId((prev) => {
+        if (prev != null && w.items.some((it) => it.id === prev)) return prev;
+        const sorted = [...w.items].sort((a, b) => a.order - b.order);
+        return sorted[0]?.id ?? null;
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }, [id]);
+
   useEffect(() => {
     if (!id) {
       setError("id 파라미터가 없습니다.");
       return;
     }
-    let cancelled = false;
-    getWorksheet(id)
-      .then((w) => {
-        if (cancelled) return;
-        setWorksheet(w);
-        const first = w.items[0];
-        if (first && activeItemId == null) {
-          setActiveItemId(first.id);
-        }
-      })
-      .catch((e: Error) => {
-        if (!cancelled) setError(e.message);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [id]);
+    refetchWorksheet();
+  }, [id, refetchWorksheet]);
 
   if (error) {
     return (
@@ -101,28 +103,13 @@ export function WorksheetEditPage(): ReactElement {
         </div>
       </div>
 
-      {/* 아이템 탭 */}
-      {worksheet.items.length > 1 && (
-        <div className="bg-white border-b border-gray-200 px-4 flex gap-1 shrink-0 overflow-x-auto">
-          {worksheet.items.map((item) => {
-            const active = item.id === activeItemId;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setActiveItemId(item.id)}
-                className={`text-xs px-3 py-2 border-b-2 transition-colors whitespace-nowrap font-mono ${
-                  active
-                    ? "border-blue-500 text-blue-600"
-                    : "border-transparent text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                {item.order + 1}. {item.passage_id.slice(0, 8)}…
-              </button>
-            );
-          })}
-        </div>
-      )}
+      {/* 아이템 탭 + 추가/삭제/순서 변경 (E2-3e) */}
+      <WorksheetItemList
+        worksheet={worksheet}
+        activeItemId={activeItemId}
+        onSelect={setActiveItemId}
+        onChanged={refetchWorksheet}
+      />
 
       {/* split-pane */}
       <div className="flex-1 flex overflow-hidden">
