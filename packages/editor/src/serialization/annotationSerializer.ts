@@ -116,6 +116,21 @@ function collectMarksFromDoc(doc: JSONContent): CollectedMark[] {
   let charOffset = 0;
   let paragraphIndex = 0;
 
+  /**
+   * 한 paragraph 의 마지막 *순수 텍스트* 글자 수에서 trailing whitespace 길이 — backend
+   * ``paragraphs[i]`` 와 char offset 정합을 맞추기 위해 누적에서 제외할 글자 수.
+   *
+   * 2026-05-08 사용자 보고 fix:
+   *   ProseMirror doc 의 paragraph 노드 안 마지막 text 노드가 trailing space 를 포함하면
+   *   collectMarks 가 그 space 까지 char offset 에 누산 → 다음 paragraph 진입 시 \n 까지
+   *   더해 backend 저장 ``paragraphs`` (trim 된 길이) 기준 +1 어긋남. 결과: annotation
+   *   span 이 한 글자씩 오른쪽으로 시프트되어 PDF 에 마지막 글자가 빠진 것처럼 보임.
+   *
+   *   대응: 각 paragraph 의 마지막 text 노드의 trailing whitespace 길이 만큼 charOffset
+   *   에서 빼서 backend paragraphs 와 일치시킨다. mark 가 trailing whitespace 위에 걸려
+   *   있으면 mark range 도 trim — trimSelection 이 이미 적용 단계에서 trailing 을 잘라
+   *   주므로 실제 mark 범위에는 영향 없음 (방어).
+   */
   function traverse(node: JSONContent): void {
     if (node.type === "paragraph") {
       // 두 번째 단락 이후: 단락 경계 \n 1글자 누산
@@ -123,8 +138,40 @@ function collectMarksFromDoc(doc: JSONContent): CollectedMark[] {
         charOffset += 1;
       }
       paragraphIndex += 1;
-      if (node.content) {
-        for (const child of node.content) {
+
+      if (!node.content) return;
+
+      // paragraph 의 마지막 text 노드 인덱스 — trailing whitespace 처리용.
+      let lastTextIdx = -1;
+      for (let i = node.content.length - 1; i >= 0; i--) {
+        const c = node.content[i];
+        if (c?.type === "text" && (c.text ?? "").length > 0) {
+          lastTextIdx = i;
+          break;
+        }
+      }
+
+      for (let i = 0; i < node.content.length; i++) {
+        const child = node.content[i];
+        if (!child) continue;
+        if (i === lastTextIdx && child.type === "text") {
+          // 마지막 text 노드: trailing whitespace 제거한 effective length 로 누산.
+          const text = child.text ?? "";
+          const trimmed = text.replace(/\s+$/, "");
+          const trimmedLen = trimmed.length;
+          if (child.marks && child.marks.length > 0) {
+            for (const mark of child.marks) {
+              if (!mark.type) continue;
+              collected.push({
+                markName: mark.type,
+                attrs: (mark.attrs as Record<string, unknown>) ?? {},
+                charStart: charOffset,
+                charEnd: charOffset + trimmedLen,
+              });
+            }
+          }
+          charOffset += trimmedLen;
+        } else {
           traverse(child);
         }
       }
