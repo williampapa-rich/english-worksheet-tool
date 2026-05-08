@@ -40,6 +40,12 @@ _env = jinja2.Environment(
 # ADR-0014 D2 — annotation CSS 모듈 로드 시점 캐시 (재읽기 비용 회피).
 _ANNOTATION_CSS = (_TEMPLATES_DIR / "_annotation.css").read_text(encoding="utf-8")
 
+# 2026-05-08 사용자 보고 fix — 본문 wrap 정합. PDF (.q-content) 와 에디터
+# (#editor-print-area .ProseMirror) 가 동일한 본문 폭/폰트/letter-spacing 등
+# CSS 를 사용해 자동 wrap 위치를 정확히 일치시킨다. 본 partial 은 PDF 에 inline
+# 주입하고, 에디터는 별 경로로 동일 내용 import (단일 source-of-truth).
+_PASSAGE_BODY_CSS = (_TEMPLATES_DIR / "_passage_body.css").read_text(encoding="utf-8")
+
 
 def render_worksheet_html(context: dict, style: str = "playful") -> str:
     """Jinja2 로 templates/{style}.html 렌더 → HTML 문자열.
@@ -66,6 +72,8 @@ def render_worksheet_html(context: dict, style: str = "playful") -> str:
     # (테스트 / 커스텀 렌더 시 override 가능).
     if "annotation_css" not in context:
         context = {**context, "annotation_css": _ANNOTATION_CSS}
+    if "passage_body_css" not in context:
+        context = {**context, "passage_body_css": _PASSAGE_BODY_CSS}
     return template.render(**context)
 
 

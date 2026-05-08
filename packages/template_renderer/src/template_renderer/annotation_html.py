@@ -230,8 +230,8 @@ def render_annotations_to_html(
 ) -> Markup:
     """SyntaxAnnotation 을 적용한 HTML <p> 문자열 반환.
 
-    출력 = 단일 paragraph (Passage.body_text). Phase 2 후반에 paragraph 분할이
-    필요하면 별 함수 (본 ADR 범위 밖).
+    paragraphs 가 여러 개면 각 paragraph 가 별 ``<p class="annot-passage">`` 로
+    그려진다 — 사용자 에디터 줄바꿈 (Enter) 이 PDF 줄바꿈에 그대로 반영됨.
 
     ADR-0014 D2 매핑 + D5 중첩 정책 + D6 XSS escape.
 
@@ -243,8 +243,8 @@ def render_annotations_to_html(
             호출자 책임 (라우트 레이어). arrow kind 는 명시적 skip + 로그 (D4).
 
     Returns:
-        ``<p>...</p>`` 으로 wrap 된 escape-safe HTML. ``markupsafe.Markup`` 타입 —
-        Jinja2 ``| safe`` 로 우회 escape 시 안전.
+        하나 이상의 ``<p class="annot-passage">...</p>`` 으로 wrap 된 escape-safe
+        HTML. ``markupsafe.Markup`` 타입 — Jinja2 ``| safe`` 로 우회 escape 시 안전.
 
     Note (2026-05-08 사용자 보고 fix):
         ``passage.body_text`` 와 ``paragraphs`` 가 어긋날 수 있다 — extractor 가
@@ -253,12 +253,20 @@ def render_annotations_to_html(
         을 char offset 기준으로 가정하므로, 본 렌더러도 동일 기준을 사용해야 annotation
         span 이 정확한 글자 위치에 닫힌다. ``paragraphs`` 가 빈 list 면 body_text 로
         fallback (단일 단락 가정).
+
+    Note (2026-05-09 사용자 보고 fix):
+        ``paragraphs`` 가 여러 개일 때 단일 ``<p>`` 안에 합쳐 그려지면 PDF 자동
+        wrap 위치가 좌측 에디터 (paragraph 분리됨) 와 어긋남. ``\n`` 위치마다
+        ``</p><p class="annot-passage">`` 로 치환해 paragraph 구조 유지.
     """
     if passage.paragraphs:
         body_text = "\n".join(passage.paragraphs)
     else:
         body_text = passage.body_text
     n = len(body_text)
+
+    # paragraph 경계 (body_text 안의 ``\n`` 위치) — char 출력 시 ``</p><p>`` 로 치환.
+    paragraph_breaks: set[int] = {i for i, ch in enumerate(body_text) if ch == "\n"}
 
     # arrow 는 명시적 skip + 1회 로그 (D4)
     arrow_count = sum(1 for a in annotations if a.kind == AnnotationKind.ARROW)
@@ -373,8 +381,12 @@ def render_annotations_to_html(
             if pos == seg_start and seg.css_token != _CSS_BODY:
                 seg_parts.append(f'<span class="{seg.css_token}">')
 
-            # 본문 글자 1개
-            seg_parts.append(str(escape(body_text[pos])))
+            # 본문 글자 1개. paragraph 경계 (\n) 는 ``</p><p>`` 로 치환 — 사용자
+            # 에디터 줄바꿈 == PDF 줄바꿈 정합 (2026-05-09).
+            if pos in paragraph_breaks:
+                seg_parts.append('</p><p class="annot-passage">')
+            else:
+                seg_parts.append(str(escape(body_text[pos])))
 
             # segment 끝 직전에 css wrap 닫음 (다음 iteration 의 close 이벤트 *전*)
             if pos == seg_end - 1 and seg.css_token != _CSS_BODY:
