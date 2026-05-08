@@ -15,6 +15,7 @@ import { type ReactElement, useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { PassageEditPanel } from "../components/PassageEditPanel";
 import { WorksheetItemList } from "../components/WorksheetItemList";
+import { WorksheetMetaForm } from "../components/WorksheetMetaForm";
 import { type Worksheet, getWorksheet } from "../lib/api";
 
 const API_BASE_URL =
@@ -35,6 +36,8 @@ export function WorksheetEditPage(): ReactElement {
   const [mode, setMode] = useState<EditMode>("content");
   /** 미리보기 cache-buster — content 편집 시 +1. */
   const [previewVersion, setPreviewVersion] = useState(0);
+  /** 메타 편집 모달 (E2-3d). */
+  const [showMetaModal, setShowMetaModal] = useState(false);
 
   /**
    * refetchWorksheet — items 추가/삭제/순서 변경 후 호출. 현재 activeItemId 가
@@ -92,6 +95,14 @@ export function WorksheetEditPage(): ReactElement {
         </Link>
         <div className="text-sm font-medium text-gray-900 truncate">{worksheet.title}</div>
         <div className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowMetaModal(true)}
+            className="text-xs text-gray-600 hover:text-blue-600 hover:bg-blue-50 px-2 py-1 rounded transition-colors"
+            title="제목/유형/템플릿/브랜딩 등 메타 편집"
+          >
+            메타 편집
+          </button>
           <a
             href={`${API_BASE_URL}/worksheets/${worksheet.id}/preview?style=playful`}
             target="_blank"
@@ -102,6 +113,21 @@ export function WorksheetEditPage(): ReactElement {
           </a>
         </div>
       </div>
+
+      {/* 메타 편집 모달 (E2-3d) */}
+      {showMetaModal && (
+        <WorksheetMetaForm
+          worksheet={worksheet}
+          onClose={() => setShowMetaModal(false)}
+          onSaved={(updated) => {
+            setWorksheet(updated);
+            setShowMetaModal(false);
+            // 미리보기 reload — branding / template / orientation / instruction
+            // 변경이 PDF 에 반영되어야 한다.
+            setPreviewVersion((v) => v + 1);
+          }}
+        />
+      )}
 
       {/* 아이템 탭 + 추가/삭제/순서 변경 (E2-3e) */}
       <WorksheetItemList

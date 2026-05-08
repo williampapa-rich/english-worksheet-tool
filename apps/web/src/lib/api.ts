@@ -659,6 +659,54 @@ export async function createWorksheet(input: WorksheetCreateInput): Promise<Work
   return (await response.json()) as Worksheet;
 }
 
+/**
+ * WorksheetMetaPatchInput — PATCH /worksheets/{id} 입력 (Stage E2-3d).
+ *
+ * 모든 필드 optional (보낸 키만 변경). branding 은 통째 교체 (부분 patch 미지원).
+ * NOT NULL 필드 (title / kind / template_id / orientation) 에 ``null`` 명시 →
+ * 백엔드 422 (W-1 차단).
+ *
+ * "변경하지 않음" 을 표현하려면 키 자체를 *제외*. ``undefined`` 는 fetch body
+ * 직렬화 시 자동 제외됨.
+ */
+export interface WorksheetMetaPatchInput {
+  title?: string;
+  subtitle?: string | null;
+  kind?: "student" | "teacher" | "variant";
+  template_id?: string;
+  orientation?: "portrait" | "landscape";
+  instruction?: string | null;
+  branding?: {
+    academy_name?: string | null;
+    primary_color?: string | null;
+    secondary_color?: string | null;
+    logo_url?: string | null;
+  } | null;
+  school?: string | null;
+  grade?: string | null;
+  exam_date?: string | null;
+  time_limit?: string | null;
+}
+
+/**
+ * patchWorksheet — PATCH /worksheets/{id}
+ *
+ * Worksheet 메타 부분 수정. 빈 patch ({}) 는 백엔드 422.
+ * items 변경은 별 라우트 (POST/PATCH/DELETE /worksheets/{id}/items).
+ */
+export async function patchWorksheet(
+  worksheetId: string,
+  patch: WorksheetMetaPatchInput
+): Promise<Worksheet> {
+  const response = await fetch(`${API_BASE_URL}/worksheets/${worksheetId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  await checkOk(response);
+  return (await response.json()) as Worksheet;
+}
+
 // ---------------------------------------------------------------------------
 // Worksheet Items API (Stage E2-3e — items 추가 / 수정 / 삭제 / 순서 변경)
 // ---------------------------------------------------------------------------
