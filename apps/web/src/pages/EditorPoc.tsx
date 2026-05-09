@@ -30,6 +30,7 @@ import {
   getAnnotations,
   getPassage,
   getPreference,
+  patchPassageBody,
   replaceAnnotations,
   setPreference,
 } from "../lib/api";
@@ -101,6 +102,42 @@ const DEFAULT_SENTENCE_ROLE_PRESETS = ["S", "V", "O", "OC", "SC"];
 
 const PREFERENCE_KEY_SENTENCE_ROLE = "preset.sentence_role";
 
+/**
+ * extractParagraphsFromDoc — Tiptap doc JSON 의 paragraph 별 text 추출.
+ *
+ * 각 paragraph 의 text 노드들을 concat 후 trailing whitespace trim
+ * (annotationSerializer 의 char offset 정의와 일관). 빈 paragraph (Enter 두 번)
+ * 도 빈 문자열 1개로 보존 — 사용자가 의도적으로 빈 줄 만들면 backend paragraphs
+ * 에도 빈 문자열로 저장.
+ *
+ * 사용처 (2026-05-09): handleSave — paragraphs 변경 감지 시 patchPassageBody.
+ */
+function extractParagraphsFromDoc(doc: { content?: unknown[] }): string[] {
+  const result: string[] = [];
+
+  function collectParagraphText(para: { content?: unknown[] }): string {
+    let text = "";
+    if (!para.content) return "";
+    for (const child of para.content) {
+      const c = child as { type?: string; text?: string };
+      if (c.type === "text" && typeof c.text === "string") {
+        text += c.text;
+      }
+    }
+    return text.replace(/\s+$/, "");
+  }
+
+  if (doc.content) {
+    for (const node of doc.content) {
+      const n = node as { type?: string; content?: unknown[] };
+      if (n.type === "paragraph") {
+        result.push(collectParagraphText(n));
+      }
+    }
+  }
+  return result;
+}
+
 // ---------------------------------------------------------------------------
 // 컴포넌트
 // ---------------------------------------------------------------------------
@@ -135,6 +172,13 @@ export function EditorPoc() {
   const [toast, setToast] = useState<{ message: string; kind: "success" | "error" } | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  /**
+   * 마지막 로드/저장 시점의 paragraphs — handleSave 가 doc 의 현재 paragraphs 와
+   * 비교해 변경 시 ``patchPassageBody`` 호출 (2026-05-09 사용자 요청: 에디터 줄
+   * 바꿈 == PDF 줄바꿈).
+   */
+  const lastSavedParagraphsRef = useRef<string[] | null>(null);
+
   // 라벨 모달 상태 (성분/구/절 진입 버튼)
   const [modalState, setModalState] = useState<{
     open: boolean;
@@ -156,7 +200,11 @@ export function EditorPoc() {
     content: INITIAL_CONTENT,
     editorProps: {
       attributes: {
-        class: "min-h-[160px] p-4 focus:outline-none prose prose-sm max-w-none",
+        // ``passage-body`` (2026-05-08): packages/template_renderer/templates/
+        // _passage_body.css 가 정의한 PDF 본문과 *동일한 폭/폰트/letter-spacing*
+        // 적용 → 자동 wrap 위치 정합.
+        // ``p-4`` / ``prose prose-sm`` 제거 (이전 fix 시도에서 wrap 어긋남 원인).
+        class: "min-h-[160px] focus:outline-none passage-body",
       },
     },
   });
@@ -194,8 +242,10 @@ export function EditorPoc() {
         let html: string;
         if (passage.paragraphs && passage.paragraphs.length > 0) {
           html = passage.paragraphs.map((p) => `<p>${p}</p>`).join("");
+          lastSavedParagraphsRef.current = passage.paragraphs.slice();
         } else {
           html = `<p>${passage.body_text}</p>`;
+          lastSavedParagraphsRef.current = [passage.body_text];
         }
 
         // setContent — false = emit update event 안 함 (round-trip emit 폭주 방지)
@@ -298,6 +348,24 @@ export function EditorPoc() {
     if (!editor || !passageId) return;
     try {
       const doc = editor.getJSON();
+
+      // 2026-05-09 — paragraphs 동기화. 사용자가 Enter 로 줄바꿈 추가/제거 시
+      // backend paragraphs 도 같이 갱신해야 PDF 가 동일 paragraph 분할로 그려짐.
+      // patchPassageBody 가 annotation 전체 삭제 후 body 갱신 → 직후 새 doc 의
+      // annotation 재저장. paragraphs 동일하면 patch 생략 (annotation 만 저장).
+      const currentParagraphs = extractParagraphsFromDoc(doc);
+      const lastSaved = lastSavedParagraphsRef.current ?? [];
+      const paragraphsChanged =
+        currentParagraphs.length !== lastSaved.length ||
+        currentParagraphs.some((p, i) => p !== lastSaved[i]);
+      if (paragraphsChanged) {
+        await patchPassageBody(passageId, {
+          body_text: currentParagraphs.join("\n"),
+          paragraphs: currentParagraphs,
+        });
+        lastSavedParagraphsRef.current = currentParagraphs.slice();
+      }
+
       const annotations = docToAnnotations(doc);
       await replaceAnnotations(passageId, annotations);
       showToast("저장 완료", "success");

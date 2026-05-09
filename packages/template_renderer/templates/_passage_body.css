@@ -1,0 +1,84 @@
+/* Pretendard webfont 를 양쪽 (PDF + 에디터) 모두 명시 로드 — fallback 폰트가
+ * 환경별로 다른 시스템 폰트에 매칭되어 글자 폭 차이 → wrap 위치 어긋남 회귀 발생.
+ * Pretendard 자체를 양쪽이 동일하게 사용하면 글자 폭이 정확히 일치한다 (Playwright
+ * 측정 2026-05-09: 'C' 글자 폭이 에디터 9.13px / PDF 11.09px 로 다름 확인).
+ *
+ * jsDelivr CDN 의 Pretendard variable 폰트 — 한 번 로드 후 캐시. CSP / offline
+ * 환경 고려는 Phase 4 (클라우드 배포) 시점 별 ADR. */
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css");
+
+/* 공용 passage body 스타일 — PDF (.q-content) 와 에디터 (#editor-print-area
+ * .ProseMirror) 가 *동일한 CSS* 를 사용해 자동 wrap 위치를 정확히 일치시킨다.
+ *
+ * 2026-05-08 사용자 보고 fix (재시도): 폭/폰트/letter-spacing 등 미세 차이가
+ * 누적되어 wrap 위치가 다름. 폭 계산을 mm 단위로 하면 96 DPI 환산 오차 가능 →
+ * 모두 px 로 통일.
+ *
+ * 폭 계산 (playful.html 기준):
+ *   A4 portrait = 210mm = 793.7px (96 DPI)
+ *   .body padding 좌우 18mm each = 68px each (`var(--page-side)` 18mm)
+ *   .q   padding 좌우 16px each = 32px
+ *   .q-content 자체 padding = 0
+ *   → 가용 폭 = 793.7 - 68*2 - 32 ≈ 625.7px → 626px (반올림)
+ *
+ * 적용처:
+ *   - playful.html .q-content 가 본 partial 의 .passage-body class 와 *동일한
+ *     스타일* 을 가지도록 매핑 (이미 .q-content { font-size: 16px;
+ *     line-height: 3.4; color: var(--ink) } 만 정의 — 본 partial 추가 적용).
+ *   - apps/web/src/pages/EditorPoc.css 가 본 partial 을 import 해 동일 적용.
+ *
+ * 변경 정책:
+ *   본 파일을 변경하면 PDF 와 에디터 *동시에* 영향받는다 (의도). PDF 만 또는
+ *   에디터 만 변경하지 말 것 — wrap 위치 어긋남 회귀.
+ */
+
+.passage-body {
+  /* 폭: PDF 본문 가용 폭 = 626px. width 강제 — max-width 만 쓰면 부모 컨테이너
+   * 폭이 626px 보다 좁을 때 작은 값으로 fallback. */
+  width: 626px;
+  max-width: 626px;
+
+  /* 폰트: playful.html `--sans` 정의와 *완전히 동일*. */
+  font-family: "Pretendard", "Apple SD Gothic Neo", -apple-system, sans-serif;
+  font-size: 16px;
+
+  /* 자동 wrap 정책 — 단어 단위 (default). 한국어/영어 혼용 자연 wrap. */
+  word-break: normal;
+  overflow-wrap: normal;
+  white-space: normal;
+
+  /* 명시 letter-spacing / word-spacing 없음 (default normal) — 글자 폭 미세 차이
+   * 회피. */
+  letter-spacing: normal;
+  word-spacing: normal;
+
+  /* padding 0 — 부모 (.q) 의 padding 으로 좌우 여백 확보. .q-content 가 더
+   * padding 을 추가하면 본문 폭 줄어 wrap 위치 어긋남. */
+  padding: 0;
+
+  /* box-sizing: content-box 강제 — Tailwind preflight 의 border-box 에서는
+   * width 가 padding/border 포함이라 본문 글자 영역이 줄어든다. content-box 면
+   * width 가 글자 영역 자체. */
+  box-sizing: content-box;
+}
+
+/* 본문 paragraph — line-height 만으로 줄간격 결정. margin: 0 으로 자동 wrap 줄
+ * 간격과 paragraph 분할 (Enter) 줄 간격 시각 정합. */
+.passage-body p,
+.passage-body .annot-passage {
+  /* margin / padding / text-indent 0 — 브라우저 / Tiptap / Tailwind 의 기본
+   * <p> 스타일이 폭 내부에 영향을 주지 않게 강제. */
+  margin: 0;
+  padding: 0;
+  text-indent: 0;
+  /* font-* 도 명시 — 부모 .passage-body 의 값이 확실히 상속되도록. ProseMirror
+   * 가 자식 <p> 에 다른 폰트 / 크기 적용하면 글자 폭 어긋나 wrap 다름. */
+  font-family: inherit;
+  font-size: inherit;
+  letter-spacing: inherit;
+  word-spacing: inherit;
+  /* line-height 는 .passage-body 가 상속 — playful 은 3.4 (의도된 PDF 라벨 여유).
+   * 에디터는 이 값을 override 해서 2.78 사용 (메모리: 픽셀 값 변경 금지 정책).
+   * inherit 로 명시해서 prose-sm / Tailwind preflight default 가 끼어들지 못함. */
+  line-height: inherit;
+}

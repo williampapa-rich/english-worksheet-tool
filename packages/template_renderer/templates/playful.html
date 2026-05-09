@@ -282,6 +282,9 @@
   }
   .footer .pg { font-variant-numeric: tabular-nums; }
 
+  /* 2026-05-08 — passage body 공용 스타일 (에디터와 동일 wrap 위치 보장) */
+  {{ passage_body_css | safe }}
+
   /* ADR-0014 — annotation HTML 시각 표현 (자동 주입) */
   {{ annotation_css | safe }}
 
@@ -435,7 +438,7 @@
           <span class="q-num">Q{{ q.number }}</span>
           {% if q.label %}<span class="q-label">{{ q.label }}</span>{% endif %}
         </div>
-        <div class="q-content">{{ q.content_html | safe }}</div>
+        <div class="q-content passage-body">{{ q.content_html | safe }}</div>
         {% if q.translation %}
         <div class="q-translation">
           <h4 class="q-translation__heading">한글 해석</h4>
