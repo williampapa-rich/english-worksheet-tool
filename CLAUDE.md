@@ -3,9 +3,9 @@
 > 이 문서는 Claude Code CLI가 프로젝트 컨텍스트를 이해하기 위한 헌장(charter)이자, subagent들의 협업 규칙서다.
 > 변경 시 PR로 관리한다. 모든 핵심 의사결정은 여기 반영된다.
 
-**버전**: v0.10.1
-**최종 갱신**: 2026-05-07
-**상태**: **Phase 2 baseline 종료** — B5 와이프 검수 OK (PDF 퀄리티 A 등급, 합격선 "C까지" 훌쩍 초과). v0.2-α (Chromium native footer + 박스 한계선 + 어휘 표 분리 + 본문 12pt/line-height 2.78) PR #58 open. ADR-0015 D3-D6 결정 완료 (Accepted). **Phase 2-edit sprint** Stage E1 시작 가능 (PR #58 머지 후). Phase 1 baseline = Editor 기능 OK (`docs/phase-1-wife-feedback.md` 2026-05-04) + HWPX 폐기 (ADR-0008) → 출력 경로는 Phase 2 PDF 로 통합 흡수.
+**버전**: v0.11
+**최종 갱신**: 2026-05-09
+**상태**: **Phase 2-edit sprint Stage E1/E2/E3 코드 완료** (2026-05-09). 와이프 v0.2 통합 검수 대기 → Phase 3 (변형문제) 진입 신호. Stage E2 머지 PR #65~#73 (신규/상세/통합 편집/인라인 편집/메타 편집/items/wrap 정합). Stage E3 = `<PassageBodyEditor>` + Playwright E2E. Tiptap 전환 (ADR-0015 D5 a) 은 후속.
 
 ---
 
@@ -175,11 +175,18 @@ CLAUDE.md §1.3 핵심 가치 명제 #3 ("편집 가능한 출력") 실현 sprin
 - **Stage E1** (백엔드 PATCH 라우트, ~1.5주): translation 편집 / vocabulary 행 편집/추가/삭제 /
   passage body+paragraphs 동시 수정 — `created_by=USER` / `user_edited=True` 메타 갱신 통로.
 - **Stage E2** (학생 자료 편집 UI, ~2주): `/worksheets/*` 라우트 + 7개 핵심 컴포넌트.
-  와이프가 §1.1 7단계 (현재 curl) 를 UI 만으로 완료.
-- **Stage E3** (Passage 편집 UI, ~1주): 본문 paragraph 분할 + 오타 수정 + annotation 충돌 처리.
+  와이프가 §1.1 7단계 (현재 curl) 를 UI 만으로 완료. **Stage E2 종료** (PR #65~#73)
+  — 신규 (E2-2) / 상세 + 통합 편집 (E2-3a~c) / 인라인 편집 (E2-3b) / 메타 편집 (E2-3d) /
+  items 추가·삭제·순서 (E2-3e) / 에디터-PDF wrap 정합 (line-wrap-parity).
+- **Stage E3** (Passage 편집 UI): 본문 paragraph 분할 + 오타 수정 + annotation 충돌 처리.
+  **Stage E3 종료** — `<PassageBodyEditor>` (textarea 기반, paragraphs 빈 줄 분리,
+  body 변경 시 annotation 전체 삭제 + confirm 다이얼로그). Playwright E2E
+  (`tests/e2e/passage_body_editor.spec.ts`) 로 회귀 보호. Tiptap 전환
+  (ADR-0015 D5 a 채택안) 은 후속 — 별 PR 또는 Phase 3 후 검토.
 
 **시작 트리거**: v0.2-α PR 머지 + ADR-0015 PM 결정 (D3-D6 4개 항목).
 **종료**: 와이프 v0.2 검수 OK → Phase 3 (변형문제) 진입 신호.
+**현재 (2026-05-09)**: Stage E1/E2/E3 모두 코드 완료 — 와이프 v0.2 통합 검수 대기.
 
 #### Stage / Phase 트리거
 
@@ -569,3 +576,4 @@ Phase 0를 시작할 수 있는 기반을 깔고, architect + domain-expert의 a
 | v0.9 | 2026-05-07 | Phase 2 진입 — B 시리즈 자동 진행 마감. (1) §2.2 Phase 2 섹션 신설 (B1~B4 + ADR-0013 + ADR-0014 머지 완료, PR #51~56). (2) Stage / Phase 트리거 갱신 (B5 와이프 검수 → Phase 3 진입 트리거 명시). (3) §11 Open Questions 갱신 — annotation split-mark ADR / Worksheet CRUD 라우트 / B 시리즈 항목 close. (4) `docs/phase-2-wife-review-prep.md` 신규 — 검수 시나리오 + 11건 결정 항목. |
 | v0.10 | 2026-05-07 | **Phase 2 baseline 종료** — B5 와이프 검수 OK (PDF 퀄리티 A 등급, 합격선 "C까지" 훌쩍 초과). (1) §2.2 "현재 위치" Phase 2 baseline 종료 + Phase 2-edit 진입 신호로 갱신. (2) v0.2-α 채택안 = D안 (Chromium native `display_header_footer` + `margin`) — fixed footer 트릭 폐기, `pdf.py` + `_pdf_footer.html` 신규, 박스 한계선 footer 위 11mm 자동 분할. v0.2-β 자동 해소 (Chromium native pageNumber/totalPages). (3) ADR-0015 신규 — Phase 2-edit sprint (Stage E1 백엔드 PATCH 라우트 / E2 학생 자료 편집 UI / E3 Passage 편집 UI) 정의. CLAUDE.md §1.3 핵심 가치 명제 #3 "편집 가능한 출력" 실현. (4) §6.4 PDF 등급 기록 + §6.5 v0.2 PR 분리 갱신. |
 | v0.10.1 | 2026-05-07 | (1) ADR-0015 Accepted — D3-D6 모두 권장안 채택 (Vocabulary DELETE 모든 항목 / Passage 메타 없음 / Tiptap 재사용 + prop 분기 / "+" 버튼). Stage E1 시작 가능 (PR #58 머지 후). (2) §2.2 "Phase 1 baseline 와이프 OK 별도 대기" 표기 정정 — 2026-05-04 검수 완료 (Editor A / HWPX D), ADR-0008 로 HWPX 폐기 + HTML→PDF 전환. Phase 1 출력 경로는 Phase 2 PDF 로 통합 흡수. |
+| v0.11 | 2026-05-09 | **Stage E1/E2/E3 코드 완료** (Phase 2-edit sprint). (1) Stage E2 PR #65~#73 머지: WorksheetNewPage / WorksheetDetailPage / WorksheetEditPage / Translation·Vocabulary·본문 인라인 편집 / 메타 편집 모달 / items 추가·삭제·순서 / 에디터-PDF wrap 정합 (Pretendard webfont + paragraph 분할 emit + bracket 라벨 밖). (2) Stage E3 = `<PassageBodyEditor>` (textarea 기반, paragraphs 빈 줄 분리, body 변경 시 annotation 전체 삭제 + confirm) + Playwright E2E `passage_body_editor.spec.ts`. (3) Tiptap 전환 (ADR-0015 D5 a) 은 후속 — 현재 textarea 로 와이프 검수 가능. (4) §1.3 핵심 가치 명제 #3 "편집 가능한 출력" 실현 완료 — 와이프 v0.2 통합 검수 → Phase 3 (변형문제) 진입 신호. |
