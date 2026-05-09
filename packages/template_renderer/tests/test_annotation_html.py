@@ -213,6 +213,106 @@ def test_bracket_paren_curly_corner_angle() -> None:
     assert "&lt;</span>g<span" in result
 
 
+def test_bracket_span_to_end_of_body_no_duplicate_close() -> None:
+    """회귀 테스트 — bracket span end == body_len 시 close 가 한 번만 출력.
+
+    버그 (2026-05-08): main loop 의 ``range(seg_start, seg_end + 1)`` 가 이미
+    seg_end (= n) 위치 close 를 처리하는데, 별도 후처리 (line 372~381) 가 같은
+    close 를 또 출력해서 ``}}`` / ``</span></span>`` 중복. 사용자 보고 → fix.
+    """
+    body = "I am a boy"
+    passage = _make_passage(body)
+    ann = _make_annotation(AnnotationKind.BRACKET, 0, len(body), bracket_style="{}")
+    result = str(render_annotations_to_html(passage, [ann]))
+    # close `}` 가 *정확히 한 번* 등장해야 한다.
+    assert result.count('<span class="annot-bracket">}</span>') == 1
+    # 본문 모든 글자가 그대로 들어가야 한다 (마지막 글자 누락 방지).
+    assert "I am a boy" in result
+
+
+def test_bracket_emitted_outside_label_span() -> None:
+    """회귀 — 라벨 + bracket 이 같은 span 에 적용되면 bracket 글자는 라벨 span *밖*에
+    위치해야 한다.
+
+    버그 (2026-05-08 사용자 보고): bracket 이 라벨 span 안에 들어가면 라벨 box 폭 (=
+    borderline 폭) 이 괄호 글자까지 확장되어 borderline 이 괄호 위까지 그려진다.
+    사용자 의도는 borderline 이 본문 영역에만 그려지는 것.
+
+    Fix 후 DOM 순서:
+        <bracket>{</bracket><label>body</label><bracket>}</bracket>
+    """
+    passage = _make_passage("Hello world")
+    annotations = [
+        _make_annotation(AnnotationKind.TOP_LABEL, 0, 11, text="구"),
+        _make_annotation(AnnotationKind.BRACKET, 0, 11, bracket_style="{}"),
+    ]
+    result = str(render_annotations_to_html(passage, annotations))
+
+    # bracket open 은 label open *전*.
+    assert (
+        '<span class="annot-bracket">{</span><span class="annot-top-label"' in result
+    ), f"bracket open 이 label open 보다 앞이어야 한다. 실제: {result}"
+    # bracket close 는 label close *후*.
+    assert (
+        '</span><span class="annot-bracket">}</span>' in result
+    ), f"bracket close 가 label close 뒤이어야 한다. 실제: {result}"
+
+
+def test_paragraphs_take_priority_over_mismatched_body_text() -> None:
+    """회귀 테스트 — paragraphs 가 있으면 body_text 가 아닌 paragraphs.join('\\n')
+    으로 char offset 기준 잡아야 한다.
+
+    버그 (2026-05-08 사용자 보고): extractor 가 LLM 응답에서 body_text 와 paragraphs
+    를 독립 저장 → 첫 단락 끝에 trailing space 등으로 둘이 어긋남 (body_text 가
+    1글자 김). frontend annotationSerializer 는 paragraphs.join('\\n') 가정으로
+    char offset 을 만들어 저장. 렌더러가 body_text 그대로 쓰면 close 위치가 마지막
+    글자 1개 *이전* 으로 밀림 → 사용자 시각 "마지막 글자 짤림" 버그.
+    """
+    paragraphs = [
+        "William is the best dog in the world ever.",
+        "We have to admire him forever because he is almighty and powerful.",
+    ]
+    # body_text 는 paragraphs.join 와 어긋남 — 첫 단락 끝에 trailing space 1개 추가.
+    body_text_with_trailing_space = paragraphs[0] + " \n" + paragraphs[1]
+    passage = Passage(
+        id=uuid.uuid4(),
+        tenant_id=uuid.UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+        workspace_id=uuid.UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+        body_text=body_text_with_trailing_space,
+        paragraphs=paragraphs,
+        word_count=len(body_text_with_trailing_space.split()),
+        source=SourceMeta(provider=SourceProvider.USER_INPUT),
+        target_grade=TargetGrade.HIGH_3,
+        created_at=datetime(2026, 5, 1, 0, 0, 0, tzinfo=UTC),
+        updated_at=datetime(2026, 5, 1, 0, 0, 0, tzinfo=UTC),
+    )
+    # frontend serializer 가 만든 char offset: paragraphs.join 기준 "to admire him" 위치.
+    joined = "\n".join(paragraphs)
+    target = "to admire him"
+    start = joined.index(target)
+    end = start + len(target)
+
+    ann = _make_annotation(AnnotationKind.BRACKET, start, end, bracket_style="<>")
+    result = str(render_annotations_to_html(passage, [ann]))
+
+    # 닫는 괄호 직전의 본문이 정확히 'to admire him' 으로 끝나야 한다.
+    assert ">to admire him<" in result.replace("&lt;", "<").replace("&gt;", ">") or (
+        '<span class="annot-bracket">&lt;</span>to admire him<span class="annot-bracket">&gt;</span>'
+        in result
+    )
+
+
+def test_top_label_span_to_end_of_body_no_duplicate_close() -> None:
+    """회귀 — top_label span end == body_len 시 ``</span>`` 가 한 번만."""
+    body = "I am a boy"
+    passage = _make_passage(body)
+    ann = _make_annotation(AnnotationKind.TOP_LABEL, 0, len(body), text="주어")
+    result = str(render_annotations_to_html(passage, [ann]))
+    # annot-top-label span 닫힘 1회 + 외곽 <p> 닫힘 1회 = </span> 1회만 등장.
+    assert result.count("</span>") == 1
+    assert "I am a boy" in result
+
+
 def test_bracket_missing_style_skipped(caplog: pytest.LogCaptureFixture) -> None:
     """bracket_style=None 이면 skip + 경고."""
     passage = _make_passage("Hello")

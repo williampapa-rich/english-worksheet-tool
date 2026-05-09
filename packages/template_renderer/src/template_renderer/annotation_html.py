@@ -236,15 +236,28 @@ def render_annotations_to_html(
     ADR-0014 D2 매핑 + D5 중첩 정책 + D6 XSS escape.
 
     Args:
-        passage: 대상 Passage. ``body_text`` 만 사용.
+        passage: 대상 Passage. ``paragraphs`` 가 있으면 그 값을 ``\n`` 으로 join 한
+            결과를 본문으로 사용 (frontend annotationSerializer 의 char offset 기준
+            과 일치). ``paragraphs`` 가 비어있을 때만 ``body_text`` fallback.
         annotations: 적용할 SyntaxAnnotation list. ``passage_id`` 일치 검증은
             호출자 책임 (라우트 레이어). arrow kind 는 명시적 skip + 로그 (D4).
 
     Returns:
         ``<p>...</p>`` 으로 wrap 된 escape-safe HTML. ``markupsafe.Markup`` 타입 —
         Jinja2 ``| safe`` 로 우회 escape 시 안전.
+
+    Note (2026-05-08 사용자 보고 fix):
+        ``passage.body_text`` 와 ``paragraphs`` 가 어긋날 수 있다 — extractor 가
+        둘을 독립 필드로 저장하고 LLM 이 trailing whitespace 등을 일관되게 처리하지
+        않을 때 발생. frontend ``annotationSerializer`` 는 ``paragraphs.join("\n")``
+        을 char offset 기준으로 가정하므로, 본 렌더러도 동일 기준을 사용해야 annotation
+        span 이 정확한 글자 위치에 닫힌다. ``paragraphs`` 가 빈 list 면 body_text 로
+        fallback (단일 단락 가정).
     """
-    body_text = passage.body_text
+    if passage.paragraphs:
+        body_text = "\n".join(passage.paragraphs)
+    else:
+        body_text = passage.body_text
     n = len(body_text)
 
     # arrow 는 명시적 skip + 1회 로그 (D4)
@@ -316,9 +329,21 @@ def render_annotations_to_html(
 
         # segment 안의 char position 마다 open/close + bracket 이벤트 처리
         seg_parts: list[str] = []
-        # segment 시작 시 open 이벤트
+        # 이벤트 순서 정책 (2026-05-08 사용자 보고 fix):
+        #   같은 span 에 라벨 + bracket 이 함께 적용된 경우 — bracket 글자가 라벨 span
+        #   *안*에 들어가면 라벨 box 폭 (= borderline 폭) 이 bracket 까지 확장되어
+        #   borderline 이 괄호 위까지 그려짐. 사용자 의도는 borderline 이 본문 영역에만
+        #   걸리는 것.
+        #   → bracket 글자는 라벨 span 의 *밖*으로 emit 한다:
+        #       open pos:  bracket open  →  label open
+        #       close pos: label close   →  bracket close
+        #   결과 DOM 예시 (단일 segment, 동일 span):
+        #     <bracket>{</bracket><label>body</label><bracket>}</bracket>
         for pos in range(seg_start, seg_end + 1):
-            # close 이벤트 (라벨 / bracket close) — pos 도착 시 처리
+            # close 이벤트 — 라벨 close 먼저, bracket close 가 그 뒤 (라벨 box 종료 후 괄호).
+            if pos in close_events:
+                for tag, _kind in close_events[pos]:
+                    seg_parts.append(tag)
             if pos in close_brackets:
                 for c, ci in close_brackets[pos]:
                     color_attr = (
@@ -327,17 +352,11 @@ def render_annotations_to_html(
                     seg_parts.append(
                         f'<span class="annot-bracket"{color_attr}>{escape(c)}</span>'
                     )
-            if pos in close_events:
-                for tag, _kind in close_events[pos]:
-                    seg_parts.append(tag)
 
             if pos == seg_end:
                 break
 
-            # open 이벤트 (라벨 / bracket open) — pos 시작 시 처리
-            if pos in open_events:
-                for tag, _kind in open_events[pos]:
-                    seg_parts.append(tag)
+            # open 이벤트 — bracket open 먼저, 그 다음 라벨 open (괄호가 라벨 box 밖).
             if pos in open_brackets:
                 for c, ci in open_brackets[pos]:
                     color_attr = (
@@ -346,6 +365,9 @@ def render_annotations_to_html(
                     seg_parts.append(
                         f'<span class="annot-bracket"{color_attr}>{escape(c)}</span>'
                     )
+            if pos in open_events:
+                for tag, _kind in open_events[pos]:
+                    seg_parts.append(tag)
 
             # segment 시작 위치에서 css wrap 시작
             if pos == seg_start and seg.css_token != _CSS_BODY:
@@ -369,16 +391,11 @@ def render_annotations_to_html(
         parts.append("".join(seg_parts))
         cursor = seg_end
 
-    # 본문 끝 위치의 close 이벤트 (end-of-body 라벨 / bracket)
-    if n in close_brackets:
-        for c, ci in close_brackets[n]:
-            color_attr = (
-                f' data-color-index="{ci}"' if ci is not None and 1 <= ci <= 12 else ""
-            )
-            parts.append(f'<span class="annot-bracket"{color_attr}>{escape(c)}</span>')
-    if n in close_events:
-        for tag, _kind in close_events[n]:
-            parts.append(tag)
+    # main loop 의 ``range(seg_start, seg_end + 1)`` 가 이미 마지막 segment 의 seg_end
+    # 위치 (= n) 에서 close 이벤트를 처리한다. 별도 후처리는 같은 close 를 두 번 출력
+    # (`}}` / `</span></span>`) 하므로 추가하지 않는다. n=0 (빈 body) 은 segments=[]
+    # 라 main loop 미실행 — 빈 body 에 annotation 은 의미 없음 (앞단 span out-of-range
+    # 검사로 모두 skip).
 
     parts.append("</p>")
     return Markup("".join(parts))

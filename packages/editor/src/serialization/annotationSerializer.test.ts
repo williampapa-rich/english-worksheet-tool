@@ -795,3 +795,121 @@ describe("P1-10a: 첫 글자 짤림 버그 — 저장→로드 round-trip", () =
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// 회귀 테스트 — paragraph trailing whitespace 가 char offset 에 +1 시프트 시키던 버그
+// ---------------------------------------------------------------------------
+
+describe("paragraph trailing whitespace ignored in char offset", () => {
+  /**
+   * 사용자 보고 (2026-05-08): William fixture 케이스에서 paragraph[0] 끝에 공백 1개
+   * 가 ProseMirror 안에 포함되어 collectMarksFromDoc 가 그 공백까지 누산 → 이후
+   * paragraph 의 mark span 이 +1 시프트되어 PDF 에서 마지막 글자가 잘려 보임.
+   * Fix: 각 paragraph 의 마지막 text 노드 trailing whitespace 는 char offset 에서 제외.
+   */
+  it("trailing space on paragraph[0] does not shift mark on paragraph[1]", () => {
+    // paragraph[0] = "William ...ever. " (43자, trailing space 포함)
+    // paragraph[1] = "We have to admire him forever ..." → 마크는 "to admire him"
+    //
+    // backend paragraphs (trim, length=42) 와 일치하려면 mark 시작은 51 (= 42 + \n + 8).
+    const doc: JSONContent = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "William is the best dog in the world ever. " }],
+        },
+        {
+          type: "paragraph",
+          content: [
+            { type: "text", text: "We have " },
+            {
+              type: "text",
+              text: "to admire him",
+              marks: [
+                {
+                  type: "bracket",
+                  attrs: {
+                    bracketStyle: "<>",
+                    colorIndex: 8,
+                    annotationId: "x",
+                    category: "clause",
+                  },
+                },
+              ],
+            },
+            { type: "text", text: " forever because he is almighty and powerful." },
+          ],
+        },
+      ],
+    };
+    const result = docToAnnotations(doc);
+    expect(result).toHaveLength(1);
+    expect(first(result).span.start).toBe(51);
+    expect(first(result).span.end).toBe(64);
+  });
+
+  it("paragraph 마지막 text 노드 자체가 공백뿐이면 그 노드 길이는 누산 0", () => {
+    // 마지막 text 노드 = "   " (공백 3개) → trim 후 0.
+    const doc: JSONContent = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            { type: "text", text: "Hello" },
+            { type: "text", text: "   " },
+          ],
+        },
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "text",
+              text: "World",
+              marks: [
+                {
+                  type: "highlight",
+                  attrs: { color: "#fef08a", annotationId: "y", category: "note" },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const result = docToAnnotations(doc);
+    expect(result).toHaveLength(1);
+    // paragraph[0] effective length = 5 ("Hello"). \n + 0 = 6 → "World" 시작 = 6.
+    expect(first(result).span.start).toBe(6);
+    expect(first(result).span.end).toBe(11);
+  });
+
+  it("trailing whitespace 가 없는 정상 케이스는 그대로 동작", () => {
+    const doc: JSONContent = {
+      type: "doc",
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "Hello" }] },
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "text",
+              text: "World",
+              marks: [
+                {
+                  type: "underline",
+                  attrs: { annotationId: "z", category: "note" },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const result = docToAnnotations(doc);
+    // paragraph[0] = 5, \n = 1 → "World" 시작 = 6.
+    expect(first(result).span.start).toBe(6);
+    expect(first(result).span.end).toBe(11);
+  });
+});
