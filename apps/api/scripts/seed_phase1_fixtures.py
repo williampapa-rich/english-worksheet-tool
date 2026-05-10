@@ -36,6 +36,14 @@ if str(_API_SRC) not in sys.path:
 
 from sqlalchemy import delete, select  # noqa: E402
 from sqlmodel.ext.asyncio.session import AsyncSession  # noqa: E402
+from worksheet_api.db import _get_session_factory  # noqa: E402
+from worksheet_api.models.passage import PassageORM  # noqa: E402
+from worksheet_api.models.syntax_annotation import SyntaxAnnotationORM  # noqa: E402
+from worksheet_api.models.tenant import Tenant, Workspace  # noqa: E402
+from worksheet_api.repositories.tenant_context import (  # noqa: E402
+    TenantContext,
+    get_tenant_context,
+)
 
 from scripts._fixtures_data import (  # noqa: E402
     ALL_FIXTURES,
@@ -50,11 +58,6 @@ from shared.schemas.annotation import (  # noqa: E402
     SyntaxAnnotation,
 )
 from shared.schemas.passage import SourceProvider  # noqa: E402
-from worksheet_api.db import _get_session_factory  # noqa: E402
-from worksheet_api.models.passage import PassageORM  # noqa: E402
-from worksheet_api.models.syntax_annotation import SyntaxAnnotationORM  # noqa: E402
-from worksheet_api.models.tenant import Tenant, Workspace  # noqa: E402
-from worksheet_api.repositories.tenant_context import TenantContext, get_tenant_context  # noqa: E402
 
 # ─── stub UUID (phase-0-runbook 기준) ────────────────────────────────────────
 
