@@ -539,8 +539,15 @@ Phase 0를 시작할 수 있는 기반을 깔고, architect + domain-expert의 a
 - [ ] 학생용 템플릿의 다중 변형 (1단/2단 등) 도입 시점 — Phase 2 종료 후 와이프 피드백 기반
 - [x] **Annotation span 식별 방식** — `docs/adr/0004-annotation-span-identification.md` (character offset 채택, 메모리는 ProseMirror position 하이브리드)
 - [x] **마커 분리 vs inline 유지** — `docs/adr/0006-marker-processing-policy.md` (출제용 마커 분리 / 단락·지칭 라벨 inline 보존 하이브리드)
-- [ ] **Vocabulary 글로벌 마스터 도입 시점** — Phase 2/3 진입 전 ADR (`audit §4-3`)
-- [ ] **Question / VariantQuestion 단일 테이블 vs 별 테이블** — Phase 3 진입 전 ADR (`audit §4-5`)
+- [ ] **Vocabulary 글로벌 마스터 도입 시점** — Phase 2/3 진입 전 ADR (`audit §4-3`).
+      `docs/adr/0016-vocabulary-master-global-dedup.md` (Proposed, 2026-05-10) —
+      권장: 별 `VocabularyMaster` 테이블 + `Vocabulary.master_id` nullable FK +
+      tenant 별 + Phase 2-edit Stage E2 머지 후 트리거. PM 결정 대기.
+- [ ] **Question / VariantQuestion 단일 테이블 vs 별 테이블** — Phase 3 진입 전 ADR
+      (`audit §4-5`). `docs/adr/0017-question-variant-table-strategy.md` (Proposed,
+      2026-05-10) — 권장: 단일 `Question` 테이블 + `variant_kind` discriminator +
+      `derived_from_question_id` self-FK NULLABLE + `variant_metadata JSONB`.
+      Phase 3 진입 *직전* 첫 Alembic 마이그레이션과 동시 도입. PM 결정 대기.
 - [ ] **레퍼런스 프로그램 영상 분석** — `/Users/william/Downloads/ScreenRecording_04-24-2026 15-11-52_1.MP4` 프레임 단위 분석 → UI/기능 설계 입력. 산출물 위치: `docs/reference-program-analysis.md` (작업 #5와 병렬, Phase 1 진입 전 완료 권고)
 - [x] **annotation split-mark 정밀 렌더 ADR** — `docs/adr/0014-annotation-html-renderer.md`
   (Proposed, 2026-05-07). `packages/template_renderer/annotation_html.py` —
