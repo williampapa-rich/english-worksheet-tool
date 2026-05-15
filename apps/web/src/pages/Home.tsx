@@ -16,8 +16,14 @@ export function Home() {
         </p>
         <div className="flex flex-col gap-3">
           <Link
-            to="/worksheets"
+            to="/passages/new"
             className="inline-block bg-blue-600 text-white font-medium px-6 py-3 rounded-xl hover:bg-blue-700 transition-colors"
+          >
+            Phase 3 — 새 지문 / 문제 입력 →
+          </Link>
+          <Link
+            to="/worksheets"
+            className="inline-block bg-white border border-gray-200 text-gray-700 font-medium px-6 py-3 rounded-xl hover:border-blue-300 hover:text-blue-600 transition-colors"
           >
             학생 자료 목록 →
           </Link>

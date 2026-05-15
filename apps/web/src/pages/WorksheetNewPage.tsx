@@ -37,7 +37,12 @@ export function WorksheetNewPage(): ReactElement {
     }
     setSubmitting(true);
     try {
-      const passage = await extractPassageText(body);
+      const results = await extractPassageText(body);
+      const first = results[0];
+      if (!first) {
+        throw new Error("extract 결과가 비어있습니다.");
+      }
+      const passage = first.passage;
       const worksheet = await createWorksheet({
         title: title.trim(),
         subtitle: subtitle.trim() || null,

@@ -262,9 +262,11 @@ function AddItemModal({
     setSubmitting(true);
     setError(null);
     try {
-      const passage = await extractPassageText(body);
+      const results = await extractPassageText(body);
+      const first = results[0];
+      if (!first) throw new Error("extract 결과가 비어있습니다.");
       await addWorksheetItem(worksheetId, {
-        passage_id: passage.id,
+        passage_id: first.passage.id,
         order: nextOrder,
         label: label.trim() || null,
         include_translation: includeTranslation,
