@@ -261,31 +261,7 @@ const C3_ANNOTATIONS: SyntaxAnnotation[] = [
   },
 ];
 
-// ─── Zero Waste 전체 passage (7 paragraphs) — F2-e spec 용 ─────────────────
-
-const ZERO_WASTE_PASSAGE: PassageForRender = {
-  body_text:
-    "Zero-waste stores have emerged as a response to growing concerns about plastic pollution.\n" +
-    "These supermarkets and grocery stores attempt to prevent waste by eliminating plastic packages altogether.\n" +
-    "Customers bring their own containers or bags and fill them with the exact quantities they need.\n" +
-    "In this way, both seller and buyer work together (to minimize the negative impact on the environment.)\n" +
-    "Currently, there are more than {70 zero-waste stores in Seoul}.\n" +
-    "This number continues to grow as more consumers become aware of environmental issues.\n" +
-    "The movement represents a significant shift in how people think about everyday shopping.",
-  paragraphs: [
-    "Zero-waste stores have emerged as a response to growing concerns about plastic pollution.",
-    "These supermarkets and grocery stores attempt to prevent waste by eliminating plastic packages altogether.",
-    "Customers bring their own containers or bags and fill them with the exact quantities they need.",
-    "In this way, both seller and buyer work together (to minimize the negative impact on the environment.)",
-    "Currently, there are more than {70 zero-waste stores in Seoul}.",
-    "This number continues to grow as more consumers become aware of environmental issues.",
-    "The movement represents a significant shift in how people think about everyday shopping.",
-  ],
-};
-
-const ZERO_WASTE_ANNOTATIONS: SyntaxAnnotation[] = [];
-
-type Scenario = "C1" | "C2" | "C3" | "zero-waste";
+type Scenario = "C1" | "C2" | "C3";
 
 function getScenarioData(scenario: string): {
   passage: PassageForRender;
@@ -293,8 +269,6 @@ function getScenarioData(scenario: string): {
 } {
   if (scenario === "C2") return { passage: C2_PASSAGE, annotations: C2_ANNOTATIONS };
   if (scenario === "C3") return { passage: C3_PASSAGE, annotations: C3_ANNOTATIONS };
-  if (scenario === "zero-waste")
-    return { passage: ZERO_WASTE_PASSAGE, annotations: ZERO_WASTE_ANNOTATIONS };
   return { passage: C1_PASSAGE, annotations: C1_ANNOTATIONS };
 }
 

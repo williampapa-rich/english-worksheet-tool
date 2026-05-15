@@ -10,7 +10,6 @@
   "scripts": {
     "poc": "node --experimental-vm-modules dist/poc.js",
     "build": "tsc",
-    "build:cli": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "lint": "biome check src/",
     "test": "vitest run",

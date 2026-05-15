@@ -25,7 +25,6 @@ ADR-0010 §D3 / §D6 구현.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Callable
 from typing import Any
 
 from markupsafe import Markup, escape
@@ -70,8 +69,6 @@ def worksheet_to_template_context(
     annotations_by_passage: dict[uuid.UUID, list[SyntaxAnnotation]] | None = None,
     translations_by_passage: dict[uuid.UUID, Translation | None] | None = None,
     vocabulary_by_passage: dict[uuid.UUID, list[Vocabulary]] | None = None,
-    annotation_renderer: Callable[[Passage, list[SyntaxAnnotation]], str | Markup]
-    | None = None,
 ) -> dict:
     """``Worksheet`` + ``Passage`` 목록을 Jinja2 템플릿 컨텍스트 dict 로 변환.
 
@@ -95,10 +92,6 @@ def worksheet_to_template_context(
             가 True 인 item 의 ``translation`` 블록 채움.
         vocabulary_by_passage: passage_id → Vocabulary list. ``include_vocabulary``
             가 True 인 item 의 ``vocabulary`` 블록 채움.
-        annotation_renderer: optional 커스텀 렌더러 콜백.
-            ``(Passage, list[SyntaxAnnotation]) → str | Markup`` 시그니처.
-            None 이면 기본값 ``render_annotations_to_html`` (annotation_html.py) 사용.
-            ADR-0018 Stage F2 — server-side Tiptap 렌더러로 교체 시 이 인자를 통해 주입.
 
     Returns:
         Jinja2 ``Environment.get_template().render()`` 에 바로 전달할 수 있는 dict.
@@ -116,11 +109,6 @@ def worksheet_to_template_context(
     annotations_by_passage = annotations_by_passage or {}
     translations_by_passage = translations_by_passage or {}
     vocabulary_by_passage = vocabulary_by_passage or {}
-    # annotation_renderer: None 이면 기본값 render_annotations_to_html.
-    # ADR-0018 Stage F2 — server-side Tiptap 렌더러 주입 지점.
-    _ann_renderer: Callable[[Passage, list[SyntaxAnnotation]], str | Markup] = (
-        annotation_renderer if annotation_renderer is not None else render_annotations_to_html
-    )
 
     # items 를 order 기준으로 정렬한 뒤 질문 목록 구성
     sorted_items = sorted(worksheet.items, key=lambda item: item.order)
@@ -138,7 +126,7 @@ def worksheet_to_template_context(
         else:
             anns = annotations_by_passage.get(passage.id, [])
             if anns:
-                content_html = _ann_renderer(passage, anns)
+                content_html = render_annotations_to_html(passage, anns)
             else:
                 # annotation 없는 경우 단순 wrap (XSS escape).
                 # paragraphs 가 있으면 각 단락을 별 <p> 로 분할 — 사용자 에디터
