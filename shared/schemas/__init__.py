@@ -50,6 +50,7 @@ from shared.schemas.passage import (
     SourceProvider,
     TargetGrade,
 )
+from shared.schemas.qa_validation_result import QAValidationResult
 from shared.schemas.question import (
     ChoiceFormat,
     ChoiceMatrix,
@@ -69,6 +70,7 @@ from shared.schemas.user_preference import (
     UserPreferencePatchInput,
 )
 from shared.schemas.vocabulary import Vocabulary, VocabularySelectedBy
+from shared.schemas.vocabulary_master import VocabularyMaster, VocabularyMasterCreatedBy
 from shared.schemas.worksheet import (
     Branding,
     Worksheet,
@@ -123,9 +125,14 @@ __all__ = [
     "SentenceRolePresetValue",
     "UserPreference",
     "UserPreferencePatchInput",
+    # qa_validation_result
+    "QAValidationResult",
     # vocabulary
     "Vocabulary",
     "VocabularySelectedBy",
+    # vocabulary_master
+    "VocabularyMaster",
+    "VocabularyMasterCreatedBy",
     # worksheet
     "Branding",
     "Worksheet",

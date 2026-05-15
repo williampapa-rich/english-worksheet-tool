@@ -61,6 +61,21 @@ class VocabularyORM(WorkspaceScopedORMBase, table=True):
         sa_column=Column(DateTime(timezone=True), nullable=False),
     )
 
+    # master_id nullable (ADR-0016 D1 권장안 (a))
+    # ON DELETE SET NULL — master 삭제 시 passage 행 유지, master_id → NULL
+    master_id: uuid.UUID | None = Field(
+        default=None,
+        sa_column=Column(
+            PG_UUID(as_uuid=True),
+            ForeignKey("vocabulary_master.id", ondelete="SET NULL"),
+            nullable=True,
+        ),
+        description=(
+            "글로벌 어휘 마스터 ID (nullable). None 이면 master 미연결. "
+            "ON DELETE SET NULL — master 삭제 시 passage 행 유지."
+        ),
+    )
+
     # passage_id nullable (audit §4-3 — Phase 2/3 글로벌화 여지)
     passage_id: uuid.UUID | None = Field(
         default=None,

@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from shared.schemas.common import EntityId, WorkspaceScopedEntity
 
@@ -83,6 +83,18 @@ class Vocabulary(WorkspaceScopedEntity):
         ),
     )
 
+    # ─── VocabularyMaster link (ADR-0016 D1 권장안 (a)) ─────────────────────
+    master_id: EntityId | None = Field(
+        default=None,
+        description=(
+            "글로벌 어휘 마스터 ID (FK → vocabulary_master.id, NULLABLE). "
+            "None 이면 master 미연결 (legacy / 신규 미연결). "
+            "link 시 headword_normalized == master.headword_normalized 강제 "
+            "(ADR-0016 D2-b — model_validator 로 검증 불가, application 레이어 책임). "
+            "ON DELETE SET NULL — master 삭제 시 passage 행은 유지, master_id → NULL."
+        ),
+    )
+
     # ─── 추적 메타 ────────────────────────────────────────────────────────────
     selected_by: VocabularySelectedBy = Field(
         ...,
@@ -92,3 +104,19 @@ class Vocabulary(WorkspaceScopedEntity):
         default=False,
         description="사용자가 LLM 결과를 수정했는지 여부.",
     )
+
+    # ─── 검증 ─────────────────────────────────────────────────────────────────
+    @model_validator(mode="after")
+    def _validate_master_link_consistency(self) -> Vocabulary:
+        """master_id link 시 headword_normalized 가 비어있지 않음을 확인.
+
+        ADR-0016 D2-b sync 정책:
+          master link 시 Vocabulary.headword_normalized 가 있어야 한다.
+          master.headword_normalized 와의 일치 검증은 application 레이어 (repository)
+          책임 — Pydantic 레이어에서는 master 객체가 없어 cross-entity 검증 불가.
+        """
+        if self.master_id is not None and not self.headword_normalized.strip():
+            raise ValueError(
+                "master_id 가 있으면 headword_normalized 는 비어있을 수 없다 (ADR-0016 D2-b)."
+            )
+        return self
