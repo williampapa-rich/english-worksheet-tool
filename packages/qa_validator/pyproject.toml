@@ -6,10 +6,12 @@ requires-python = ">=3.12"
 dependencies = [
   "pydantic>=2.0.0",
   "shared",
+  "llm",
 ]
 
 [tool.uv.sources]
 shared = { workspace = true }
+llm = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

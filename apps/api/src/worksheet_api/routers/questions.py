@@ -7,11 +7,13 @@ Phase 3 변형 라우트:
   POST /questions/{question_id}/variants/grammar-inline — V4 변형 생성.
   POST /questions/{question_id}/variants/order-shuffle — V7 변형 생성.
 
-ADR-0017 D2-c:
+ADR-0017 D2-c + D3-c (qa-validator 활성화):
   - 변형은 항상 신규 Question row INSERT (augment 와 달리 mode 개념 없음).
   - variant_kind / derived_from_question_id 채워진 신규 Question 반환.
-  - QAValidationResult placeholder row 동시 생성 (validated_at 설정, passed=False,
-    validator_note="pending" — Phase 3 qa-validator 활성 시 실제 검증으로 갱신).
+  - 변형 생성 직후 qa-validator LLM call 로 정답 유일성 검증.
+  - QAValidationResult row 저장 (실제 검증 결과 — placeholder 아님).
+  - Question.uniqueness_validated / uniqueness_validator_note 캐시 갱신.
+  - 검증 LLM 실패 시 graceful degradation — 변형 생성 자체는 성공.
 
 멀티테넌트 강제 (W-2 패턴):
   - 원본 question_id 조회 시 tenant_ctx 기반 repository 사용.
@@ -24,10 +26,16 @@ ADR-0017 D2-c:
   502: LLMSchemaValidationError.
   504: LLMTimeoutError.
   500: PermanentLLMError.
+
+LLM call 비용:
+  변형 생성 1회 + qa-validator 검증 1회 = 2회 LLM call per request.
+  캐싱 비활성 — 변형 결과가 매번 다름.
+  Phase 4 비용 모니터링 영역.
 """
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 from uuid import UUID
 
@@ -58,9 +66,9 @@ from llm.variants.v7_order_shuffle import (
     V7_APPLICABLE_TYPES,
     generate_v7_variant,
 )
+from qa_validator.uniqueness import validate_question_uniqueness
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from shared.schemas.qa_validation_result import QAValidationResult
 from shared.schemas.question import Question
 from worksheet_api.db import get_db
 from worksheet_api.llm_setup import get_llm_client
@@ -71,6 +79,8 @@ from worksheet_api.repositories import (
     TenantContext,
     get_tenant_context,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/questions", tags=["questions"])
 
@@ -116,17 +126,18 @@ async def create_v6_variant(
     """V6 topic_main_idea_swap 변형 생성 (Phase 3).
 
     원본 question_id 의 Question + Passage 를 조회 → LLM 으로 5개 선택지 새로 생성 →
-    신규 Question row (variant_kind=TOPIC_MAIN_IDEA_SWAP) + QAValidationResult
-    placeholder row 를 같은 트랜잭션 안에 저장한다.
+    qa-validator 로 정답 유일성 검증 → 신규 Question row (variant_kind=TOPIC_MAIN_IDEA_SWAP)
+    + QAValidationResult row 를 저장한다.
 
     카탈로그 v0.4 §V6:
       - 적용 type: main_idea_22 / theme_23 / title_24.
       - 본문 유지, 선택지 5개만 새로 생성.
       - 한 지문에서 22/23/24 모두 변형 생성 가능.
 
-    QAValidationResult:
-      - validated_at: 생성 시각, passed=False (placeholder), validator_note="pending".
-      - Phase 3 qa-validator 활성 시 실제 검증 결과로 갱신 (별 PR).
+    QAValidationResult (ADR-0017 D3-c 활성):
+      - 변형 생성 직후 별도 LLM call 로 정답 유일성 검증.
+      - Question.uniqueness_validated / uniqueness_validator_note 캐시 갱신.
+      - 검증 실패 시에도 변형 생성 자체는 성공 (비치명).
 
     멀티테넌트 강제 (W-2 패턴):
       - question_id 조회 시 tenant_ctx 기반 QuestionRepository 사용.
@@ -210,22 +221,34 @@ async def create_v6_variant(
         }
     )
 
+    # 5. sentinel UUID → 실제 ID 교체 (qa-validator 는 session.begin() 밖에서 호출)
+    # qa-validator LLM call 은 DB 트랜잭션 밖 — LLM 은 rollback 불가, 트랜잭션 내 장시간 hold 금지
+    qa_result = await validate_question_uniqueness(
+        question=variant_with_ids,
+        passage_text=passage.body_text,
+        client=llm_client,
+        tenant_id=tenant_ctx.tenant_id,
+        workspace_id=tenant_ctx.workspace_id,
+    )
+
+    # 6. 검증 결과를 variant 에 캐시 (ADR-0017 D3-c 하이브리드)
+    variant_with_qa = variant_with_ids.model_copy(
+        update={
+            "uniqueness_validated": qa_result.passed,
+            "uniqueness_validator_note": qa_result.validator_note,
+        }
+    )
+
     async with session.begin():
         question_repo2 = QuestionRepository(session, tenant_ctx)
-        saved_variant = await question_repo2.create(variant_with_ids)
+        saved_variant = await question_repo2.create(variant_with_qa)
 
-        # 6. QAValidationResult placeholder row 생성 (ADR-0017 D3-c)
-        # Phase 3 qa-validator 활성 전 placeholder:
-        #   passed=False (검증 미실시), validator_note="pending".
-        qa_placeholder = QAValidationResult(
-            tenant_id=tenant_ctx.tenant_id,
-            workspace_id=tenant_ctx.workspace_id,
-            question_id=saved_variant.id,
-            passed=False,
-            validator_note="pending — Phase 3 qa-validator 활성 시 검증 예정.",
+        # 7. QAValidationResult row 저장 (실제 검증 결과 — placeholder 아님)
+        qa_result_with_question_id = qa_result.model_copy(
+            update={"question_id": saved_variant.id}
         )
         qa_repo = QAValidationResultRepository(session, tenant_ctx)
-        await qa_repo.create(qa_placeholder)
+        await qa_repo.create(qa_result_with_question_id)
 
     return saved_variant
 
@@ -331,7 +354,7 @@ async def create_v2_variant(
     except Exception as exc:
         _raise_llm_http_exception(exc)
 
-    # 5. sentinel UUID → 실제 ID 교체 + 영속화 (단일 트랜잭션)
+    # 5. sentinel UUID → 실제 ID 교체
     variant_with_ids = variant_question_sentinel.model_copy(  # type: ignore[union-attr]
         update={
             "tenant_id": tenant_ctx.tenant_id,
@@ -341,20 +364,31 @@ async def create_v2_variant(
         }
     )
 
+    # qa-validator LLM call — 트랜잭션 밖에서 실행 (CLAUDE.md §7.6 검증 분리)
+    qa_result = await validate_question_uniqueness(
+        question=variant_with_ids,
+        passage_text=passage.body_text,
+        client=llm_client,
+        tenant_id=tenant_ctx.tenant_id,
+        workspace_id=tenant_ctx.workspace_id,
+    )
+
+    variant_with_qa = variant_with_ids.model_copy(
+        update={
+            "uniqueness_validated": qa_result.passed,
+            "uniqueness_validator_note": qa_result.validator_note,
+        }
+    )
+
     async with session.begin():
         question_repo2 = QuestionRepository(session, tenant_ctx)
-        saved_variant = await question_repo2.create(variant_with_ids)
+        saved_variant = await question_repo2.create(variant_with_qa)
 
-        # 6. QAValidationResult placeholder row 생성 (ADR-0017 D3-c)
-        qa_placeholder = QAValidationResult(
-            tenant_id=tenant_ctx.tenant_id,
-            workspace_id=tenant_ctx.workspace_id,
-            question_id=saved_variant.id,
-            passed=False,
-            validator_note="pending — Phase 3 qa-validator 활성 시 검증 예정.",
+        qa_result_with_question_id = qa_result.model_copy(
+            update={"question_id": saved_variant.id}
         )
         qa_repo = QAValidationResultRepository(session, tenant_ctx)
-        await qa_repo.create(qa_placeholder)
+        await qa_repo.create(qa_result_with_question_id)
 
     return saved_variant
 
@@ -459,7 +493,7 @@ async def create_v5_variant(
     except Exception as exc:
         _raise_llm_http_exception(exc)
 
-    # 5. sentinel UUID → 실제 ID 교체 + 영속화 (단일 트랜잭션)
+    # 5. sentinel UUID → 실제 ID 교체
     # ADR-0003 §D-3.6: model_copy 로 실제 tenant_id / workspace_id / passage_id / derived_from 주입
     variant_with_ids = variant_question_sentinel.model_copy(  # type: ignore[union-attr]
         update={
@@ -470,22 +504,31 @@ async def create_v5_variant(
         }
     )
 
+    # qa-validator LLM call — 트랜잭션 밖에서 실행 (CLAUDE.md §7.6 검증 분리)
+    qa_result = await validate_question_uniqueness(
+        question=variant_with_ids,
+        passage_text=passage.body_text,
+        client=llm_client,
+        tenant_id=tenant_ctx.tenant_id,
+        workspace_id=tenant_ctx.workspace_id,
+    )
+
+    variant_with_qa = variant_with_ids.model_copy(
+        update={
+            "uniqueness_validated": qa_result.passed,
+            "uniqueness_validator_note": qa_result.validator_note,
+        }
+    )
+
     async with session.begin():
         question_repo2 = QuestionRepository(session, tenant_ctx)
-        saved_variant = await question_repo2.create(variant_with_ids)
+        saved_variant = await question_repo2.create(variant_with_qa)
 
-        # 6. QAValidationResult placeholder row 생성 (ADR-0017 D3-c)
-        # Phase 3 qa-validator 활성 전 placeholder:
-        #   passed=False (검증 미실시), validator_note="pending".
-        qa_placeholder = QAValidationResult(
-            tenant_id=tenant_ctx.tenant_id,
-            workspace_id=tenant_ctx.workspace_id,
-            question_id=saved_variant.id,
-            passed=False,
-            validator_note="pending — Phase 3 qa-validator 활성 시 검증 예정.",
+        qa_result_with_question_id = qa_result.model_copy(
+            update={"question_id": saved_variant.id}
         )
         qa_repo = QAValidationResultRepository(session, tenant_ctx)
-        await qa_repo.create(qa_placeholder)
+        await qa_repo.create(qa_result_with_question_id)
 
     return saved_variant
 
@@ -590,7 +633,7 @@ async def create_v4_variant(
     except Exception as exc:
         _raise_llm_http_exception(exc)
 
-    # 5. sentinel UUID → 실제 ID 교체 + 영속화 (단일 트랜잭션)
+    # 5. sentinel UUID → 실제 ID 교체
     # ADR-0003 §D-3.6: model_copy 로 실제 tenant_id / workspace_id / passage_id / derived_from 주입
     variant_with_ids = variant_question_sentinel.model_copy(  # type: ignore[union-attr]
         update={
@@ -601,22 +644,31 @@ async def create_v4_variant(
         }
     )
 
+    # qa-validator LLM call — 트랜잭션 밖에서 실행 (CLAUDE.md §7.6 검증 분리)
+    qa_result = await validate_question_uniqueness(
+        question=variant_with_ids,
+        passage_text=passage.body_text,
+        client=llm_client,
+        tenant_id=tenant_ctx.tenant_id,
+        workspace_id=tenant_ctx.workspace_id,
+    )
+
+    variant_with_qa = variant_with_ids.model_copy(
+        update={
+            "uniqueness_validated": qa_result.passed,
+            "uniqueness_validator_note": qa_result.validator_note,
+        }
+    )
+
     async with session.begin():
         question_repo2 = QuestionRepository(session, tenant_ctx)
-        saved_variant = await question_repo2.create(variant_with_ids)
+        saved_variant = await question_repo2.create(variant_with_qa)
 
-        # 6. QAValidationResult placeholder row 생성 (ADR-0017 D3-c)
-        # Phase 3 qa-validator 활성 전 placeholder:
-        #   passed=False (검증 미실시), validator_note="pending".
-        qa_placeholder = QAValidationResult(
-            tenant_id=tenant_ctx.tenant_id,
-            workspace_id=tenant_ctx.workspace_id,
-            question_id=saved_variant.id,
-            passed=False,
-            validator_note="pending — Phase 3 qa-validator 활성 시 검증 예정.",
+        qa_result_with_question_id = qa_result.model_copy(
+            update={"question_id": saved_variant.id}
         )
         qa_repo = QAValidationResultRepository(session, tenant_ctx)
-        await qa_repo.create(qa_placeholder)
+        await qa_repo.create(qa_result_with_question_id)
 
     return saved_variant
 
@@ -649,8 +701,8 @@ async def create_v7_variant(
       - sub_passages 필드 채움 — [(A) 문장들, (B) 문장들, (C) 문장들].
 
     QAValidationResult:
-      - validated_at: 생성 시각, passed=False (placeholder), validator_note="pending".
-      - Phase 3 qa-validator 활성 시 실제 검증 결과로 갱신 (별 PR).
+      - 변형 생성 직후 qa-validator LLM call 로 정답 유일성 검증.
+      - passed / validator_note 실제 검증 결과로 채워짐 (ADR-0017 D3-c 활성).
 
     멀티테넌트 강제 (W-2 패턴):
       - question_id 조회 시 tenant_ctx 기반 QuestionRepository 사용.
@@ -723,7 +775,7 @@ async def create_v7_variant(
     except Exception as exc:
         _raise_llm_http_exception(exc)
 
-    # 5. sentinel UUID → 실제 ID 교체 + 영속화 (단일 트랜잭션)
+    # 5. sentinel UUID → 실제 ID 교체
     variant_with_ids_v7 = variant_question_sentinel.model_copy(  # type: ignore[union-attr]
         update={
             "tenant_id": tenant_ctx.tenant_id,
@@ -733,19 +785,30 @@ async def create_v7_variant(
         }
     )
 
+    # qa-validator LLM call — 트랜잭션 밖에서 실행 (CLAUDE.md §7.6 검증 분리)
+    qa_result_v7 = await validate_question_uniqueness(
+        question=variant_with_ids_v7,
+        passage_text=passage.body_text,
+        client=llm_client,
+        tenant_id=tenant_ctx.tenant_id,
+        workspace_id=tenant_ctx.workspace_id,
+    )
+
+    variant_with_qa_v7 = variant_with_ids_v7.model_copy(
+        update={
+            "uniqueness_validated": qa_result_v7.passed,
+            "uniqueness_validator_note": qa_result_v7.validator_note,
+        }
+    )
+
     async with session.begin():
         question_repo2 = QuestionRepository(session, tenant_ctx)
-        saved_v7 = await question_repo2.create(variant_with_ids_v7)
+        saved_v7 = await question_repo2.create(variant_with_qa_v7)
 
-        # 6. QAValidationResult placeholder row 생성 (ADR-0017 D3-c)
-        qa_placeholder_v7 = QAValidationResult(
-            tenant_id=tenant_ctx.tenant_id,
-            workspace_id=tenant_ctx.workspace_id,
-            question_id=saved_v7.id,
-            passed=False,
-            validator_note="pending — Phase 3 qa-validator 활성 시 검증 예정.",
+        qa_result_v7_with_id = qa_result_v7.model_copy(
+            update={"question_id": saved_v7.id}
         )
         qa_repo_v7 = QAValidationResultRepository(session, tenant_ctx)
-        await qa_repo_v7.create(qa_placeholder_v7)
+        await qa_repo_v7.create(qa_result_v7_with_id)
 
     return saved_v7

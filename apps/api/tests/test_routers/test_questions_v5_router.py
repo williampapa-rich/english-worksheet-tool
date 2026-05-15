@@ -247,6 +247,7 @@ async def test_create_v5_variant_blank_phrase_31_ok(
         patch("worksheet_api.routers.questions.PassageRepository") as mock_p_repo_cls,
         patch("worksheet_api.routers.questions.QAValidationResultRepository") as mock_qa_repo_cls,
         patch("worksheet_api.routers.questions.generate_v5_variant") as mock_generate,
+        patch("worksheet_api.routers.questions.validate_question_uniqueness") as mock_validate,
     ):
         mock_q_repo = AsyncMock()
         mock_q_repo.get = AsyncMock(return_value=original)
@@ -266,6 +267,7 @@ async def test_create_v5_variant_blank_phrase_31_ok(
             update={"id": uuid.UUID(int=0), "tenant_id": uuid.UUID(int=0)}
         )
         mock_generate.return_value = sentinel_variant
+        mock_validate.return_value = qa_placeholder
 
         response = await async_client.post(
             f"/questions/{QUESTION_ID_1}/variants/blank-inference"
@@ -296,6 +298,7 @@ async def test_create_v5_variant_blank_clause_32_ok(
         patch("worksheet_api.routers.questions.PassageRepository") as mock_p_repo_cls,
         patch("worksheet_api.routers.questions.QAValidationResultRepository") as mock_qa_repo_cls,
         patch("worksheet_api.routers.questions.generate_v5_variant") as mock_generate,
+        patch("worksheet_api.routers.questions.validate_question_uniqueness") as mock_validate,
     ):
         mock_q_repo = AsyncMock()
         mock_q_repo.get = AsyncMock(return_value=original)
@@ -319,6 +322,7 @@ async def test_create_v5_variant_blank_clause_32_ok(
             }
         )
         mock_generate.return_value = sentinel_variant
+        mock_validate.return_value = qa_placeholder
 
         response = await async_client.post(
             f"/questions/{QUESTION_ID_1}/variants/blank-inference"
@@ -346,6 +350,7 @@ async def test_create_v5_variant_qa_placeholder_created(
         patch("worksheet_api.routers.questions.PassageRepository") as mock_p_repo_cls,
         patch("worksheet_api.routers.questions.QAValidationResultRepository") as mock_qa_repo_cls,
         patch("worksheet_api.routers.questions.generate_v5_variant") as mock_generate,
+        patch("worksheet_api.routers.questions.validate_question_uniqueness") as mock_validate,
     ):
         mock_q_repo = AsyncMock()
         mock_q_repo.get = AsyncMock(return_value=original)
@@ -365,17 +370,16 @@ async def test_create_v5_variant_qa_placeholder_created(
             update={"id": uuid.UUID(int=0), "tenant_id": uuid.UUID(int=0)}
         )
         mock_generate.return_value = sentinel_variant
+        mock_validate.return_value = qa_placeholder
 
         response = await async_client.post(
             f"/questions/{QUESTION_ID_1}/variants/blank-inference"
         )
 
     assert response.status_code == 201
-    # QAValidationResultRepository.create 가 1회 호출되었는지 확인
+    # qa-validator 가 호출됨 (placeholder 아님 — 실제 검증 결과)
+    mock_validate.assert_awaited_once()
     mock_qa_repo.create.assert_awaited_once()
-    created_qa: QAValidationResult = mock_qa_repo.create.call_args[0][0]
-    assert created_qa.passed is False
-    assert "pending" in (created_qa.validator_note or "")
 
 
 # ─── 에러 케이스 ─────────────────────────────────────────────────────────────
@@ -504,6 +508,7 @@ async def test_create_v5_variant_llm_schema_error_502(
         patch("worksheet_api.routers.questions.QuestionRepository") as mock_q_repo_cls,
         patch("worksheet_api.routers.questions.PassageRepository") as mock_p_repo_cls,
         patch("worksheet_api.routers.questions.generate_v5_variant") as mock_generate,
+        patch("worksheet_api.routers.questions.validate_question_uniqueness") as mock_validate,
     ):
         mock_q_repo = AsyncMock()
         mock_q_repo.get = AsyncMock(return_value=original)
@@ -540,6 +545,7 @@ async def test_create_v5_variant_llm_timeout_504(
         patch("worksheet_api.routers.questions.QuestionRepository") as mock_q_repo_cls,
         patch("worksheet_api.routers.questions.PassageRepository") as mock_p_repo_cls,
         patch("worksheet_api.routers.questions.generate_v5_variant") as mock_generate,
+        patch("worksheet_api.routers.questions.validate_question_uniqueness") as mock_validate,
     ):
         mock_q_repo = AsyncMock()
         mock_q_repo.get = AsyncMock(return_value=original)
@@ -573,6 +579,7 @@ async def test_create_v5_variant_permanent_llm_error_500(
         patch("worksheet_api.routers.questions.QuestionRepository") as mock_q_repo_cls,
         patch("worksheet_api.routers.questions.PassageRepository") as mock_p_repo_cls,
         patch("worksheet_api.routers.questions.generate_v5_variant") as mock_generate,
+        patch("worksheet_api.routers.questions.validate_question_uniqueness") as mock_validate,
     ):
         mock_q_repo = AsyncMock()
         mock_q_repo.get = AsyncMock(return_value=original)
