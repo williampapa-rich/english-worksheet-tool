@@ -6,6 +6,7 @@ Phase 3 변형 라우트:
   POST /questions/{question_id}/variants/vocabulary-inline — V2 변형 생성.
   POST /questions/{question_id}/variants/blank-inference — V5 변형 생성.
   POST /questions/{question_id}/variants/grammar-inline — V4 변형 생성.
+  POST /questions/{question_id}/variants/grammar-swap — V3 변형 생성.
   POST /questions/{question_id}/variants/order-shuffle — V7 변형 생성.
   POST /questions/{question_id}/variants/sentence-insertion-shift — V8 변형 생성.
   POST /questions/{question_id}/variants/summary-blank-swap — V10 변형 생성.
@@ -57,6 +58,10 @@ from llm.variants.v1_vocabulary_swap import (
 from llm.variants.v2_vocabulary_inline import (
     V2_APPLICABLE_TYPES,
     generate_v2_variant,
+)
+from llm.variants.v3_grammar_swap import (
+    V3_APPLICABLE_TYPES,
+    generate_v3_variant,
 )
 from llm.variants.v4_grammar_inline import (
     V4_APPLICABLE_TYPES,
@@ -683,6 +688,147 @@ async def create_v4_variant(
         await qa_repo.create(qa_result_with_question_id)
 
     return saved_variant
+
+
+# ─── V3 변형 라우트 ─────────────────────────────────────────────────────────
+
+
+@router.post(
+    "/{question_id}/variants/grammar-swap",
+    response_model=Question,
+    status_code=201,
+)
+async def create_v3_variant(
+    question_id: UUID,
+    tenant_ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    llm_client: Annotated[StructuredLLMClient, Depends(get_llm_client)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> Question:
+    """V3 grammar_swap 변형 생성 (Phase 3).
+
+    원본 question_id 의 Question + Passage 를 조회 → LLM 으로 어법 후보 5곳 선택 +
+    1곳 어법 오류 swap + 5개 선택지 (①~⑤) 생성 → 신규 Question row
+    (variant_kind=GRAMMAR_SWAP) + QAValidationResult row 를 저장한다.
+
+    카탈로그 v0.4 §V3:
+      - 적용 type: grammar_29.
+      - 본문의 어법 후보 5곳 중 1곳을 어법 오류 단어로 swap.
+      - 5개 선택지 (①~⑤) — 각 선택지가 후보 위치의 구문.
+      - answer = 오류가 있는 위치 (1-based, 1~5).
+      - variant_metadata 에 swap 상세 기록 (swapped_position_index / original_phrase /
+        swapped_phrase / error_type).
+
+    QAValidationResult (ADR-0017 D3-c 활성):
+      - 변형 생성 직후 별도 LLM call 로 정답 유일성 검증.
+      - Question.uniqueness_validated / uniqueness_validator_note 캐시 갱신.
+      - 검증 실패 시에도 변형 생성 자체는 성공 (비치명).
+
+    멀티테넌트 강제 (W-2 패턴):
+      - question_id 조회 시 tenant_ctx 기반 QuestionRepository 사용.
+      - passage_id 조회 시 tenant_ctx 기반 PassageRepository 사용.
+      - 신규 row 생성 전 sentinel UUID → 실제 tenant_id / workspace_id 교체.
+
+    Args:
+        question_id: 원본 Question UUID.
+        tenant_ctx: 현재 요청의 테넌트 컨텍스트.
+        llm_client: StructuredLLMClient 구현체.
+        session: DB 세션.
+
+    Returns:
+        생성된 변형 Question (201). choices (①~⑤) + variant_metadata 채움.
+
+    Raises:
+        HTTPException 404: question_id 가 없거나 다른 tenant 소유.
+        HTTPException 404: question 에 연결된 Passage 가 없거나 다른 tenant 소유.
+        HTTPException 422: question type 이 V3 비적용 type (grammar_29 외).
+        HTTPException 502: LLMSchemaValidationError.
+        HTTPException 504: LLMTimeoutError.
+        HTTPException 500: PermanentLLMError.
+    """
+    # 1. 원본 Question 조회 — tenant 필터 강제 (W-2)
+    question_repo = QuestionRepository(session, tenant_ctx)
+    original_question = await question_repo.get(question_id)
+    if original_question is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Question {question_id} 를 찾을 수 없습니다.",
+        )
+
+    # 2. type 검증 — V3 적용 가능 type 인지
+    if original_question.type not in V3_APPLICABLE_TYPES:
+        applicable = sorted(str(t) for t in V3_APPLICABLE_TYPES)
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"V3 변형은 {applicable} type 에만 적용 가능합니다. "
+                f"현재 question type: {original_question.type}."
+            ),
+        )
+
+    # 3. 연결된 Passage 조회 — body_text 필요 (tenant 필터 강제)
+    passage_repo = PassageRepository(session, tenant_ctx)
+    passage = await passage_repo.get(original_question.passage_id)
+    if passage is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Question {question_id} 에 연결된 Passage {original_question.passage_id} 를 "
+                "찾을 수 없습니다."
+            ),
+        )
+
+    # 4. LLM 변형 생성 (V3 grammar_swap) — 에러는 _raise_llm_http_exception 으로 매핑
+    try:
+        variant_question_sentinel = await generate_v3_variant(
+            passage_text=passage.body_text,
+            original_question=original_question,
+            llm_client=llm_client,
+        )
+    except LLMSchemaValidationError as exc:
+        _raise_llm_http_exception(exc)
+    except LLMTimeoutError as exc:
+        _raise_llm_http_exception(exc)
+    except PermanentLLMError as exc:
+        _raise_llm_http_exception(exc)
+    except Exception as exc:
+        _raise_llm_http_exception(exc)
+
+    # 5. sentinel UUID → 실제 ID 교체
+    # ADR-0003 §D-3.6: model_copy 로 실제 tenant_id / workspace_id / passage_id / derived_from 주입
+    variant_with_ids_v3 = variant_question_sentinel.model_copy(  # type: ignore[union-attr]
+        update={
+            "tenant_id": tenant_ctx.tenant_id,
+            "workspace_id": tenant_ctx.workspace_id,
+            "passage_id": original_question.passage_id,
+            "derived_from_question_id": original_question.id,
+        }
+    )
+
+    # qa-validator LLM call — 트랜잭션 밖에서 실행 (CLAUDE.md §7.6 검증 분리)
+    qa_result_v3 = await validate_question_uniqueness(
+        question=variant_with_ids_v3,
+        passage_text=passage.body_text,
+        client=llm_client,
+        tenant_id=tenant_ctx.tenant_id,
+        workspace_id=tenant_ctx.workspace_id,
+    )
+
+    variant_with_qa_v3 = variant_with_ids_v3.model_copy(
+        update={
+            "uniqueness_validated": qa_result_v3.passed,
+            "uniqueness_validator_note": qa_result_v3.validator_note,
+        }
+    )
+
+    async with session.begin():
+        question_repo2 = QuestionRepository(session, tenant_ctx)
+        saved_v3 = await question_repo2.create(variant_with_qa_v3)
+
+        qa_result_v3_with_id = qa_result_v3.model_copy(update={"question_id": saved_v3.id})
+        qa_repo_v3 = QAValidationResultRepository(session, tenant_ctx)
+        await qa_repo_v3.create(qa_result_v3_with_id)
+
+    return saved_v3
 
 
 # ─── V7 변형 라우트 ─────────────────────────────────────────────────────────
