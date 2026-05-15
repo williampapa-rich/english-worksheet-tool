@@ -38,15 +38,7 @@ _env = jinja2.Environment(
 )
 
 # ADR-0014 D2 — annotation CSS 모듈 로드 시점 캐시 (재읽기 비용 회피).
-# _annotation.css 는 구 annotation_html.py (.annot-* 셀렉터) 전용 — legacy fallback.
-# 신규 server-side Tiptap 출력에는 _editor_annotation.css 를 사용한다.
 _ANNOTATION_CSS = (_TEMPLATES_DIR / "_annotation.css").read_text(encoding="utf-8")
-
-# Phase 2.5 Stage F4 fix (2026-05-15) — annotation CSS 단일 SOT.
-# server-side Tiptap 이 생성하는 [data-annotation-kind] / [data-*-widget] 마크업에
-# 매칭되는 CSS. EditorPoc.css 와 @import 로 공유 (단일 source-of-truth).
-# _annotation.css (구 .annot-* 셀렉터) 와 별도 — 두 파일 모두 주입하면 중복되지 않음.
-_EDITOR_ANNOTATION_CSS = (_TEMPLATES_DIR / "_editor_annotation.css").read_text(encoding="utf-8")
 
 # 2026-05-08 사용자 보고 fix — 본문 wrap 정합. PDF (.q-content) 와 에디터
 # (#editor-print-area .ProseMirror) 가 동일한 본문 폭/폰트/letter-spacing 등
@@ -82,10 +74,6 @@ def render_worksheet_html(context: dict, style: str = "playful") -> str:
         context = {**context, "annotation_css": _ANNOTATION_CSS}
     if "passage_body_css" not in context:
         context = {**context, "passage_body_css": _PASSAGE_BODY_CSS}
-    # Phase 2.5 Stage F4 fix — server-side Tiptap 마크업용 annotation CSS 주입.
-    # [data-annotation-kind] / [data-*-widget] 셀렉터 + --anno-color-N 변수 정의.
-    if "editor_annotation_css" not in context:
-        context = {**context, "editor_annotation_css": _EDITOR_ANNOTATION_CSS}
     return template.render(**context)
 
 
