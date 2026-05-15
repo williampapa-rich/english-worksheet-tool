@@ -60,6 +60,20 @@ _VARIANT_KIND_CHECKS: dict[str, str] = {
         "- Does the swap word belong to the same part of speech as the original? "
         "(POS mismatch = structural error)"
     ),
+    VariantKind.GRAMMAR_SWAP: (
+        "V3 (grammar_swap) specific checks:\n"
+        "- Is the swapped error a CLEAR, unambiguous grammar violation? "
+        "(애매한 stylistic 차이 or native speaker 가 수용 가능한 형태 → NOT a valid error → "
+        "uniqueness failure)\n"
+        "- Are the 4 correct candidates each genuinely correct in their grammatical context? "
+        "(If any of the 4 'correct' candidates is itself questionable → structural error)\n"
+        "- Do the 5 candidates test DIFFERENT grammar categories "
+        "(verb_form / agreement / infinitive_gerund / relative_pronoun / preposition / "
+        "participle / pronoun)? "
+        "(If any two candidates test the same rule → category diversity failure)\n"
+        "- Is the error the ONLY wrong choice among the 5? "
+        "(If another candidate could also be considered an error → uniqueness failure)"
+    ),
     VariantKind.TOPIC_MAIN_IDEA_SWAP: (
         "V6 (topic_main_idea_swap) specific checks:\n"
         "- Does the correct answer align precisely with the passage thesis?\n"
