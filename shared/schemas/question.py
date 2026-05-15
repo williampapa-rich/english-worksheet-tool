@@ -28,7 +28,7 @@ audit-review-domain §4.1 권고:
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -394,17 +394,33 @@ class Question(WorkspaceScopedEntity):
     raw_paragraphs: list[str] = Field(default_factory=list)
     paragraph_indices: list[int] = Field(default_factory=list)
 
+    # ─── 변형 전용 메타 (ADR-0017 D2-c JSONB) ────────────────────────────────
+    variant_metadata: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "변형만의 추가 메타 (JSONB). variant_kind != ORIGINAL 일 때 의미 있는 값. "
+            "원본 행에서는 항상 None. "
+            "v0.1 구조 미정 — Phase 3 첫 변형 생성 PR 에서 보강. "
+            "예: {'llm_candidate_words': [...], 'generation_attempt': 3}. "
+            "물리 매핑 정책 (ADR-0017 권장 안 (a)): 단일 questions 테이블, "
+            "derived_from_question_id self-FK NULLABLE, variant_metadata JSONB NULLABLE. "
+            "variant 의 variant 허용 — derived_from chain 은 depth 5 제한 (application 레이어). "
+        ),
+    )
+
     # ─── qa-validator 메타 (Phase 3 — audit-review-domain §4.1) ────────
     uniqueness_validated: bool = Field(
         default=False,
         description=(
             "qa-validator 가 정답 유일성 검증을 통과했는지 (Phase 3 활성). v0.1 은 "
-            "자리만 — 기본 False."
+            "자리만 — 기본 False. "
+            "ADR-0017 D3-c 하이브리드: 본 필드는 최신 상태 캐시, "
+            "history 는 QAValidationResult 테이블 (shared/schemas/qa_validation_result.py)."
         ),
     )
     uniqueness_validator_note: str | None = Field(
         default=None,
-        description="qa-validator 의 검증 메모 (실패 사유 등).",
+        description="qa-validator 의 검증 메모 (실패 사유 등). 최신 검증 결과 캐시.",
     )
 
     # ─── 검증 ─────────────────────────────────────────────────────────────

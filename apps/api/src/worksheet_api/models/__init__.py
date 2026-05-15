@@ -27,12 +27,17 @@ from worksheet_api.models.llm_usage_log import LlmUsageLogORM
 
 # Phase 0 도메인 모델 (SQLModel table=True 기반)
 from worksheet_api.models.passage import PassageORM
+from worksheet_api.models.qa_validation_result import QAValidationResultORM
 from worksheet_api.models.question import QuestionORM
 from worksheet_api.models.syntax_annotation import SyntaxAnnotationORM
 from worksheet_api.models.tenant import Tenant, Workspace
 from worksheet_api.models.translation import TranslationORM
 from worksheet_api.models.user_preference import UserPreferenceORM
 from worksheet_api.models.vocabulary import VocabularyORM
+
+# VocabularyMasterORM 은 VocabularyORM 보다 먼저 import
+# (FK: vocabulary.master_id → vocabulary_master.id)
+from worksheet_api.models.vocabulary_master import VocabularyMasterORM
 from worksheet_api.models.worksheet import WorksheetItemORM, WorksheetORM
 
 # Base.metadata 의 tenants / workspaces 를 SQLModel.metadata 에도 attach.
@@ -51,10 +56,12 @@ __all__ = [
     "PassageORM",
     "QuestionORM",
     "VocabularyORM",
+    "VocabularyMasterORM",
     "TranslationORM",
     "SyntaxAnnotationORM",
     "LlmUsageLogORM",
     "UserPreferenceORM",
     "WorksheetORM",
     "WorksheetItemORM",
+    "QAValidationResultORM",
 ]

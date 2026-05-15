@@ -227,6 +227,17 @@ class QuestionORM(WorkspaceScopedORMBase, table=True):
         sa_column=Column(JSONB, nullable=False, server_default="'[]'::jsonb"),
     )
 
+    # ─── 변형 전용 메타 (ADR-0017 D2-c JSONB) ────────────────────────────────
+    variant_metadata: dict[str, Any] | None = Field(
+        default=None,
+        sa_column=Column(JSONB, nullable=True),
+        description=(
+            "변형만의 추가 메타 (JSONB, nullable). "
+            "variant_kind != ORIGINAL 일 때만 의미 있는 값 — 원본 행에서는 항상 NULL. "
+            "v0.1 구조 미정 — Phase 3 첫 변형 생성 PR 에서 보강."
+        ),
+    )
+
     # ─── qa-validator 메타 ──────────────────────────────────────────────
     uniqueness_validated: bool = Field(
         default=False,
