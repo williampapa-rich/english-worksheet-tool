@@ -112,6 +112,59 @@ export interface Passage {
   source_material?: string | null;
 }
 
+/**
+ * VariantKind — POST /questions/{id}/variants/{kind} 의 kind 경로 파라미터.
+ *
+ * shared/schemas/question.py VariantKind enum 의 TypeScript 미러 (snake_case).
+ * catalog v0.4 §3.2.0 V1~V10 정합.
+ */
+export type VariantKind =
+  | "original"
+  | "vocabulary_swap"
+  | "vocabulary_inline"
+  | "grammar_swap"
+  | "grammar_inline"
+  | "blank_inference"
+  | "topic_main_idea_swap"
+  | "order_shuffle"
+  | "sentence_insertion_shift"
+  | "irrelevant_sentence_inject"
+  | "summary_blank_swap";
+
+/**
+ * Question — POST /passages/extract 응답 / POST /questions/{id}/variants/{kind} 응답.
+ *
+ * shared/schemas/question.py Question 의 TypeScript 미러 (최소 필드).
+ * UI 에서 사용하는 필드만 선언.
+ */
+export interface Question {
+  id: string;
+  passage_id: string;
+  type: string;
+  variant_kind: VariantKind;
+  derived_from_question_id: string | null;
+  number: number | null;
+  question_text: string;
+  choices: string[];
+  answer: number;
+  explanation: string;
+  uniqueness_validated: boolean;
+  uniqueness_validator_note: string | null;
+}
+
+/**
+ * ExtractedPassageResult — POST /passages/extract 응답의 results[] 1건.
+ *
+ * shared/schemas/passage.py PassageWithRelations 의 TypeScript 미러 (최소 필드).
+ * questions 포함 (Phase 3 — 변형 생성 진입점).
+ */
+export interface ExtractedPassageResult {
+  passage: Passage;
+  questions: Question[];
+  translation: Translation | null;
+  vocabulary: Vocabulary[];
+}
+
 /** Translation — Passage 1건의 한국어 해석 (1:1).
  *
  * shared/schemas/translation.py Translation 의 TypeScript 미러 (최소 필드).
@@ -600,23 +653,143 @@ export async function downloadWorksheetPdf(worksheetId: string): Promise<void> {
 /**
  * extractPassageText — POST /passages/extract (kind=text)
  *
- * 텍스트 1건을 정규화된 Passage 로 변환 + 영속화. 응답의 첫 결과만 반환.
+ * 텍스트 1건을 정규화된 Passage + Question[] + Translation + Vocabulary 로 변환 + 영속화.
+ * PassageNewPage 진입점 — results 전체 반환 (다중 지문 대비).
+ *
+ * @param payload  영어 지문 (+ 선택적으로 5지선다 + 정답)
+ * @param targetGrade  대상 학년 (default "high_3")
  */
-export async function extractPassageText(payload: string): Promise<Passage> {
+export async function extractPassageText(
+  payload: string,
+  targetGrade?: string
+): Promise<ExtractedPassageResult[]> {
   const response = await fetch(`${API_BASE_URL}/passages/extract`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ kind: "text", payload }),
+    body: JSON.stringify({
+      kind: "text",
+      payload,
+      ...(targetGrade ? { target_grade: targetGrade } : {}),
+    }),
   });
   await checkOk(response);
-  const body = (await response.json()) as {
-    results: Array<{ passage: Passage }>;
-  };
-  const first = body.results?.[0];
-  if (!first) {
-    throw new Error("extract 결과가 비어있습니다.");
+  const body = (await response.json()) as { results: ExtractedPassageResult[] };
+  return body.results ?? [];
+}
+
+/**
+ * extractPassageImage — POST /passages/extract (kind=image)
+ *
+ * 이미지 파일 (PNG/JPG) → multipart/form-data 로 전송 → Passage + Questions 추출.
+ * 다중 이미지 (여러 페이지) 동시 업로드 지원.
+ *
+ * @param files        PNG/JPG 파일 배열
+ * @param targetGrade  대상 학년 (default "high_3")
+ */
+export async function extractPassageImage(
+  files: File[],
+  targetGrade?: string
+): Promise<ExtractedPassageResult[]> {
+  if (files.length === 0) throw new Error("이미지 파일이 없습니다.");
+
+  // 여러 이미지 — 각각 extract 후 합산 (백엔드가 kind=image 는 파일 1개씩 처리)
+  const results: ExtractedPassageResult[] = [];
+  for (const file of files) {
+    const base64 = await _fileToBase64(file);
+    // media_type 추론 — JPEG/PNG 만 지원
+    const mediaType = file.type === "image/jpeg" ? "image/jpeg" : "image/png";
+    const response = await fetch(`${API_BASE_URL}/passages/extract`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        kind: "image",
+        payload: base64,
+        media_type: mediaType,
+        ...(targetGrade ? { target_grade: targetGrade } : {}),
+      }),
+    });
+    await checkOk(response);
+    const body = (await response.json()) as { results: ExtractedPassageResult[] };
+    results.push(...(body.results ?? []));
   }
-  return first.passage;
+  return results;
+}
+
+/**
+ * extractPassagePdf — POST /passages/extract (kind=pdf)
+ *
+ * PDF 파일 → base64 변환 후 전송 → Passage + Questions 추출.
+ *
+ * @param file         PDF 파일 (1건)
+ * @param targetGrade  대상 학년 (default "high_3")
+ */
+export async function extractPassagePdf(
+  file: File,
+  targetGrade?: string
+): Promise<ExtractedPassageResult[]> {
+  const base64 = await _fileToBase64(file);
+  const response = await fetch(`${API_BASE_URL}/passages/extract`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      kind: "pdf",
+      payload: base64,
+      ...(targetGrade ? { target_grade: targetGrade } : {}),
+    }),
+  });
+  await checkOk(response);
+  const body = (await response.json()) as { results: ExtractedPassageResult[] };
+  return body.results ?? [];
+}
+
+/**
+ * createVariant — POST /questions/{questionId}/variants/{kind}
+ *
+ * 원본 Question 에서 variant_kind 에 해당하는 변형 문제를 LLM 으로 생성.
+ * 생성 직후 qa-validator 가 정답 유일성 검증 (uniqueness_validated 포함 응답).
+ *
+ * LLM call 2회 (생성 + 검증) — 5~10초 소요 가능.
+ *
+ * @param questionId   원본 Question ID
+ * @param variantKind  VariantKind (snake_case, 경로 파라미터는 kebab-case 로 변환)
+ */
+export async function createVariant(
+  questionId: string,
+  variantKind: VariantKind
+): Promise<Question> {
+  // VariantKind snake_case → API 경로 kebab-case 변환 (예: vocabulary_swap → vocabulary-swap)
+  const kindPath = variantKind.replace(/_/g, "-");
+  const response = await fetch(`${API_BASE_URL}/questions/${questionId}/variants/${kindPath}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+  await checkOk(response);
+  return (await response.json()) as Question;
+}
+
+// ---------------------------------------------------------------------------
+// 내부 헬퍼 — 파일 → Base64
+// ---------------------------------------------------------------------------
+
+/**
+ * _fileToBase64 — File/Blob 을 base64 문자열로 변환 (data: prefix 제외).
+ */
+function _fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      // "data:<mime>;base64,<data>" 에서 data 부분만 추출
+      const base64 = result.split(",")[1];
+      if (base64 == null) {
+        reject(new Error("FileReader 결과가 비어있습니다."));
+      } else {
+        resolve(base64);
+      }
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("파일 읽기 실패"));
+    reader.readAsDataURL(file);
+  });
 }
 
 export interface WorksheetCreateInput {
