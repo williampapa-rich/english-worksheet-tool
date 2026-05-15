@@ -113,6 +113,18 @@ _VARIANT_KIND_CHECKS: dict[str, str] = {
         "- Are the 'wrong_a', 'wrong_b', 'both_wrong' distractors plausible but clearly "
         "incorrect in context?"
     ),
+    VariantKind.IRRELEVANT_SENTENCE_INJECT: (
+        "V9 (irrelevant_sentence_inject) specific checks:\n"
+        "- 주입된 문장이 본문의 논리 흐름을 명백히 단절시키는가? "
+        "(애매한 경우 — 약간 관련 있어 보이는 문장 → uniqueness failure)\n"
+        "- 주입된 문장 주변의 4개 정상 문장 간 응결 단서(대명사 referent / 접속사 / 논리 전개)가 "
+        "보존되어 있는가? (정상 4개 문장이 흐름 단절되면 structural error)\n"
+        "- 주입된 문장이 본문과 lexical similarity (어휘 공유)를 갖추어 "
+        "단순 어휘 차이만으로 쉽게 식별되지 않는가? "
+        "(너무 쉬운 경우 — vocabulary 만으로 즉시 식별 가능 → quality concern)\n"
+        "- 다른 4개 위치에서 주입 문장이 흐름에 자연스럽게 맞지 않는가? "
+        "(만약 다른 위치에서도 무관하게 보이면 → 문제 구조 결함)"
+    ),
 }
 
 _DEFAULT_VARIANT_KIND_CHECK = (
@@ -256,9 +268,7 @@ async def validate_question_uniqueness(
             question_id=question.id,
             validated_at=datetime.now(UTC),
             passed=llm_out.passed,
-            validator_note=(
-                f"[{llm_out.confidence}] {llm_out.note}"
-            ),
+            validator_note=(f"[{llm_out.confidence}] {llm_out.note}"),
             validator_model=used_model,
             validator_version=validator_version,
         )

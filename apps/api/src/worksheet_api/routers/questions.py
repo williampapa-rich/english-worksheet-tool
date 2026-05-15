@@ -8,6 +8,7 @@ Phase 3 변형 라우트:
   POST /questions/{question_id}/variants/order-shuffle — V7 변형 생성.
   POST /questions/{question_id}/variants/sentence-insertion-shift — V8 변형 생성.
   POST /questions/{question_id}/variants/summary-blank-swap — V10 변형 생성.
+  POST /questions/{question_id}/variants/irrelevant-sentence-inject — V9 변형 생성.
 
 ADR-0017 D2-c + D3-c (qa-validator 활성화):
   - 변형은 항상 신규 Question row INSERT (augment 와 달리 mode 개념 없음).
@@ -71,6 +72,10 @@ from llm.variants.v7_order_shuffle import (
 from llm.variants.v8_sentence_insertion_shift import (
     V8_APPLICABLE_TYPES,
     generate_v8_variant,
+)
+from llm.variants.v9_irrelevant_sentence_inject import (
+    V9_APPLICABLE_TYPES,
+    generate_v9_variant,
 )
 from llm.variants.v10_summary_blank_swap import (
     V10_APPLICABLE_TYPES,
@@ -254,9 +259,7 @@ async def create_v6_variant(
         saved_variant = await question_repo2.create(variant_with_qa)
 
         # 7. QAValidationResult row 저장 (실제 검증 결과 — placeholder 아님)
-        qa_result_with_question_id = qa_result.model_copy(
-            update={"question_id": saved_variant.id}
-        )
+        qa_result_with_question_id = qa_result.model_copy(update={"question_id": saved_variant.id})
         qa_repo = QAValidationResultRepository(session, tenant_ctx)
         await qa_repo.create(qa_result_with_question_id)
 
@@ -394,9 +397,7 @@ async def create_v2_variant(
         question_repo2 = QuestionRepository(session, tenant_ctx)
         saved_variant = await question_repo2.create(variant_with_qa)
 
-        qa_result_with_question_id = qa_result.model_copy(
-            update={"question_id": saved_variant.id}
-        )
+        qa_result_with_question_id = qa_result.model_copy(update={"question_id": saved_variant.id})
         qa_repo = QAValidationResultRepository(session, tenant_ctx)
         await qa_repo.create(qa_result_with_question_id)
 
@@ -534,9 +535,7 @@ async def create_v5_variant(
         question_repo2 = QuestionRepository(session, tenant_ctx)
         saved_variant = await question_repo2.create(variant_with_qa)
 
-        qa_result_with_question_id = qa_result.model_copy(
-            update={"question_id": saved_variant.id}
-        )
+        qa_result_with_question_id = qa_result.model_copy(update={"question_id": saved_variant.id})
         qa_repo = QAValidationResultRepository(session, tenant_ctx)
         await qa_repo.create(qa_result_with_question_id)
 
@@ -674,9 +673,7 @@ async def create_v4_variant(
         question_repo2 = QuestionRepository(session, tenant_ctx)
         saved_variant = await question_repo2.create(variant_with_qa)
 
-        qa_result_with_question_id = qa_result.model_copy(
-            update={"question_id": saved_variant.id}
-        )
+        qa_result_with_question_id = qa_result.model_copy(update={"question_id": saved_variant.id})
         qa_repo = QAValidationResultRepository(session, tenant_ctx)
         await qa_repo.create(qa_result_with_question_id)
 
@@ -815,9 +812,7 @@ async def create_v7_variant(
         question_repo2 = QuestionRepository(session, tenant_ctx)
         saved_v7 = await question_repo2.create(variant_with_qa_v7)
 
-        qa_result_v7_with_id = qa_result_v7.model_copy(
-            update={"question_id": saved_v7.id}
-        )
+        qa_result_v7_with_id = qa_result_v7.model_copy(update={"question_id": saved_v7.id})
         qa_repo_v7 = QAValidationResultRepository(session, tenant_ctx)
         await qa_repo_v7.create(qa_result_v7_with_id)
 
@@ -957,9 +952,7 @@ async def create_v8_variant(
         question_repo2 = QuestionRepository(session, tenant_ctx)
         saved_v8 = await question_repo2.create(variant_with_qa_v8)
 
-        qa_result_v8_with_id = qa_result_v8.model_copy(
-            update={"question_id": saved_v8.id}
-        )
+        qa_result_v8_with_id = qa_result_v8.model_copy(update={"question_id": saved_v8.id})
         qa_repo_v8 = QAValidationResultRepository(session, tenant_ctx)
         await qa_repo_v8.create(qa_result_v8_with_id)
 
@@ -1100,10 +1093,148 @@ async def create_v10_variant(
         question_repo2 = QuestionRepository(session, tenant_ctx)
         saved_v10 = await question_repo2.create(variant_with_qa_v10)
 
-        qa_result_v10_with_id = qa_result_v10.model_copy(
-            update={"question_id": saved_v10.id}
-        )
+        qa_result_v10_with_id = qa_result_v10.model_copy(update={"question_id": saved_v10.id})
         qa_repo_v10 = QAValidationResultRepository(session, tenant_ctx)
         await qa_repo_v10.create(qa_result_v10_with_id)
 
     return saved_v10
+
+
+# ─── V9 변형 라우트 ─────────────────────────────────────────────────────────
+
+
+@router.post(
+    "/{question_id}/variants/irrelevant-sentence-inject",
+    response_model=Question,
+    status_code=201,
+)
+async def create_v9_variant(
+    question_id: UUID,
+    tenant_ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    llm_client: Annotated[StructuredLLMClient, Depends(get_llm_client)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> Question:
+    """V9 irrelevant_sentence_inject 변형 생성 (Phase 3).
+
+    원본 question_id 의 Question + Passage 를 조회 → LLM 으로 무관 문장 주입 +
+    ①~⑤ 위치 마커 삽입 → 신규 Question row (variant_kind=IRRELEVANT_SENTENCE_INJECT)
+    + QAValidationResult row 를 저장한다.
+
+    카탈로그 v0.4 §V9:
+      - 적용 type: irrelevant_sentence_35.
+      - 본문에서 무관 문장 주입 위치 선정 (시작/끝 제외, 중간 위치 선호).
+      - lexical similarity 보존 + 논리 흐름 단절인 무관 문장 1개 생성.
+      - 5문장 시퀀스에 ①~⑤ 마커 부착 (variant_metadata.body_with_markers).
+      - choices 는 ["①", "②", "③", "④", "⑤"] 고정.
+      - answer 는 주입된 무관 문장 위치 (1-based).
+
+    QAValidationResult (ADR-0017 D3-c 활성):
+      - 변형 생성 직후 별도 LLM call 로 정답 유일성 검증.
+      - Question.uniqueness_validated / uniqueness_validator_note 캐시 갱신.
+      - 검증 실패 시에도 변형 생성 자체는 성공 (비치명).
+
+    멀티테넌트 강제 (W-2 패턴):
+      - question_id 조회 시 tenant_ctx 기반 QuestionRepository 사용.
+      - passage_id 조회 시 tenant_ctx 기반 PassageRepository 사용.
+      - 신규 row 생성 전 sentinel UUID → 실제 tenant_id / workspace_id 교체.
+
+    Args:
+        question_id: 원본 Question UUID.
+        tenant_ctx: 현재 요청의 테넌트 컨텍스트.
+        llm_client: StructuredLLMClient 구현체.
+        session: DB 세션.
+
+    Returns:
+        생성된 변형 Question (201). choices (위치 마커) + variant_metadata 채움.
+
+    Raises:
+        HTTPException 404: question_id 가 없거나 다른 tenant 소유.
+        HTTPException 404: question 에 연결된 Passage 가 없거나 다른 tenant 소유.
+        HTTPException 422: question type 이 V9 비적용 type (irrelevant_sentence_35 외).
+        HTTPException 502: LLMSchemaValidationError.
+        HTTPException 504: LLMTimeoutError.
+        HTTPException 500: PermanentLLMError.
+    """
+    # 1. 원본 Question 조회 — tenant 필터 강제 (W-2)
+    question_repo = QuestionRepository(session, tenant_ctx)
+    original_question = await question_repo.get(question_id)
+    if original_question is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Question {question_id} 를 찾을 수 없습니다.",
+        )
+
+    # 2. type 검증 — V9 적용 가능 type 인지
+    if original_question.type not in V9_APPLICABLE_TYPES:
+        applicable = sorted(str(t) for t in V9_APPLICABLE_TYPES)
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"V9 변형은 {applicable} type 에만 적용 가능합니다. "
+                f"현재 question type: {original_question.type}."
+            ),
+        )
+
+    # 3. 연결된 Passage 조회 — body_text 필요 (tenant 필터 강제)
+    passage_repo = PassageRepository(session, tenant_ctx)
+    passage = await passage_repo.get(original_question.passage_id)
+    if passage is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Question {question_id} 에 연결된 Passage {original_question.passage_id} 를 "
+                "찾을 수 없습니다."
+            ),
+        )
+
+    # 4. LLM 변형 생성 (V9 irrelevant_sentence_inject) — 에러는 _raise_llm_http_exception 으로 매핑
+    try:
+        variant_question_sentinel = await generate_v9_variant(
+            passage_text=passage.body_text,
+            original_question=original_question,
+            llm_client=llm_client,
+        )
+    except LLMSchemaValidationError as exc:
+        _raise_llm_http_exception(exc)
+    except LLMTimeoutError as exc:
+        _raise_llm_http_exception(exc)
+    except PermanentLLMError as exc:
+        _raise_llm_http_exception(exc)
+    except Exception as exc:
+        _raise_llm_http_exception(exc)
+
+    # 5. sentinel UUID → 실제 ID 교체
+    variant_with_ids_v9 = variant_question_sentinel.model_copy(  # type: ignore[union-attr]
+        update={
+            "tenant_id": tenant_ctx.tenant_id,
+            "workspace_id": tenant_ctx.workspace_id,
+            "passage_id": original_question.passage_id,
+            "derived_from_question_id": original_question.id,
+        }
+    )
+
+    # qa-validator LLM call — 트랜잭션 밖에서 실행 (CLAUDE.md §7.6 검증 분리)
+    qa_result_v9 = await validate_question_uniqueness(
+        question=variant_with_ids_v9,
+        passage_text=passage.body_text,
+        client=llm_client,
+        tenant_id=tenant_ctx.tenant_id,
+        workspace_id=tenant_ctx.workspace_id,
+    )
+
+    variant_with_qa_v9 = variant_with_ids_v9.model_copy(
+        update={
+            "uniqueness_validated": qa_result_v9.passed,
+            "uniqueness_validator_note": qa_result_v9.validator_note,
+        }
+    )
+
+    async with session.begin():
+        question_repo2 = QuestionRepository(session, tenant_ctx)
+        saved_v9 = await question_repo2.create(variant_with_qa_v9)
+
+        qa_result_v9_with_id = qa_result_v9.model_copy(update={"question_id": saved_v9.id})
+        qa_repo_v9 = QAValidationResultRepository(session, tenant_ctx)
+        await qa_repo_v9.create(qa_result_v9_with_id)
+
+    return saved_v9
