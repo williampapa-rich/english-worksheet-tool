@@ -235,6 +235,7 @@ async def test_create_v6_variant_main_idea_22_ok(
         patch("worksheet_api.routers.questions.PassageRepository") as mock_p_repo_cls,
         patch("worksheet_api.routers.questions.QAValidationResultRepository") as mock_qa_repo_cls,
         patch("worksheet_api.routers.questions.generate_v6_variant") as mock_generate,
+        patch("worksheet_api.routers.questions.validate_question_uniqueness") as mock_validate,
     ):
         # 첫 번째 QuestionRepository.get (원본 조회)
         mock_q_repo = AsyncMock()
@@ -258,6 +259,7 @@ async def test_create_v6_variant_main_idea_22_ok(
             update={"id": uuid.UUID(int=0), "tenant_id": uuid.UUID(int=0)}
         )
         mock_generate.return_value = sentinel_variant
+        mock_validate.return_value = qa_placeholder
 
         response = await async_client.post(
             f"/questions/{QUESTION_ID_1}/variants/topic-main-idea-swap"
@@ -287,6 +289,7 @@ async def test_create_v6_variant_theme_23_ok(
         patch("worksheet_api.routers.questions.PassageRepository") as mock_p_repo_cls,
         patch("worksheet_api.routers.questions.QAValidationResultRepository") as mock_qa_repo_cls,
         patch("worksheet_api.routers.questions.generate_v6_variant") as mock_generate,
+        patch("worksheet_api.routers.questions.validate_question_uniqueness") as mock_validate,
     ):
         mock_q_repo = AsyncMock()
         mock_q_repo.get = AsyncMock(return_value=original)
@@ -306,6 +309,7 @@ async def test_create_v6_variant_theme_23_ok(
             update={"id": uuid.UUID(int=0), "tenant_id": uuid.UUID(int=0)}
         )
         mock_generate.return_value = sentinel_variant
+        mock_validate.return_value = qa_placeholder
 
         response = await async_client.post(
             f"/questions/{QUESTION_ID_1}/variants/topic-main-idea-swap"
@@ -333,6 +337,7 @@ async def test_create_v6_variant_title_24_ok(
         patch("worksheet_api.routers.questions.PassageRepository") as mock_p_repo_cls,
         patch("worksheet_api.routers.questions.QAValidationResultRepository") as mock_qa_repo_cls,
         patch("worksheet_api.routers.questions.generate_v6_variant") as mock_generate,
+        patch("worksheet_api.routers.questions.validate_question_uniqueness") as mock_validate,
     ):
         mock_q_repo = AsyncMock()
         mock_q_repo.get = AsyncMock(return_value=original)
@@ -352,6 +357,7 @@ async def test_create_v6_variant_title_24_ok(
             update={"id": uuid.UUID(int=0), "tenant_id": uuid.UUID(int=0)}
         )
         mock_generate.return_value = sentinel_variant
+        mock_validate.return_value = qa_placeholder
 
         response = await async_client.post(
             f"/questions/{QUESTION_ID_1}/variants/topic-main-idea-swap"
@@ -363,22 +369,29 @@ async def test_create_v6_variant_title_24_ok(
 
 
 @pytest.mark.asyncio
-async def test_create_v6_variant_qa_placeholder_created(
+async def test_create_v6_variant_qa_result_created(
     async_client: AsyncClient,
     mock_session: AsyncMock,
     mock_llm_client: AsyncMock,
 ) -> None:
-    """QAValidationResult placeholder row 생성 확인 (qa_repo.create 호출 검증)."""
+    """QAValidationResult row 생성 확인 (qa-validator 활성화 후 실제 검증 결과 저장).
+
+    Phase 3 qa-validator 활성화 이후:
+      - placeholder (passed=False, note="pending") 대신 실제 검증 결과 저장.
+      - validate_question_uniqueness 가 1회 호출됨.
+      - QAValidationResultRepository.create 가 1회 호출됨.
+    """
     original = _make_original_question(QuestionType.GIST_22)
     passage = _make_passage()
     saved_variant = _make_saved_variant()
-    qa_placeholder = _make_qa_placeholder()
+    qa_result = _make_qa_placeholder()  # 픽스처 재사용 (passed=False → 검증 결과로 채워짐)
 
     with (
         patch("worksheet_api.routers.questions.QuestionRepository") as mock_q_repo_cls,
         patch("worksheet_api.routers.questions.PassageRepository") as mock_p_repo_cls,
         patch("worksheet_api.routers.questions.QAValidationResultRepository") as mock_qa_repo_cls,
         patch("worksheet_api.routers.questions.generate_v6_variant") as mock_generate,
+        patch("worksheet_api.routers.questions.validate_question_uniqueness") as mock_validate,
     ):
         mock_q_repo = AsyncMock()
         mock_q_repo.get = AsyncMock(return_value=original)
@@ -391,24 +404,24 @@ async def test_create_v6_variant_qa_placeholder_created(
         mock_p_repo_cls.return_value = mock_p_repo
 
         mock_qa_repo = AsyncMock()
-        mock_qa_repo.create = AsyncMock(return_value=qa_placeholder)
+        mock_qa_repo.create = AsyncMock(return_value=qa_result)
         mock_qa_repo_cls.return_value = mock_qa_repo
 
         sentinel_variant = saved_variant.model_copy(
             update={"id": uuid.UUID(int=0), "tenant_id": uuid.UUID(int=0)}
         )
         mock_generate.return_value = sentinel_variant
+        mock_validate.return_value = qa_result
 
         response = await async_client.post(
             f"/questions/{QUESTION_ID_1}/variants/topic-main-idea-swap"
         )
 
     assert response.status_code == 201
+    # validate_question_uniqueness 가 1회 호출되었는지 확인
+    mock_validate.assert_awaited_once()
     # QAValidationResultRepository.create 가 1회 호출되었는지 확인
     mock_qa_repo.create.assert_awaited_once()
-    created_qa: QAValidationResult = mock_qa_repo.create.call_args[0][0]
-    assert created_qa.passed is False
-    assert "pending" in (created_qa.validator_note or "")
 
 
 # ─── 에러 케이스 ─────────────────────────────────────────────────────────────

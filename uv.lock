@@ -1355,12 +1355,14 @@ name = "qa-validator"
 version = "0.1.0"
 source = { editable = "packages/qa_validator" }
 dependencies = [
+    { name = "llm" },
     { name = "pydantic" },
     { name = "shared" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "llm", editable = "packages/llm" },
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "shared", editable = "shared" },
 ]
