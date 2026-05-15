@@ -140,7 +140,9 @@ class TestSyntaxAnnotationCategoryAndExtras:
         assert ann.color_index == 12
 
     def test_bracket_style_literal(self) -> None:
-        ann = _make(kind=AnnotationKind.BRACKET, bracket_style="()")
-        assert ann.bracket_style == "()"
+        # 5종 모두 valid: () {} [] ⌜⌟ <> (P1-10c 에서 ⌜⌟ / <> 추가).
+        for valid in ("()", "{}", "[]", "⌜⌟", "<>"):
+            ann = _make(kind=AnnotationKind.BRACKET, bracket_style=valid)
+            assert ann.bracket_style == valid
         with pytest.raises(ValidationError):
-            _make(kind=AnnotationKind.BRACKET, bracket_style="<>")
+            _make(kind=AnnotationKind.BRACKET, bracket_style="@@")

@@ -17,7 +17,6 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
-
 # ─── fixture passage_id (고정 UUID) ─────────────────────────────────────────
 
 FIXTURE_1_ID = uuid.UUID("00000000-0000-0000-0000-000000000101")
