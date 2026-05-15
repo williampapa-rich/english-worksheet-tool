@@ -1,8 +1,8 @@
 # ADR 0014 — SyntaxAnnotation → HTML 렌더러 (양방향 출력 정합)
 
-- **상태(Status)**: Proposed
+- **상태(Status)**: Superseded by ADR-0018 (2026-05-15) — `annotation_html.py` server-side 렌더는 `annot-passage` HTML 출력 정합 baseline 역할은 완료했으나, Tiptap (에디터) ↔ Chromium (PDF) 의 본질적 wrap 차이 (와이프 v0.2 검수에서 노출 — `(to minimize ... environment.)` 라벨 wrap 어긋남 등) 를 server-side 매핑만으로 봉합 불가. ADR-0018 의 server-side Tiptap (Node.js + jsdom) 으로 양 측 단일 렌더 엔진화하면 `annotation_html.py` 폐기 + Phase 2.5 sprint 의 Stage F2 에서 라우트 교체.
 - **작성일**: 2026-05-07
-- **결정일**: TBD (PM 검토 대기)
+- **결정일**: 2026-05-07 (Accepted, B4 베이스라인) → 2026-05-15 (Superseded)
 - **작성자**: architect
 - **결정자**: PM (Dennis)
 - **유형**: ADR-0011 D8 (`content_html` 단순 wrap 한계) 해소. B4 (Worksheet preview
