@@ -1,6 +1,7 @@
 """Question API 엔드포인트 (Phase 3 — 변형 생성 라우트).
 
 Phase 3 변형 라우트:
+  POST /questions/{question_id}/variants/vocabulary-swap — V1 변형 생성.
   POST /questions/{question_id}/variants/topic-main-idea-swap — V6 변형 생성.
   POST /questions/{question_id}/variants/vocabulary-inline — V2 변형 생성.
   POST /questions/{question_id}/variants/blank-inference — V5 변형 생성.
@@ -48,6 +49,10 @@ from llm.errors import (
     LLMSchemaValidationError,
     LLMTimeoutError,
     PermanentLLMError,
+)
+from llm.variants.v1_vocabulary_swap import (
+    V1_APPLICABLE_TYPES,
+    generate_v1_variant,
 )
 from llm.variants.v2_vocabulary_inline import (
     V2_APPLICABLE_TYPES,
@@ -1238,3 +1243,144 @@ async def create_v9_variant(
         await qa_repo_v9.create(qa_result_v9_with_id)
 
     return saved_v9
+
+
+# ─── V1 변형 라우트 ─────────────────────────────────────────────────────────
+
+
+@router.post(
+    "/{question_id}/variants/vocabulary-swap",
+    response_model=Question,
+    status_code=201,
+)
+async def create_v1_variant(
+    question_id: UUID,
+    tenant_ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    llm_client: Annotated[StructuredLLMClient, Depends(get_llm_client)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> Question:
+    """V1 vocabulary_swap 변형 생성 (Phase 3).
+
+    원본 question_id 의 Question + Passage 를 조회 → LLM 으로 5개 어휘 후보 위치 선택 +
+    1개 부적절 단어 swap + ①~⑤ 마커 삽입 → 신규 Question row
+    (variant_kind=VOCABULARY_SWAP) + QAValidationResult row 를 저장한다.
+
+    카탈로그 v0.4 §V1:
+      - 적용 type: vocabulary_30 / long_set_41_42.
+      - 본문에서 5개 어휘 후보 위치 선택 (adjective / verb 권장, 의미 결정 단어).
+      - 5개 중 1개를 의미 부적절 단어로 swap (반의어 또는 문맥 어긋남).
+      - ①~⑤ 마커 인라인 삽입 → body_with_markers (variant_metadata 에 저장).
+      - choices 는 5개 마커 위치의 단어.
+      - answer 는 부적절 단어의 위치 (1-based).
+
+    QAValidationResult (ADR-0017 D3-c 활성):
+      - 변형 생성 직후 별도 LLM call 로 정답 유일성 검증.
+      - Question.uniqueness_validated / uniqueness_validator_note 캐시 갱신.
+      - 검증 실패 시에도 변형 생성 자체는 성공 (비치명).
+
+    멀티테넌트 강제 (W-2 패턴):
+      - question_id 조회 시 tenant_ctx 기반 QuestionRepository 사용.
+      - passage_id 조회 시 tenant_ctx 기반 PassageRepository 사용.
+      - 신규 row 생성 전 sentinel UUID → 실제 tenant_id / workspace_id 교체.
+
+    Args:
+        question_id: 원본 Question UUID.
+        tenant_ctx: 현재 요청의 테넌트 컨텍스트.
+        llm_client: StructuredLLMClient 구현체.
+        session: DB 세션.
+
+    Returns:
+        생성된 변형 Question (201). choices + answer + variant_metadata 채움.
+
+    Raises:
+        HTTPException 404: question_id 가 없거나 다른 tenant 소유.
+        HTTPException 404: question 에 연결된 Passage 가 없거나 다른 tenant 소유.
+        HTTPException 422: question type 이 V1 비적용 type
+            (vocabulary_30 / long_set_41_42 외).
+        HTTPException 502: LLMSchemaValidationError.
+        HTTPException 504: LLMTimeoutError.
+        HTTPException 500: PermanentLLMError.
+    """
+    # 1. 원본 Question 조회 — tenant 필터 강제 (W-2)
+    question_repo = QuestionRepository(session, tenant_ctx)
+    original_question = await question_repo.get(question_id)
+    if original_question is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Question {question_id} 를 찾을 수 없습니다.",
+        )
+
+    # 2. type 검증 — V1 적용 가능 type 인지
+    if original_question.type not in V1_APPLICABLE_TYPES:
+        applicable = sorted(str(t) for t in V1_APPLICABLE_TYPES)
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"V1 변형은 {applicable} type 에만 적용 가능합니다. "
+                f"현재 question type: {original_question.type}."
+            ),
+        )
+
+    # 3. 연결된 Passage 조회 — body_text 필요 (tenant 필터 강제)
+    passage_repo = PassageRepository(session, tenant_ctx)
+    passage = await passage_repo.get(original_question.passage_id)
+    if passage is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Question {question_id} 에 연결된 Passage {original_question.passage_id} 를 "
+                "찾을 수 없습니다."
+            ),
+        )
+
+    # 4. LLM 변형 생성 (V1 vocabulary_swap) — 에러는 _raise_llm_http_exception 으로 매핑
+    try:
+        variant_question_sentinel = await generate_v1_variant(
+            passage_text=passage.body_text,
+            original_question=original_question,
+            llm_client=llm_client,
+        )
+    except LLMSchemaValidationError as exc:
+        _raise_llm_http_exception(exc)
+    except LLMTimeoutError as exc:
+        _raise_llm_http_exception(exc)
+    except PermanentLLMError as exc:
+        _raise_llm_http_exception(exc)
+    except Exception as exc:
+        _raise_llm_http_exception(exc)
+
+    # 5. sentinel UUID → 실제 ID 교체
+    variant_with_ids_v1 = variant_question_sentinel.model_copy(  # type: ignore[union-attr]
+        update={
+            "tenant_id": tenant_ctx.tenant_id,
+            "workspace_id": tenant_ctx.workspace_id,
+            "passage_id": original_question.passage_id,
+            "derived_from_question_id": original_question.id,
+        }
+    )
+
+    # qa-validator LLM call — 트랜잭션 밖에서 실행 (CLAUDE.md §7.6 검증 분리)
+    qa_result_v1 = await validate_question_uniqueness(
+        question=variant_with_ids_v1,
+        passage_text=passage.body_text,
+        client=llm_client,
+        tenant_id=tenant_ctx.tenant_id,
+        workspace_id=tenant_ctx.workspace_id,
+    )
+
+    variant_with_qa_v1 = variant_with_ids_v1.model_copy(
+        update={
+            "uniqueness_validated": qa_result_v1.passed,
+            "uniqueness_validator_note": qa_result_v1.validator_note,
+        }
+    )
+
+    async with session.begin():
+        question_repo2 = QuestionRepository(session, tenant_ctx)
+        saved_v1 = await question_repo2.create(variant_with_qa_v1)
+
+        qa_result_v1_with_id = qa_result_v1.model_copy(update={"question_id": saved_v1.id})
+        qa_repo_v1 = QAValidationResultRepository(session, tenant_ctx)
+        await qa_repo_v1.create(qa_result_v1_with_id)
+
+    return saved_v1
