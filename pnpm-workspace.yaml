@@ -1,7 +1,5 @@
 packages:
   # React 웹앱 (배포 대상)
   - "apps/web"
-  # Server-side Tiptap PoC (Stage F1, ADR-0018)
-  - "apps/render"
   # Tiptap 구문분석 에디터 extensions
   - "packages/editor"
