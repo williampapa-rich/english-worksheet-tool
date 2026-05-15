@@ -406,7 +406,9 @@ async def test_preview_worksheet_xss_escape(async_client: AsyncClient) -> None:
     item_orm = _make_item_orm()
     malicious_text = '<script>alert("xss")</script>'
     passage = _make_passage()
-    passage = passage.model_copy(update={"body_text": malicious_text})
+    # paragraphs 도 함께 업데이트 — adapters.py 가 paragraphs 를 body_text 보다
+    # 우선 사용하므로 두 필드 모두 malicious 로 설정해야 렌더 결과 검증 가능.
+    passage = passage.model_copy(update={"body_text": malicious_text, "paragraphs": [malicious_text]})
 
     with (
         patch("worksheet_api.routers.worksheets.WorksheetRepository") as mock_ws_repo_cls,
