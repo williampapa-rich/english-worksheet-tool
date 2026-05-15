@@ -557,6 +557,13 @@ Phase 0를 시작할 수 있는 기반을 깔고, architect + domain-expert의 a
   가정과 달리 코드 어디에도 참조 없음 — B2 의 ADR-0013 으로 다음 번호 자연 사용.
 - [ ] **AnnotationSpan / AnnotationCategory 영속화 검증** — 에디터에서 직렬화된 결과를 DB
   에 저장 / 복원 라운드트립 검증 (Phase 1 baseline 검수 시 자연스럽게 검증됨).
+- [ ] **에디터 ↔ PDF 본문 렌더 통합 (ADR-0018, Proposed)** — `docs/adr/0018-unified-rendering-editor-pdf.md`.
+  와이프 v0.2 통합 검수 (2026-05-15) 중 발견된 *근본 결함* — Tiptap Decoration.widget 과
+  Chromium inline span 의 break-opportunity 차이로 wrap 위치 어긋남. 임시방편 4종 모두
+  원복. 권장안 = server-side Tiptap (옵션 a) — Node.js + jsdom 위에서 동일 Tiptap 인스턴스
+  렌더. ADR-0014 D1 의 "에디터 ↔ 서버 매핑 규칙 동기화 부담" risk 가 현실화된 결과 sprint.
+  PM 결정 항목 OQ1~OQ7. trigger = Phase 2-edit Stage E1/E2/E3 모두 머지 + 와이프 v0.2 통합
+  검수 결과 확정. Phase 2.5 (unified-rendering) 자리 제안.
 
 ---
 
