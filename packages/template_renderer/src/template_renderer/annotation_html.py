@@ -1,5 +1,12 @@
 """SyntaxAnnotation → HTML 렌더러 (ADR-0014).
 
+.. deprecated::
+    Stage F2 (2026-05-15) — Superseded by ``apps/render/`` (server-side Tiptap via
+    Node.js subprocess). Legacy fallback only.
+    ``LEGACY_ANNOTATION_RENDERER=true`` 환경변수로 활성화.
+    Phase 2.5 종료 + 충분한 production 검증 후 별 PR 에서 폐기 예정.
+    테스트 53건 (``test_annotation_html.py``) 은 legacy 호환 검증용으로 유지.
+
 `packages/hwpx_renderer/render.py` 의 SyntaxAnnotation → HWPX 렌더러와 *대칭*.
 같은 `SyntaxAnnotation[]` 입력에서 HTML 출력을 생성. 양 렌더러는 매핑 single-
 source-of-truth (`docs/annotation-hwpx-mapping.md`) 를 공유.
