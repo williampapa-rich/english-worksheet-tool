@@ -1,8 +1,8 @@
 # ADR 0017 — Question / VariantQuestion 단일 테이블 vs 별 테이블
 
-- **상태(Status)**: Proposed
+- **상태(Status)**: Accepted
 - **작성일**: 2026-05-10
-- **결정일**: TBD (PM 검토 대기 — Phase 3 진입 전)
+- **결정일**: 2026-05-15 (PM Dennis — D1=(a) 단일 테이블 + variant_kind discriminator / D3 하이브리드 (행 최신 상태 + history 테이블) / D5 다단계 derive 허용 / D6 cascade SET NULL / D8 Phase 3 진입 전 1회 마이그레이션)
 - **작성자**: architect
 - **결정자**: PM (Dennis)
 - **유형**: Phase 3 진입 차단 ADR — `Question` / `VariantQuestion` 의 *물리 모델*

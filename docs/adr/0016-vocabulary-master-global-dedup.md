@@ -1,8 +1,8 @@
 # ADR 0016 — VocabularyMaster (글로벌 어휘 dedup) 도입 방향
 
-- **상태(Status)**: Proposed
+- **상태(Status)**: Accepted
 - **작성일**: 2026-05-10
-- **결정일**: TBD (PM 검토 대기 — Phase 3 진입 전)
+- **결정일**: 2026-05-15 (PM Dennis — D1=(a) 별 테이블 / D2-c override 인정 / D3 tenant 별 UNIQUE / D5 학년 분리 X + homonym 별 행 / D6 Phase 2-edit 종료 후 별 PR)
 - **작성자**: architect
 - **결정자**: PM (Dennis)
 - **유형**: Phase 3 진입 차단 ADR — `Vocabulary` 의 passage 종속 모델 (v0.1) 을

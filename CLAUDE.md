@@ -3,9 +3,9 @@
 > 이 문서는 Claude Code CLI가 프로젝트 컨텍스트를 이해하기 위한 헌장(charter)이자, subagent들의 협업 규칙서다.
 > 변경 시 PR로 관리한다. 모든 핵심 의사결정은 여기 반영된다.
 
-**버전**: v0.11
-**최종 갱신**: 2026-05-09
-**상태**: **Phase 2-edit sprint Stage E1/E2/E3 코드 완료** (2026-05-09). 와이프 v0.2 통합 검수 대기 → Phase 3 (변형문제) 진입 신호. Stage E2 머지 PR #65~#73 (신규/상세/통합 편집/인라인 편집/메타 편집/items/wrap 정합). Stage E3 = `<PassageBodyEditor>` + Playwright E2E. Tiptap 전환 (ADR-0015 D5 a) 은 후속.
+**버전**: v0.12
+**최종 갱신**: 2026-05-15
+**상태**: **와이프 v0.2 통합 검수 종료** (2026-05-15). annotation 영역 5건 fix OK (PR #82) — highlight 다중 layer / 12색 정합 / 모서리 굴곡 제거 / 라벨 검정 / paragraph 분리. 잔존 = 에디터 ↔ PDF 본문 wrap 미세 차이 (두 엔진 본질적 차이) → **ADR-0018 Accepted** (PR #81) — server-side Tiptap 으로 근본 해결. **Phase 2.5 (unified-rendering) sprint 진입 신호** — Stage F1~F4 (3.5주). Phase 3 진입 차단 ADR-0016 (VocabularyMaster) / ADR-0017 (Question variant) 모두 Accepted (PR #80, 2026-05-15) — schema v0.2 + Alembic 마이그레이션은 별 PR. Tiptap 전환 (ADR-0015 D5 a) 은 ADR-0018 sprint 안에 흡수.
 
 ---
 
@@ -75,6 +75,17 @@
   - 다중 템플릿 (1단/2단, 어휘 위치 변형 등)
   - 로고/컬러 외 추가 프리셋
 
+#### Phase 2.5 — unified-rendering sprint (ADR-0018, 2026-05-15)
+
+- **목표**: 에디터 ↔ PDF 본문 렌더링을 **단일 엔진** (server-side Tiptap, Node.js + jsdom) 으로 통합. 와이프 v0.2 검수에서 발견된 wrap 위치 본질적 차이 (Tiptap Decoration.widget vs Chromium inline span) 해소.
+- **DoD**:
+  - server-side Tiptap PoC — annotation → HTML 동등성 검증 (Stage F1).
+  - `annotation_html.py` 폐기 → `apps/web/server` (또는 별 Node 서비스) 의 단일 렌더 라이브러리로 대체 (Stage F2). ADR-0014 → Superseded.
+  - Worksheet preview / PDF export 라우트가 새 라이브러리 사용 (Stage F3).
+  - 회귀 (Playwright wrap parity spec) + cleanup (Stage F4).
+- **소요**: 3.5주 / 6~9 PR (ADR-0018 추정).
+- **트리거**: Phase 3 진입 전 봉합 — Phase 3 변형문제 출력도 동일 렌더 엔진 의존.
+
 #### Phase 3 — 변형문제 (Feature 3)
 
 - **목표**: 변형 유형별 프롬프트 카탈로그 + 자동 검증 + 출력
@@ -82,6 +93,10 @@
   - 변형 유형 5개 이상 지원 (어휘, 어법, 빈칸, 어순, 주제·요지 등)
   - 정답 유일성 자동 검증 (qa-validator agent가 별도 LLM call로)
   - 변형 결과가 다시 정규화된 Question으로 들어가서 Phase 1, 2 파이프라인과 호환
+- **진입 전 차단 ADR (모두 Accepted, 2026-05-15)**:
+  - ADR-0016 VocabularyMaster (글로벌 어휘 dedup) — 별 테이블 + `Vocabulary.master_id` nullable FK.
+  - ADR-0017 Question / VariantQuestion 단일 테이블 + `variant_kind` discriminator + self-FK NULLABLE.
+  - ADR-0018 unified-rendering (Phase 2.5 sprint 선행).
 
 #### Phase 4 — 클라우드 배포 + 멀티테넌트 활성화
 
@@ -89,9 +104,17 @@
 
 ### 2.2 현재 위치
 
-**Phase 2 baseline 종료 — Phase 2-edit sprint 진입 신호** (2026-05-07).
+**Phase 2-edit sprint 종료 + Phase 2.5 (unified-rendering) sprint 진입 신호** (2026-05-15).
 
-- B5 와이프 검수 OK — PDF 퀄리티 A 등급, 합격선 "C까지" 훌쩍 초과.
+- 와이프 v0.2 통합 검수 종료 — annotation 영역 5건 fix OK (PR #82 머지).
+- 잔존 (에디터 ↔ PDF wrap 미세 차이) = **ADR-0018 Accepted** → Phase 2.5 sprint 신설 (Stage F1~F4, 3.5주). ADR-0014 → Superseded.
+- Phase 3 진입 차단 ADR 2건 Accepted: **ADR-0016** (VocabularyMaster 별 테이블) / **ADR-0017** (Question 단일 테이블 + variant_kind). 별 PR 에서 schema v0.2 + Alembic 마이그레이션.
+- 다음 트리거:
+  - Phase 2.5 종료 (wrap 정합 100%) → Phase 3 진입 신호.
+  - 병렬 가능: ADR-0016/0017 schema v0.2 PR + Phase 3 카탈로그 v0.4 보강 (domain-expert).
+
+**이전 마일스톤**:
+- Phase 2 baseline 종료 (2026-05-07) — B5 와이프 검수 OK, PDF 퀄리티 A 등급.
 - v0.2-α (Chromium native footer + 박스 한계선 + 어휘 표 분리) PR #58 open — 머지 대기.
 - ADR-0015 Phase 2-edit sprint **Accepted** (D3 b / D4 b / D5 a / D6 b) — Stage E1 시작 가능 (PR #58 머지 후).
 - Phase 1 baseline 결과 (2026-05-04, `docs/phase-1-wife-feedback.md`):
@@ -539,20 +562,20 @@ Phase 0를 시작할 수 있는 기반을 깔고, architect + domain-expert의 a
 - [ ] 학생용 템플릿의 다중 변형 (1단/2단 등) 도입 시점 — Phase 2 종료 후 와이프 피드백 기반
 - [x] **Annotation span 식별 방식** — `docs/adr/0004-annotation-span-identification.md` (character offset 채택, 메모리는 ProseMirror position 하이브리드)
 - [x] **마커 분리 vs inline 유지** — `docs/adr/0006-marker-processing-policy.md` (출제용 마커 분리 / 단락·지칭 라벨 inline 보존 하이브리드)
-- [ ] **Vocabulary 글로벌 마스터 도입 시점** — Phase 2/3 진입 전 ADR (`audit §4-3`).
-      `docs/adr/0016-vocabulary-master-global-dedup.md` (Proposed, 2026-05-10) —
-      권장: 별 `VocabularyMaster` 테이블 + `Vocabulary.master_id` nullable FK +
-      tenant 별 + Phase 2-edit Stage E2 머지 후 트리거. PM 결정 대기.
-- [ ] **Question / VariantQuestion 단일 테이블 vs 별 테이블** — Phase 3 진입 전 ADR
-      (`audit §4-5`). `docs/adr/0017-question-variant-table-strategy.md` (Proposed,
-      2026-05-10) — 권장: 단일 `Question` 테이블 + `variant_kind` discriminator +
-      `derived_from_question_id` self-FK NULLABLE + `variant_metadata JSONB`.
-      Phase 3 진입 *직전* 첫 Alembic 마이그레이션과 동시 도입. PM 결정 대기.
+- [x] **Vocabulary 글로벌 마스터** — `docs/adr/0016-vocabulary-master-global-dedup.md`
+      (Accepted, 2026-05-15). 별 `VocabularyMaster` 테이블 + `Vocabulary.master_id`
+      nullable FK + `(tenant_id, headword_normalized)` UNIQUE + Phase 2-edit 종료 후
+      별 PR (schema v0.2 + Alembic).
+- [x] **Question / VariantQuestion 단일 테이블 vs 별 테이블** —
+      `docs/adr/0017-question-variant-table-strategy.md` (Accepted, 2026-05-15).
+      단일 `Question` 테이블 + `variant_kind` discriminator + `derived_from_question_id`
+      self-FK NULLABLE + 다단계 derive 허용 + cascade SET NULL + qa_validation_results
+      별 history 테이블 (하이브리드). Phase 3 진입 전 1회 마이그레이션.
 - [ ] **레퍼런스 프로그램 영상 분석** — `/Users/william/Downloads/ScreenRecording_04-24-2026 15-11-52_1.MP4` 프레임 단위 분석 → UI/기능 설계 입력. 산출물 위치: `docs/reference-program-analysis.md` (작업 #5와 병렬, Phase 1 진입 전 완료 권고)
 - [x] **annotation split-mark 정밀 렌더 ADR** — `docs/adr/0014-annotation-html-renderer.md`
-  (Proposed, 2026-05-07). `packages/template_renderer/annotation_html.py` —
-  hwpx_renderer 와 대칭 구조. ADR-0011 D8 한계 해소. B4 (PR #56) 에서 worksheet
-  preview/PDF 통합.
+  (Accepted 2026-05-07 → **Superseded by ADR-0018, 2026-05-15**).
+  `packages/template_renderer/annotation_html.py` 는 baseline 역할 완료 — Phase 2.5
+  sprint Stage F2 에서 server-side Tiptap 으로 대체 예정.
 - [x] **Worksheet CRUD 라우트** — A1 (PR #48) / A2-a (PR #49) / A2-b (PR #50) 머지 완료.
   POST /worksheets / GET /{id} / GET / PATCH /{id} / DELETE /{id} + items POST/PATCH/DELETE.
 - [x] **B 시리즈 (Phase 2 진입)** — B1~B4 + ADR-0013 + ADR-0014 머지 완료 (PR #51~56,
@@ -564,13 +587,10 @@ Phase 0를 시작할 수 있는 기반을 깔고, architect + domain-expert의 a
   가정과 달리 코드 어디에도 참조 없음 — B2 의 ADR-0013 으로 다음 번호 자연 사용.
 - [ ] **AnnotationSpan / AnnotationCategory 영속화 검증** — 에디터에서 직렬화된 결과를 DB
   에 저장 / 복원 라운드트립 검증 (Phase 1 baseline 검수 시 자연스럽게 검증됨).
-- [ ] **에디터 ↔ PDF 본문 렌더 통합 (ADR-0018, Proposed)** — `docs/adr/0018-unified-rendering-editor-pdf.md`.
-  와이프 v0.2 통합 검수 (2026-05-15) 중 발견된 *근본 결함* — Tiptap Decoration.widget 과
-  Chromium inline span 의 break-opportunity 차이로 wrap 위치 어긋남. 임시방편 4종 모두
-  원복. 권장안 = server-side Tiptap (옵션 a) — Node.js + jsdom 위에서 동일 Tiptap 인스턴스
-  렌더. ADR-0014 D1 의 "에디터 ↔ 서버 매핑 규칙 동기화 부담" risk 가 현실화된 결과 sprint.
-  PM 결정 항목 OQ1~OQ7. trigger = Phase 2-edit Stage E1/E2/E3 모두 머지 + 와이프 v0.2 통합
-  검수 결과 확정. Phase 2.5 (unified-rendering) 자리 제안.
+- [x] **에디터 ↔ PDF 본문 렌더 통합** — `docs/adr/0018-unified-rendering-editor-pdf.md`
+  (Accepted, 2026-05-15). 옵션 (a) server-side Tiptap (Node.js + jsdom) 채택.
+  Phase 2.5 sprint 신설 (Stage F1~F4, 3.5주). ADR-0014 → Superseded. Tiptap 전환
+  (ADR-0015 D5 a) 흡수. Phase 3 진입 차단 — Phase 2.5 종료가 Phase 3 진입 트리거.
 
 ---
 
@@ -591,3 +611,4 @@ Phase 0를 시작할 수 있는 기반을 깔고, architect + domain-expert의 a
 | v0.10 | 2026-05-07 | **Phase 2 baseline 종료** — B5 와이프 검수 OK (PDF 퀄리티 A 등급, 합격선 "C까지" 훌쩍 초과). (1) §2.2 "현재 위치" Phase 2 baseline 종료 + Phase 2-edit 진입 신호로 갱신. (2) v0.2-α 채택안 = D안 (Chromium native `display_header_footer` + `margin`) — fixed footer 트릭 폐기, `pdf.py` + `_pdf_footer.html` 신규, 박스 한계선 footer 위 11mm 자동 분할. v0.2-β 자동 해소 (Chromium native pageNumber/totalPages). (3) ADR-0015 신규 — Phase 2-edit sprint (Stage E1 백엔드 PATCH 라우트 / E2 학생 자료 편집 UI / E3 Passage 편집 UI) 정의. CLAUDE.md §1.3 핵심 가치 명제 #3 "편집 가능한 출력" 실현. (4) §6.4 PDF 등급 기록 + §6.5 v0.2 PR 분리 갱신. |
 | v0.10.1 | 2026-05-07 | (1) ADR-0015 Accepted — D3-D6 모두 권장안 채택 (Vocabulary DELETE 모든 항목 / Passage 메타 없음 / Tiptap 재사용 + prop 분기 / "+" 버튼). Stage E1 시작 가능 (PR #58 머지 후). (2) §2.2 "Phase 1 baseline 와이프 OK 별도 대기" 표기 정정 — 2026-05-04 검수 완료 (Editor A / HWPX D), ADR-0008 로 HWPX 폐기 + HTML→PDF 전환. Phase 1 출력 경로는 Phase 2 PDF 로 통합 흡수. |
 | v0.11 | 2026-05-09 | **Stage E1/E2/E3 코드 완료** (Phase 2-edit sprint). (1) Stage E2 PR #65~#73 머지: WorksheetNewPage / WorksheetDetailPage / WorksheetEditPage / Translation·Vocabulary·본문 인라인 편집 / 메타 편집 모달 / items 추가·삭제·순서 / 에디터-PDF wrap 정합 (Pretendard webfont + paragraph 분할 emit + bracket 라벨 밖). (2) Stage E3 = `<PassageBodyEditor>` (textarea 기반, paragraphs 빈 줄 분리, body 변경 시 annotation 전체 삭제 + confirm) + Playwright E2E `passage_body_editor.spec.ts`. (3) Tiptap 전환 (ADR-0015 D5 a) 은 후속 — 현재 textarea 로 와이프 검수 가능. (4) §1.3 핵심 가치 명제 #3 "편집 가능한 출력" 실현 완료 — 와이프 v0.2 통합 검수 → Phase 3 (변형문제) 진입 신호. |
+| v0.12 | 2026-05-15 | **와이프 v0.2 검수 종료 + Phase 2.5 (unified-rendering) sprint 진입**. (1) PR #82 annotation 영역 fix 5건 머지 — highlight 다중 layer / 12색 정합 / 모서리 굴곡 제거 / 라벨 검정 / paragraph 분리. (2) **ADR-0018 Accepted** (PR #81) — 에디터 ↔ PDF 본문 wrap 미세 차이 (Tiptap vs Chromium 본질적 차이) 해소 위해 server-side Tiptap (Node.js + jsdom) 채택. Stage F1~F4 (3.5주). ADR-0014 → Superseded. (3) **ADR-0016 / ADR-0017 Accepted** (PR #80) — VocabularyMaster 별 테이블 + `Vocabulary.master_id` nullable FK / Question 단일 테이블 + `variant_kind` discriminator + self-FK NULLABLE. 별 PR 에서 schema v0.2 + Alembic. (4) §2.1 Phase 2.5 자리 신설 — Phase 3 진입 전 wrap 정합 봉합. (5) Tiptap 전환 (ADR-0015 D5 a) 은 ADR-0018 sprint 안에 흡수. |

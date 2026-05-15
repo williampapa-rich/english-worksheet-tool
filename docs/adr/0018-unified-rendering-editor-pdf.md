@@ -1,8 +1,8 @@
 # ADR 0018 — 에디터 ↔ PDF 본문 렌더링 통합 sprint 정의
 
-- **상태(Status)**: Proposed
+- **상태(Status)**: Accepted
 - **작성일**: 2026-05-15
-- **결정일**: TBD (PM 검토 대기 — Open Questions §)
+- **결정일**: 2026-05-15 (PM Dennis — 옵션 (a) server-side Tiptap 채택. ADR-0014 → Superseded. Phase 2.5 자리 신설. Stage F1~F4 즉시 시작.)
 - **작성자**: architect
 - **결정자**: PM (Dennis)
 - **유형**: Phase 2-edit baseline 마무리 중 발견된 *근본 결함* (에디터 ↔ PDF wrap
