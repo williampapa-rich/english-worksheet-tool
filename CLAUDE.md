@@ -3,9 +3,9 @@
 > 이 문서는 Claude Code CLI가 프로젝트 컨텍스트를 이해하기 위한 헌장(charter)이자, subagent들의 협업 규칙서다.
 > 변경 시 PR로 관리한다. 모든 핵심 의사결정은 여기 반영된다.
 
-**버전**: v0.13
+**버전**: v0.12
 **최종 갱신**: 2026-05-15
-**상태**: **Phase 2.5 Stage F3 종료** (2026-05-15). F1/F2 ad-hoc 진단 spec → F3 정식 회귀 spec 활성화 (줄 번호 기반 wrap 정합 assertion). annotation_html.py 폐기 결정 = **(b) 유지 (F4 검수 후 별 PR)**. Dockerfile Node.js 추가 = 별 PR. **Stage F4 (와이프 검수) 진입 대기**. `docs/stage-f3-cleanup.md` 참조.
+**상태**: **와이프 v0.2 통합 검수 종료** (2026-05-15). annotation 영역 5건 fix OK (PR #82) — highlight 다중 layer / 12색 정합 / 모서리 굴곡 제거 / 라벨 검정 / paragraph 분리. 잔존 = 에디터 ↔ PDF 본문 wrap 미세 차이 (두 엔진 본질적 차이) → **ADR-0018 Accepted** (PR #81) — server-side Tiptap 으로 근본 해결. **Phase 2.5 (unified-rendering) sprint 진입 신호** — Stage F1~F4 (3.5주). Phase 3 진입 차단 ADR-0016 (VocabularyMaster) / ADR-0017 (Question variant) 모두 Accepted (PR #80, 2026-05-15) — schema v0.2 + Alembic 마이그레이션은 별 PR. Tiptap 전환 (ADR-0015 D5 a) 은 ADR-0018 sprint 안에 흡수.
 
 ---
 
@@ -104,29 +104,14 @@
 
 ### 2.2 현재 위치
 
-**Phase 2.5 Stage F3 종료 — Stage F4 (와이프 검수) 진입 대기** (2026-05-15).
+**Phase 2-edit sprint 종료 + Phase 2.5 (unified-rendering) sprint 진입 신호** (2026-05-15).
 
-#### Phase 2.5 Stage 진행 현황
-
-- **F1** (PR #89): server-side Tiptap PoC — generateHTML + ProseMirror View (jsdom) 경로 검증. C1/C2/C3 시나리오 annotation mark 구조 확인.
-- **F2** (PR #90): Python subprocess → Node.js CLI (`apps/render/src/bin.ts`) 라우트 통합. `render_annotations_html_via_node()` 구현. feature flag `LEGACY_ANNOTATION_RENDERER=false` (기본). 응답 시간 +200ms (허용 범위).
-- **F3** (이 PR): 회귀 spec 활성화 + cleanup.
-  - `wrap_parity_stage_f3.spec.ts` 신규 — 줄 번호 기반 wrap 정합 assertion (`getWordLineNumber()`, `isWordOnFirstLine()`). F1/F2 의 타입 체크 수준에서 실질 wrap 위치 검증으로 격상.
-  - annotation_html.py 폐기 결정: **(b) 유지** — F4 검수 후 별 PR 에서 제거. 현재 `LEGACY_ANNOTATION_RENDERER=false` 기본 → production 경로 비활성.
-  - Dockerfile Node.js 추가: 별 PR — production 배포 전 (Phase 4) 에 정비.
-  - `docs/stage-f3-cleanup.md` 보고서 — F3-a~e 결과 + F4 검수 가이드.
-- **F4** (예정): 와이프 실제 지문 검수 (아잉카 or 수능 기출). 에디터 annotation → preview wrap 시각 정합 + PDF export 검증.
-
-#### 다음 트리거
-
-- **F4 와이프 검수 OK** → Phase 2.5 종료 → **Phase 3 (변형문제) 진입 신호**.
-- 병렬 가능: ADR-0016/0017 schema v0.2 PR + Phase 3 카탈로그 v0.4 보강 (domain-expert).
-- F4 OK 후 별 PR: annotation_html.py 폐기 + Dockerfile Node.js 추가.
-
-**이전 마일스톤 (Phase 2.5 진입 이전)**:
-- Phase 2-edit sprint 종료 (2026-05-15) — 와이프 v0.2 통합 검수 OK (annotation 5건 fix PR #82).
-- 잔존 wrap 미세 차이 → **ADR-0018 Accepted** → Phase 2.5 sprint 신설.
-- Phase 3 진입 차단 ADR 2건 Accepted: **ADR-0016** (VocabularyMaster) / **ADR-0017** (Question 단일 테이블).
+- 와이프 v0.2 통합 검수 종료 — annotation 영역 5건 fix OK (PR #82 머지).
+- 잔존 (에디터 ↔ PDF wrap 미세 차이) = **ADR-0018 Accepted** → Phase 2.5 sprint 신설 (Stage F1~F4, 3.5주). ADR-0014 → Superseded.
+- Phase 3 진입 차단 ADR 2건 Accepted: **ADR-0016** (VocabularyMaster 별 테이블) / **ADR-0017** (Question 단일 테이블 + variant_kind). 별 PR 에서 schema v0.2 + Alembic 마이그레이션.
+- 다음 트리거:
+  - Phase 2.5 종료 (wrap 정합 100%) → Phase 3 진입 신호.
+  - 병렬 가능: ADR-0016/0017 schema v0.2 PR + Phase 3 카탈로그 v0.4 보강 (domain-expert).
 
 **이전 마일스톤**:
 - Phase 2 baseline 종료 (2026-05-07) — B5 와이프 검수 OK, PDF 퀄리티 A 등급.
@@ -627,4 +612,3 @@ Phase 0를 시작할 수 있는 기반을 깔고, architect + domain-expert의 a
 | v0.10.1 | 2026-05-07 | (1) ADR-0015 Accepted — D3-D6 모두 권장안 채택 (Vocabulary DELETE 모든 항목 / Passage 메타 없음 / Tiptap 재사용 + prop 분기 / "+" 버튼). Stage E1 시작 가능 (PR #58 머지 후). (2) §2.2 "Phase 1 baseline 와이프 OK 별도 대기" 표기 정정 — 2026-05-04 검수 완료 (Editor A / HWPX D), ADR-0008 로 HWPX 폐기 + HTML→PDF 전환. Phase 1 출력 경로는 Phase 2 PDF 로 통합 흡수. |
 | v0.11 | 2026-05-09 | **Stage E1/E2/E3 코드 완료** (Phase 2-edit sprint). (1) Stage E2 PR #65~#73 머지: WorksheetNewPage / WorksheetDetailPage / WorksheetEditPage / Translation·Vocabulary·본문 인라인 편집 / 메타 편집 모달 / items 추가·삭제·순서 / 에디터-PDF wrap 정합 (Pretendard webfont + paragraph 분할 emit + bracket 라벨 밖). (2) Stage E3 = `<PassageBodyEditor>` (textarea 기반, paragraphs 빈 줄 분리, body 변경 시 annotation 전체 삭제 + confirm) + Playwright E2E `passage_body_editor.spec.ts`. (3) Tiptap 전환 (ADR-0015 D5 a) 은 후속 — 현재 textarea 로 와이프 검수 가능. (4) §1.3 핵심 가치 명제 #3 "편집 가능한 출력" 실현 완료 — 와이프 v0.2 통합 검수 → Phase 3 (변형문제) 진입 신호. |
 | v0.12 | 2026-05-15 | **와이프 v0.2 검수 종료 + Phase 2.5 (unified-rendering) sprint 진입**. (1) PR #82 annotation 영역 fix 5건 머지 — highlight 다중 layer / 12색 정합 / 모서리 굴곡 제거 / 라벨 검정 / paragraph 분리. (2) **ADR-0018 Accepted** (PR #81) — 에디터 ↔ PDF 본문 wrap 미세 차이 (Tiptap vs Chromium 본질적 차이) 해소 위해 server-side Tiptap (Node.js + jsdom) 채택. Stage F1~F4 (3.5주). ADR-0014 → Superseded. (3) **ADR-0016 / ADR-0017 Accepted** (PR #80) — VocabularyMaster 별 테이블 + `Vocabulary.master_id` nullable FK / Question 단일 테이블 + `variant_kind` discriminator + self-FK NULLABLE. 별 PR 에서 schema v0.2 + Alembic. (4) §2.1 Phase 2.5 자리 신설 — Phase 3 진입 전 wrap 정합 봉합. (5) Tiptap 전환 (ADR-0015 D5 a) 은 ADR-0018 sprint 안에 흡수. |
-| v0.13 | 2026-05-15 | **Phase 2.5 Stage F3 종료 — Stage F4 (와이프 검수) 진입 대기**. (1) `wrap_parity_stage_f3.spec.ts` 신규 — F1/F2 ad-hoc 진단 spec → 줄 번호(`getWordLineNumber`) 기반 wrap 정합 assertion 정식 활성화. C1/C2/C3 에디터 vs 서버 렌더 줄 번호 일치 검증. (2) annotation_html.py 폐기 결정 = **(b) 유지** — F4 와이프 검수 후 별 PR. `LEGACY_ANNOTATION_RENDERER=false` 기본 유지. (3) Dockerfile Node.js 추가 = 별 PR (Phase 4 이전 정비). (4) `docs/stage-f3-cleanup.md` 보고서 — F3-a~e 결과 + F4 검수 가이드 + 장애 시 fallback 절차. (5) §2.2 F1/F2/F3 종료 표기 + F4 진입 신호. |

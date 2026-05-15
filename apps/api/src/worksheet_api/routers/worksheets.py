@@ -105,7 +105,6 @@ from shared.schemas.worksheet import (
     WorksheetOrientation,
 )
 from worksheet_api.db import get_db
-from worksheet_api.integrations.server_renderer import render_annotations_html_via_node
 from worksheet_api.repositories import (
     PassageRepository,
     SyntaxAnnotationRepository,
@@ -929,15 +928,12 @@ async def _build_worksheet_html(
             vocabulary_by_passage[passage.id] = await vocabulary_repo.list_by_passage(passage.id)
 
     # 템플릿 컨텍스트 생성 + 렌더링 (MVP: style=playful 고정)
-    # ADR-0018 Stage F2: annotation_renderer 를 server-side Tiptap 으로 교체.
-    # LEGACY_ANNOTATION_RENDERER=true 이면 server_renderer 내부에서 annotation_html.py fallback.
     context = worksheet_to_template_context(
         worksheet,
         passages,
         annotations_by_passage=annotations_by_passage,
         translations_by_passage=translations_by_passage,
         vocabulary_by_passage=vocabulary_by_passage,
-        annotation_renderer=render_annotations_html_via_node,
     )
     html_content = render_worksheet_html(context, style="playful")
 

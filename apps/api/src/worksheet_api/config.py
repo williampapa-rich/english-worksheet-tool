@@ -58,22 +58,6 @@ class Settings(BaseSettings):
     app_title: str = "영어 학습 자료 생성 도구 API"
     app_version: str = "0.1.0"
 
-    # ── Node.js server-side renderer (ADR-0018 Stage F2) ─────────────────────
-    # subprocess로 호출하는 Node.js CLI 설정.
-    # NODE_BIN: node 바이너리 경로 (기본: "node" — PATH에서 해석).
-    node_bin: str = "node"
-    # JITI_BIN: jiti TypeScript 실행기 경로.
-    # 기본값: apps/render/node_modules/.bin/jiti (pnpm install 후 자동 생성).
-    jiti_bin: str = ""
-    # SERVER_RENDERER_PATH: bin.ts 경로.
-    # 기본값: apps/render/src/bin.ts (jiti로 실행 — 빌드 불필요).
-    server_renderer_path: str = ""
-    # LEGACY_ANNOTATION_RENDERER: "true" 이면 annotation_html.py fallback 사용.
-    # Stage F2 초기 안전망. 충분한 production 검증 후 제거.
-    legacy_annotation_renderer: bool = False
-    # SERVER_RENDERER_TIMEOUT: subprocess 타임아웃 (초).
-    server_renderer_timeout: int = 30
-
     # ── CORS ──────────────────────────────────────────────────────────────────
     # 허용할 origin 목록. 환경변수 CORS_ORIGINS 에 comma-separated 로 override 가능.
     # 기본값: Vite dev server (http://localhost:5173).
