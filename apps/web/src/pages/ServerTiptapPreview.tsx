@@ -285,7 +285,90 @@ const ZERO_WASTE_PASSAGE: PassageForRender = {
 
 const ZERO_WASTE_ANNOTATIONS: SyntaxAnnotation[] = [];
 
-type Scenario = "C1" | "C2" | "C3" | "zero-waste";
+// ─── 비전 회귀 전용 시나리오 (visual_regression_annotation.spec.ts) ──────────
+//
+// 기존 C1/C2/C3 는 wrap_parity_stage_f3 spec 이 의존 — 변경 금지.
+// 비전 spec 은 annotation 시각(색상/두께/여백)을 픽셀 단위로 고정하는 것이 목적이므로
+// highlight + underline 동시 적용 등 더 풍부한 annotation 을 포함한 별도 fixture.
+
+/** visual-c1: highlight(color_index=2) + underline + top_label 동시 */
+const VISUAL_C1_ANNOTATIONS: SyntaxAnnotation[] = [
+  {
+    kind: "highlight",
+    span: {
+      span_format: "character_offset_v1",
+      start: C1_PASSAGE.body_text.indexOf("These supermarkets and grocery stores"),
+      end:
+        C1_PASSAGE.body_text.indexOf("These supermarkets and grocery stores") +
+        "These supermarkets and grocery stores".length,
+    },
+    color_index: 2,
+    annotation_id: "vc1-ann-1",
+  },
+  {
+    kind: "underline",
+    span: {
+      span_format: "character_offset_v1",
+      start: C1_PASSAGE.body_text.indexOf("attempt to prevent waste"),
+      end:
+        C1_PASSAGE.body_text.indexOf("attempt to prevent waste") +
+        "attempt to prevent waste".length,
+    },
+    annotation_id: "vc1-ann-2",
+  },
+  {
+    kind: "top_label",
+    span: {
+      span_format: "character_offset_v1",
+      start: C1_PASSAGE.body_text.indexOf(
+        "prevent waste by eliminating plastic packages altogether"
+      ),
+      end:
+        C1_PASSAGE.body_text.indexOf("prevent waste by eliminating plastic packages altogether") +
+        "prevent waste by eliminating plastic packages altogether".length,
+    },
+    text: "목적어구",
+    annotation_id: "vc1-ann-3",
+  },
+];
+
+/** visual-c2: top_label + bracket(() + bottom_label 동시 */
+const VISUAL_C2_ANNOTATIONS: SyntaxAnnotation[] = [
+  {
+    kind: "top_label",
+    span: {
+      span_format: "character_offset_v1",
+      start: C2_PASSAGE.body_text.indexOf("seller and buyer"),
+      end: C2_PASSAGE.body_text.indexOf("seller and buyer") + "seller and buyer".length,
+    },
+    text: "주어",
+    annotation_id: "vc2-ann-1",
+  },
+  {
+    kind: "bracket",
+    span: {
+      span_format: "character_offset_v1",
+      start: C2_PASSAGE.body_text.indexOf("to minimize"),
+      end:
+        C2_PASSAGE.body_text.indexOf("to minimize") +
+        "to minimize the negative impact on the environment.".length,
+    },
+    bracket_style: "()",
+    annotation_id: "vc2-ann-2",
+  },
+  {
+    kind: "bottom_label",
+    span: {
+      span_format: "character_offset_v1",
+      start: C2_PASSAGE.body_text.indexOf("work together"),
+      end: C2_PASSAGE.body_text.indexOf("work together") + "work together".length,
+    },
+    text: "동사",
+    annotation_id: "vc2-ann-3",
+  },
+];
+
+type Scenario = "C1" | "C2" | "C3" | "zero-waste" | "visual-c1" | "visual-c2";
 
 function getScenarioData(scenario: string): {
   passage: PassageForRender;
@@ -295,6 +378,8 @@ function getScenarioData(scenario: string): {
   if (scenario === "C3") return { passage: C3_PASSAGE, annotations: C3_ANNOTATIONS };
   if (scenario === "zero-waste")
     return { passage: ZERO_WASTE_PASSAGE, annotations: ZERO_WASTE_ANNOTATIONS };
+  if (scenario === "visual-c1") return { passage: C1_PASSAGE, annotations: VISUAL_C1_ANNOTATIONS };
+  if (scenario === "visual-c2") return { passage: C2_PASSAGE, annotations: VISUAL_C2_ANNOTATIONS };
   return { passage: C1_PASSAGE, annotations: C1_ANNOTATIONS };
 }
 
