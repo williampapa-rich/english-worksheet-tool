@@ -232,7 +232,7 @@ def test_bracket_span_to_end_of_body_no_duplicate_close() -> None:
 
 def test_bracket_emitted_outside_label_span() -> None:
     """회귀 — 라벨 + bracket 이 같은 span 에 적용되면 bracket 글자는 라벨 span *밖*에
-    위치해야 한다.
+    위치해야 한다 (PR #70 정책 유지).
 
     버그 (2026-05-08 사용자 보고): bracket 이 라벨 span 안에 들어가면 라벨 box 폭 (=
     borderline 폭) 이 괄호 글자까지 확장되어 borderline 이 괄호 위까지 그려진다.
@@ -366,21 +366,27 @@ def test_body_text_with_annotation_xss_escaped() -> None:
 # ─── 중첩 / 충돌 (D5) ───────────────────────────────────────────────────────
 
 
-def test_overlapping_text_runs_last_wins() -> None:
-    """highlight + underline 같은 span — 마지막 적용 우선 (hwpx 와 동일)."""
+def test_overlapping_text_runs_combined() -> None:
+    """highlight + underline 같은 span — 둘 다 적용 (2026-05-10 fix).
+
+    이전 정책 = "마지막 적용 우선" (underline 이 highlight 덮어씀) 은
+    "highlight 칠한 부분 안에 underline 추가하면 highlight 가 사라지는" 와이프
+    검수 회귀 원인. 두 layer 동시 적용으로 정책 변경.
+    """
     passage = _make_passage("Hello")
     annotations = [
         _make_annotation(AnnotationKind.HIGHLIGHT, 0, 5, color_index=1),
         _make_annotation(AnnotationKind.UNDERLINE, 0, 5),
     ]
     result = str(render_annotations_to_html(passage, annotations))
-    # 마지막 적용 = underline → underline class 만 (highlight 사라짐)
+    # 둘 다 같은 span 안에 class 합쳐서 emit.
+    assert "annot-highlight--1" in result
     assert "annot-underline" in result
-    assert "annot-highlight" not in result
 
 
 def test_partial_overlap_text_runs() -> None:
-    """highlight 0-5 + underline 3-7 → 0-3 highlight, 3-5 underline, 5-7 underline."""
+    """highlight 0-5 + underline 3-7 → 0-3 highlight 단독, 3-5 highlight+underline,
+    5-7 underline 단독 (2026-05-10 fix)."""
     passage = _make_passage("abcdefghij")
     annotations = [
         _make_annotation(AnnotationKind.HIGHLIGHT, 0, 5, color_index=2),
@@ -389,6 +395,26 @@ def test_partial_overlap_text_runs() -> None:
     result = str(render_annotations_to_html(passage, annotations))
     assert "annot-highlight--2" in result
     assert "annot-underline" in result
+    # 겹치는 3-5 영역 ('de') 가 두 class 모두 가진 단일 span 으로 emit 되어야.
+    assert (
+        'class="annot-highlight annot-highlight--2 annot-underline">de' in result
+        or 'class="annot-highlight annot-highlight--2 annot-underline">de</span>' in result
+    )
+
+
+def test_underline_inside_highlight_preserves_highlight() -> None:
+    """highlight 칠한 영역 안에 *일부분* underline 을 추가해도 highlight 가
+    underline 자리에서 사라지지 않아야 (2026-05-10 와이프 v0.2 검수 회귀)."""
+    passage = _make_passage("These supermarkets and")
+    annotations = [
+        _make_annotation(AnnotationKind.HIGHLIGHT, 0, 22, color_index=8),
+        _make_annotation(AnnotationKind.UNDERLINE, 6, 18),  # "supermarkets"
+    ]
+    result = str(render_annotations_to_html(passage, annotations))
+    # supermarkets 자리에 highlight + underline 둘 다 존재.
+    assert "annot-highlight--8 annot-underline" in result
+    # 'supermarkets' 글자 자체가 두 class 가진 span 안에 있어야.
+    assert ">supermarkets" in result
 
 
 # ─── out-of-range (D5) ──────────────────────────────────────────────────────

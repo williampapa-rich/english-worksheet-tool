@@ -13,6 +13,16 @@
   /* 본문 paragraph — 템플릿이 정의한 폰트 / 행간 그대로 상속. 추가 스타일 없음. */
 }
 
+/* 2026-05-15 fix — paragraph 간 시각 분리. 에디터 (`.ProseMirror p { padding:
+ * 0.5em 0 }`) 와 정합 위해 `.passage-body` 안의 `annot-passage` 에 padding 적용.
+ * `.passage-body .annot-passage { padding: 0 }` (`_passage_body.css:67`) 가
+ * 후순위로 덮어쓰는데, 본 셀렉터는 `.passage-body` cascade *후* 에 정의되어 우선.
+ * 이전엔 PDF 가 line-height 3.4 만으로 paragraph 경계 표현 → 시각상 paragraph
+ * 분리 안 보이는 가독성 회귀 (와이프 v0.2 검수). */
+.passage-body .annot-passage {
+  padding: 0.5em 0;
+}
+
 /* ─── highlight (12색) ──────────────────────────────────────────────────── */
 
 /* color_index 1~12. hwpx_renderer 의 charPr id 4~15 와 대칭.
@@ -20,23 +30,32 @@
  * 본문 폰트 위에 배경색만 — 텍스트는 그대로. */
 
 .annot-highlight {
-  /* 공통 — 폰트 / 색상 / 행간 그대로. 배경만 변경. */
-  border-radius: 2px;
-  padding: 0 1px;
+  /* 공통 — 폰트 / 색상 / 행간 그대로. 배경만 변경.
+   *
+   * 2026-05-10 fix — `border-radius` / `padding` 제거. 같은 highlight 영역이
+   * 안에 underline 또는 다른 mark 가 끼면 segment 분할되어 여러 span 으로 emit
+   * 되는데, 모서리 라운드 + padding 이 분할 경계마다 굴곡 / 간격으로 시각화되어
+   * "한 덩어리 highlight" 의도가 깨짐 (와이프 v0.2 검수). 0 으로 두면 인접
+   * highlight span 끼리 픽셀 단위로 붙어 시각적 연속성 유지. */
 }
 
-.annot-highlight--1 { background-color: #ffeb3b; }
-.annot-highlight--2 { background-color: #ffc107; }
-.annot-highlight--3 { background-color: #ff9800; }
-.annot-highlight--4 { background-color: #ff5722; }
-.annot-highlight--5 { background-color: #f44336; }
-.annot-highlight--6 { background-color: #e91e63; }
-.annot-highlight--7 { background-color: #9c27b0; }
-.annot-highlight--8 { background-color: #673ab7; }
-.annot-highlight--9 { background-color: #3f51b5; }
-.annot-highlight--10 { background-color: #2196f3; }
-.annot-highlight--11 { background-color: #4caf50; }
-.annot-highlight--12 { background-color: #cddc39; }
+/* 2026-05-10 fix — 에디터 (`apps/web/src/pages/EditorPoc.css` --anno-color-N)
+ * 와 색상 정합. 이전 Material Design 풀 채도 팔레트는 에디터 Tailwind 300/200
+ * 파스텔 톤과 어긋남 (와이프 v0.2 검수: color_index=8 에디터=red-300,
+ * PDF=deep-purple). label/bracket borderline 매핑 ([data-color-index] 셀렉터)
+ * 과도 정합. */
+.annot-highlight--1 { background-color: #fef08a; } /* yellow-200 */
+.annot-highlight--2 { background-color: #86efac; } /* green-300 */
+.annot-highlight--3 { background-color: #93c5fd; } /* blue-300 */
+.annot-highlight--4 { background-color: #f9a8d4; } /* pink-300 */
+.annot-highlight--5 { background-color: #fdba74; } /* orange-300 */
+.annot-highlight--6 { background-color: #c4b5fd; } /* violet-300 */
+.annot-highlight--7 { background-color: #6ee7b7; } /* emerald-300 */
+.annot-highlight--8 { background-color: #fca5a5; } /* red-300 */
+.annot-highlight--9 { background-color: #67e8f9; } /* cyan-300 */
+.annot-highlight--10 { background-color: #d9f99d; } /* lime-200 */
+.annot-highlight--11 { background-color: #fde68a; } /* amber-200 */
+.annot-highlight--12 { background-color: #e9d5ff; } /* purple-200 */
 
 /* ─── underline (단일 색상) ────────────────────────────────────────────── */
 
@@ -123,7 +142,10 @@
   position: absolute;
   left: 0;
   font-size: 0.65em;
-  color: var(--label-color);
+  /* 라벨 글씨는 검정 고정 — 에디터 (`apps/web/src/pages/EditorPoc.css`) 정합
+   * (2026-05-15 와이프 v0.2 검수). borderline 만 color_index 12색 매핑, 라벨
+   * 글자 가독성 위해 글씨는 항상 검정. */
+  color: #000;
   font-weight: 600;
   white-space: nowrap;
   line-height: 1;
@@ -170,4 +192,10 @@
   /* color_index 가 있으면 --label-color (위 매핑 셀렉터) 가 12색 팔레트에서 설정.
    * 없으면 본문 색상 fallback. */
   color: var(--label-color, var(--ink, #111));
+  /* 2026-05-15 fix — bracket open `(` 이 줄 끝에 단독으로 남지 않도록.
+   * 에디터 (`packages/editor/src/extensions/bracket.ts` `makeBracketWidget`) 에
+   * 동일한 `white-space: nowrap` 적용됨 (정합). 단 이는 bracket span 안의 글자만
+   * 영향 — `(` 한 글자라 그 자체는 wrap 안 됨. 인접 라벨 span 과의 wrap 정합은
+   * 별도 (라벨 inline-block 한계). */
+  white-space: nowrap;
 }

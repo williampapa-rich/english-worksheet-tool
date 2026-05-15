@@ -39,7 +39,6 @@ logger = logging.getLogger(__name__)
 
 # ─── 텍스트 런 charPr id 와 대칭되는 HTML class 토큰 ─────────────────────────
 
-_CSS_BODY = "body"  # 기본 (no class wrap)
 _CSS_UNDERLINE = "annot-underline"
 _CSS_INLINE_NOTE = "annot-inline-note"
 
@@ -57,13 +56,21 @@ def _highlight_class(color_index: int) -> str:
 class _Segment:
     """body_text 의 한 조각 + 적용된 텍스트 런 token.
 
-    token = "body" / "annot-underline" / "annot-inline-note" / "annot-highlight ...".
+    한 글자에 highlight + underline + inline_note 가 *동시* 적용 가능하므로
+    세 layer 를 별도 보관 (2026-05-10 fix — 이전 단일 css_token 방식은 마지막
+    annotation 이 앞엣 것을 덮어써 highlight 칠한 부분 안 underline 자리에서
+    배경이 사라지는 회귀 발생).
+
+    - highlight_class: ``annot-highlight annot-highlight--N`` 또는 None
+    - underlined: True/False
+    - inline_note_text: 메모 텍스트 또는 None
+
     bracket / label 은 char-position 단위 별 처리 (segment 외).
     """
 
     text: str
-    css_token: str
-    # inline_note 의 경우 메모 텍스트
+    highlight_class: str | None = None
+    underlined: bool = False
     inline_note_text: str | None = None
 
 
@@ -125,13 +132,20 @@ def _slice_text_runs(
 ) -> list[_Segment]:
     """body_text 를 텍스트 런 annotation 으로 분할.
 
-    hwpx_renderer 의 `_slice_text_with_annotations` 와 동일 정책 (마지막 적용 우선).
+    한 글자에 highlight + underline + inline_note 가 *모두* 동시 적용 가능 —
+    세 layer 를 별도 map 으로 추적해 segment 출력 시 nested span 또는 합친
+    class 로 emit (2026-05-10 fix).
+
+    겹치는 같은 kind (예: 같은 글자에 highlight 두 개 — color_index 다름) 은
+    여전히 마지막 적용 우선 (단일 글자에 단일 color_index 만 의미 있음).
     """
     n = len(body_text)
     if n == 0:
         return []
 
-    css_map: list[str] = [_CSS_BODY] * n
+    # 세 layer 별도 추적 — 단일 css_token 으로는 동시 적용 표현 불가.
+    highlight_map: list[str | None] = [None] * n
+    underline_map: list[bool] = [False] * n
     inline_note_map: list[str | None] = [None] * n
 
     for ann in annotations:
@@ -146,43 +160,49 @@ def _slice_text_runs(
             continue
 
         if ann.kind == AnnotationKind.HIGHLIGHT:
-            token = _highlight_class(ann.color_index or 1)
+            cls = _highlight_class(ann.color_index or 1)
+            for i in range(start, end):
+                highlight_map[i] = cls
         elif ann.kind == AnnotationKind.UNDERLINE:
-            token = _CSS_UNDERLINE
+            for i in range(start, end):
+                underline_map[i] = True
         elif ann.kind == AnnotationKind.INLINE_NOTE:
-            token = _CSS_INLINE_NOTE
-        else:
-            continue
+            note = ann.text or ""
+            for i in range(start, end):
+                inline_note_map[i] = note
 
-        for i in range(start, end):
-            css_map[i] = token
-            if ann.kind == AnnotationKind.INLINE_NOTE:
-                inline_note_map[i] = ann.text or ""
-
-    # 연속된 동일 css_token + inline_note_text 를 하나의 segment 로 묶음
+    # 연속된 동일 (highlight, underline, inline_note) 조합을 한 segment 로 묶음.
     segments: list[_Segment] = []
     cur_start = 0
-    cur_token = css_map[0]
-    cur_note = inline_note_map[0]
+    cur_h = highlight_map[0]
+    cur_u = underline_map[0]
+    cur_n = inline_note_map[0]
 
     for i in range(1, n):
-        if css_map[i] != cur_token or inline_note_map[i] != cur_note:
+        if (
+            highlight_map[i] != cur_h
+            or underline_map[i] != cur_u
+            or inline_note_map[i] != cur_n
+        ):
             segments.append(
                 _Segment(
                     text=body_text[cur_start:i],
-                    css_token=cur_token,
-                    inline_note_text=cur_note,
+                    highlight_class=cur_h,
+                    underlined=cur_u,
+                    inline_note_text=cur_n,
                 )
             )
             cur_start = i
-            cur_token = css_map[i]
-            cur_note = inline_note_map[i]
+            cur_h = highlight_map[i]
+            cur_u = underline_map[i]
+            cur_n = inline_note_map[i]
 
     segments.append(
         _Segment(
             text=body_text[cur_start:],
-            css_token=cur_token,
-            inline_note_text=cur_note,
+            highlight_class=cur_h,
+            underlined=cur_u,
+            inline_note_text=cur_n,
         )
     )
     return segments
@@ -347,6 +367,16 @@ def render_annotations_to_html(
         #       close pos: label close   →  bracket close
         #   결과 DOM 예시 (단일 segment, 동일 span):
         #     <bracket>{</bracket><label>body</label><bracket>}</bracket>
+        # 이벤트 순서 정책 (PR #70):
+        #   같은 span 에 라벨 + bracket 이 함께 적용된 경우 — bracket 글자가 라벨 span
+        #   *안*에 들어가면 라벨 box 폭 (= borderline 폭) 이 bracket 까지 확장되어
+        #   borderline 이 괄호 위까지 그려짐. 사용자 의도는 borderline 이 본문 영역에만
+        #   걸리는 것.
+        #   → bracket 글자는 라벨 span 의 *밖*으로 emit 한다:
+        #       open pos:  bracket open  →  label open
+        #       close pos: label close   →  bracket close
+        #   결과 DOM 예시 (단일 segment, 동일 span):
+        #     <bracket>{</bracket><label>body</label><bracket>}</bracket>
         for pos in range(seg_start, seg_end + 1):
             # close 이벤트 — 라벨 close 먼저, bracket close 가 그 뒤 (라벨 box 종료 후 괄호).
             if pos in close_events:
@@ -377,9 +407,19 @@ def render_annotations_to_html(
                 for tag, _kind in open_events[pos]:
                     seg_parts.append(tag)
 
-            # segment 시작 위치에서 css wrap 시작
-            if pos == seg_start and seg.css_token != _CSS_BODY:
-                seg_parts.append(f'<span class="{seg.css_token}">')
+            # segment 시작 위치에서 css wrap 시작 — 세 layer (highlight / underline /
+            # inline_note) 동시 적용 가능. 같은 box 안에 합치면 동시 적용 가장 단순.
+            # nested span 은 wrap 단위 미세 차이 위험 — class 합치기로 단일 span emit.
+            if pos == seg_start:
+                classes: list[str] = []
+                if seg.highlight_class:
+                    classes.append(seg.highlight_class)
+                if seg.underlined:
+                    classes.append(_CSS_UNDERLINE)
+                if seg.inline_note_text is not None:
+                    classes.append(_CSS_INLINE_NOTE)
+                if classes:
+                    seg_parts.append(f'<span class="{" ".join(classes)}">')
 
             # 본문 글자 1개. paragraph 경계 (\n) 는 ``</p><p>`` 로 치환 — 사용자
             # 에디터 줄바꿈 == PDF 줄바꿈 정합 (2026-05-09).
@@ -389,16 +429,19 @@ def render_annotations_to_html(
                 seg_parts.append(str(escape(body_text[pos])))
 
             # segment 끝 직전에 css wrap 닫음 (다음 iteration 의 close 이벤트 *전*)
-            if pos == seg_end - 1 and seg.css_token != _CSS_BODY:
-                # inline_note 는 본문 wrap 에 sup 추가
-                if seg.css_token == _CSS_INLINE_NOTE and seg.inline_note_text:
-                    seg_parts.append(
-                        f'<sup class="annot-inline-note__text">{escape(seg.inline_note_text)}</sup>'
-                    )
-                seg_parts.append("</span>")
-                # highlight 는 mark 태그 권고지만 v0.1 은 span 통일 (CSS 동일 동작).
-                # mark vs span: mark 가 의미 더 정확하지만, 12색 변형 + 다른 마크와 중첩
-                # 처리 단순화 위해 span 채택. CSS 가 동일 시각 표현 보장.
+            if pos == seg_end - 1:
+                has_wrap = bool(
+                    seg.highlight_class
+                    or seg.underlined
+                    or seg.inline_note_text is not None
+                )
+                if has_wrap:
+                    # inline_note 는 본문 뒤에 sup 메모 추가 (span 안쪽).
+                    if seg.inline_note_text:
+                        seg_parts.append(
+                            f'<sup class="annot-inline-note__text">{escape(seg.inline_note_text)}</sup>'
+                        )
+                    seg_parts.append("</span>")
 
         parts.append("".join(seg_parts))
         cursor = seg_end
