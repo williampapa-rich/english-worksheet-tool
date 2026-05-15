@@ -1156,6 +1156,7 @@ async def test_augment_vocabulary_default_mode_skip_user_collision(
     with (
         patch("worksheet_api.routers.passages.PassageRepository") as mock_prepo,
         patch("worksheet_api.routers.passages.VocabularyRepository") as mock_vrepo,
+        patch("worksheet_api.routers.passages.VocabularyMasterRepository") as mock_mrepo,
         patch("worksheet_api.routers.passages.augment_vocabulary") as mock_aug,
     ):
         mock_prepo.return_value.get = AsyncMock(return_value=saved_passage)
@@ -1164,6 +1165,21 @@ async def test_augment_vocabulary_default_mode_skip_user_collision(
         mock_vrepo.return_value.create = AsyncMock(return_value=final_v1)
         mock_vrepo.return_value.list_by_passage = AsyncMock(return_value=[final_v1])
         mock_vrepo.return_value.delete_llm_for_passage = AsyncMock()
+        # Stage E1-c master 통합 — 기존 테스트는 master 동작 검증 외 (신규 master 생성 시뮬레이션)
+        from shared.schemas.vocabulary_master import VocabularyMaster, VocabularyMasterCreatedBy
+        _dummy_master = VocabularyMaster(
+            id=uuid.uuid4(),
+            tenant_id=TENANT_A,
+            workspace_id=WORKSPACE_A,
+            headword_normalized="growing",
+            word_canonical="growing",
+            default_meaning_ko="성장하는",
+            usage_count=1,
+            created_by=VocabularyMasterCreatedBy.LLM,
+        )
+        mock_mrepo.return_value.find_by_headword = AsyncMock(return_value=None)
+        mock_mrepo.return_value.create = AsyncMock(return_value=_dummy_master)
+        mock_mrepo.return_value.increment_usage_count = AsyncMock()
 
         resp = await async_client.post(f"/passages/{saved_passage.id}/vocabulary")
 
@@ -1187,6 +1203,7 @@ async def test_augment_vocabulary_replace_deletes_llm_then_inserts(
     with (
         patch("worksheet_api.routers.passages.PassageRepository") as mock_prepo,
         patch("worksheet_api.routers.passages.VocabularyRepository") as mock_vrepo,
+        patch("worksheet_api.routers.passages.VocabularyMasterRepository") as mock_mrepo,
         patch("worksheet_api.routers.passages.augment_vocabulary") as mock_aug,
     ):
         mock_prepo.return_value.get = AsyncMock(return_value=saved_passage)
@@ -1194,6 +1211,16 @@ async def test_augment_vocabulary_replace_deletes_llm_then_inserts(
         mock_aug.return_value = _make_llm_vocab([("economy", "경제")])
         mock_vrepo.return_value.create = AsyncMock(return_value=final_v1)
         mock_vrepo.return_value.list_by_passage = AsyncMock(return_value=[final_v1])
+        from shared.schemas.vocabulary_master import VocabularyMaster, VocabularyMasterCreatedBy
+        _dummy_master = VocabularyMaster(
+            id=uuid.uuid4(), tenant_id=TENANT_A, workspace_id=WORKSPACE_A,
+            headword_normalized="economy", word_canonical="economy",
+            default_meaning_ko="경제", usage_count=1,
+            created_by=VocabularyMasterCreatedBy.LLM,
+        )
+        mock_mrepo.return_value.find_by_headword = AsyncMock(return_value=None)
+        mock_mrepo.return_value.create = AsyncMock(return_value=_dummy_master)
+        mock_mrepo.return_value.increment_usage_count = AsyncMock()
 
         resp = await async_client.post(f"/passages/{saved_passage.id}/vocabulary?mode=replace")
 
@@ -1211,6 +1238,7 @@ async def test_augment_vocabulary_append_no_dedup(async_client: AsyncClient) -> 
     with (
         patch("worksheet_api.routers.passages.PassageRepository") as mock_prepo,
         patch("worksheet_api.routers.passages.VocabularyRepository") as mock_vrepo,
+        patch("worksheet_api.routers.passages.VocabularyMasterRepository") as mock_mrepo,
         patch("worksheet_api.routers.passages.augment_vocabulary") as mock_aug,
     ):
         mock_prepo.return_value.get = AsyncMock(return_value=saved_passage)
@@ -1218,6 +1246,16 @@ async def test_augment_vocabulary_append_no_dedup(async_client: AsyncClient) -> 
         mock_aug.return_value = _make_llm_vocab([("economy", "경제"), ("economy", "경제 (중복)")])
         mock_vrepo.return_value.create = AsyncMock(return_value=final_v1)
         mock_vrepo.return_value.list_by_passage = AsyncMock(return_value=[final_v1])
+        from shared.schemas.vocabulary_master import VocabularyMaster, VocabularyMasterCreatedBy
+        _dummy_master = VocabularyMaster(
+            id=uuid.uuid4(), tenant_id=TENANT_A, workspace_id=WORKSPACE_A,
+            headword_normalized="economy", word_canonical="economy",
+            default_meaning_ko="경제", usage_count=1,
+            created_by=VocabularyMasterCreatedBy.LLM,
+        )
+        mock_mrepo.return_value.find_by_headword = AsyncMock(return_value=None)
+        mock_mrepo.return_value.create = AsyncMock(return_value=_dummy_master)
+        mock_mrepo.return_value.increment_usage_count = AsyncMock()
 
         resp = await async_client.post(f"/passages/{saved_passage.id}/vocabulary?mode=append")
 
@@ -1237,6 +1275,7 @@ async def test_augment_vocabulary_dedup_within_llm_skip_user_edited_mode(
     with (
         patch("worksheet_api.routers.passages.PassageRepository") as mock_prepo,
         patch("worksheet_api.routers.passages.VocabularyRepository") as mock_vrepo,
+        patch("worksheet_api.routers.passages.VocabularyMasterRepository") as mock_mrepo,
         patch("worksheet_api.routers.passages.augment_vocabulary") as mock_aug,
     ):
         mock_prepo.return_value.get = AsyncMock(return_value=saved_passage)
@@ -1246,6 +1285,16 @@ async def test_augment_vocabulary_dedup_within_llm_skip_user_edited_mode(
         )
         mock_vrepo.return_value.create = AsyncMock(return_value=final_v1)
         mock_vrepo.return_value.list_by_passage = AsyncMock(return_value=[final_v1])
+        from shared.schemas.vocabulary_master import VocabularyMaster, VocabularyMasterCreatedBy
+        _dummy_master = VocabularyMaster(
+            id=uuid.uuid4(), tenant_id=TENANT_A, workspace_id=WORKSPACE_A,
+            headword_normalized="economy", word_canonical="economy",
+            default_meaning_ko="경제", usage_count=1,
+            created_by=VocabularyMasterCreatedBy.LLM,
+        )
+        mock_mrepo.return_value.find_by_headword = AsyncMock(return_value=None)
+        mock_mrepo.return_value.create = AsyncMock(return_value=_dummy_master)
+        mock_mrepo.return_value.increment_usage_count = AsyncMock()
 
         resp = await async_client.post(f"/passages/{saved_passage.id}/vocabulary")
 
@@ -1262,6 +1311,7 @@ async def test_augment_vocabulary_count_param_passed(async_client: AsyncClient) 
     with (
         patch("worksheet_api.routers.passages.PassageRepository") as mock_prepo,
         patch("worksheet_api.routers.passages.VocabularyRepository") as mock_vrepo,
+        patch("worksheet_api.routers.passages.VocabularyMasterRepository"),
         patch("worksheet_api.routers.passages.augment_vocabulary") as mock_aug,
     ):
         mock_prepo.return_value.get = AsyncMock(return_value=saved_passage)
@@ -1446,7 +1496,18 @@ async def test_post_vocab_manual_creates_with_user_selected_by(
     with (
         patch("worksheet_api.routers.passages.PassageRepository") as mock_prepo,
         patch("worksheet_api.routers.passages.VocabularyRepository") as mock_vrepo,
+        patch("worksheet_api.routers.passages.VocabularyMasterRepository") as mock_mrepo,
     ):
+        from shared.schemas.vocabulary_master import VocabularyMaster, VocabularyMasterCreatedBy
+        _dummy_master = VocabularyMaster(
+            id=uuid.uuid4(), tenant_id=TENANT_A, workspace_id=WORKSPACE_A,
+            headword_normalized="smokeword", word_canonical="smokeword",
+            default_meaning_ko="스모크 단어", usage_count=1,
+            created_by=VocabularyMasterCreatedBy.USER,
+        )
+        mock_mrepo.return_value.find_by_headword = AsyncMock(return_value=None)
+        mock_mrepo.return_value.create = AsyncMock(return_value=_dummy_master)
+        mock_mrepo.return_value.increment_usage_count = AsyncMock()
         mock_prepo.return_value.get = AsyncMock(return_value=saved_passage)
         mock_vrepo.return_value.create = AsyncMock(side_effect=_capture)
 
@@ -1488,7 +1549,18 @@ async def test_post_vocab_manual_explicit_headword_used(
     with (
         patch("worksheet_api.routers.passages.PassageRepository") as mock_prepo,
         patch("worksheet_api.routers.passages.VocabularyRepository") as mock_vrepo,
+        patch("worksheet_api.routers.passages.VocabularyMasterRepository") as mock_mrepo,
     ):
+        from shared.schemas.vocabulary_master import VocabularyMaster, VocabularyMasterCreatedBy
+        _dummy_master = VocabularyMaster(
+            id=uuid.uuid4(), tenant_id=TENANT_A, workspace_id=WORKSPACE_A,
+            headword_normalized="running", word_canonical="Running",
+            default_meaning_ko="달리기", usage_count=1,
+            created_by=VocabularyMasterCreatedBy.USER,
+        )
+        mock_mrepo.return_value.find_by_headword = AsyncMock(return_value=None)
+        mock_mrepo.return_value.create = AsyncMock(return_value=_dummy_master)
+        mock_mrepo.return_value.increment_usage_count = AsyncMock()
         mock_prepo.return_value.get = AsyncMock(return_value=saved_passage)
         mock_vrepo.return_value.create = AsyncMock(side_effect=_capture)
 

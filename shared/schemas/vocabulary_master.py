@@ -12,6 +12,18 @@ ADR-0016 D1 권장안 (a) 구현:
   - D5: 학년 분리 X + homonym 는 별 행 (headword_normalized 구별 — Phase 4 검토).
   - D6: Phase 2-edit Stage E2 머지 후 backfill (별 PR).
 
+Stage E1-c 통합 완료 (feat/stage-e1-c-vocabulary-master-integration):
+  - ``POST /passages/{id}/vocabulary/manual`` (manual add) 라우트:
+    headword_normalized 계산 → master 조회/생성 → Vocabulary.master_id 채움.
+    created_by=USER. ADR-0016 D2-c override 정책 적용.
+  - ``POST /passages/{id}/vocabulary`` (LLM 보강) 라우트:
+    각 LLM 어휘마다 master 조회/생성 → Vocabulary.master_id 채움.
+    created_by=LLM. ADR-0013 mode 정책은 그대로 유지.
+  - ``DELETE /passages/{id}/vocabulary/{vid}``:
+    master_id 있는 vocabulary 삭제 시 master.usage_count -= 1.
+  - ``VocabularyMasterRepository.find_by_headword`` /
+    ``increment_usage_count`` / ``decrement_usage_count`` 신규.
+
 멀티테넌트:
   ``WorkspaceScopedEntity`` 베이스 — ``tenant_id`` + ``workspace_id`` 포함.
   UNIQUE 제약은 (tenant_id, headword_normalized) — DB 레벨 (Alembic).

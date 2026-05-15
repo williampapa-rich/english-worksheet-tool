@@ -69,6 +69,7 @@ from shared.schemas.passage import Passage
 from shared.schemas.question import Question
 from shared.schemas.translation import Translation, TranslationCreatedBy
 from shared.schemas.vocabulary import Vocabulary, VocabularySelectedBy
+from shared.schemas.vocabulary_master import VocabularyMaster, VocabularyMasterCreatedBy
 from worksheet_api.db import get_db
 from worksheet_api.llm_setup import get_llm_client
 from worksheet_api.repositories import (
@@ -77,6 +78,7 @@ from worksheet_api.repositories import (
     SyntaxAnnotationRepository,
     TenantContext,
     TranslationRepository,
+    VocabularyMasterRepository,
     VocabularyRepository,
     get_tenant_context,
 )
@@ -616,6 +618,89 @@ class VocabularyAugmentResponse(BaseModel):
     vocabulary: list[Vocabulary]
 
 
+# ─── Stage E1-c: VocabularyMaster 통합 헬퍼 ─────────────────────────────────
+
+
+def _normalize_headword(word: str) -> str:
+    """headword_normalized 계산 — LOWER(word).strip().
+
+    v0.1 단순 정책 (ADR-0016 D2-b). lemmatize 는 Phase 4+ 검토.
+
+    Args:
+        word: 원형 (사용자 입력 또는 LLM 산출).
+
+    Returns:
+        정규화된 소문자 표제어.
+    """
+    return word.lower().strip()
+
+
+async def _get_or_create_master(
+    vocab_word: str,
+    vocab_meaning_ko: str,
+    vocab_pos: str | None,
+    vocab_level_label: str | None,
+    created_by: VocabularyMasterCreatedBy,
+    master_repo: VocabularyMasterRepository,
+    tenant_ctx: TenantContext,
+) -> VocabularyMaster:
+    """VocabularyMaster 조회 or 신규 생성 후 반환.
+
+    Stage E1-c 흐름 (ADR-0016 D2-a/-b/-c):
+      1. headword_normalized 계산 (LOWER + strip).
+      2. (tenant_id, headword_normalized) 로 기존 master 검색.
+      3. 있으면 → usage_count += 1 후 기존 master 반환 (reuse).
+         없으면 → 신규 master 생성 (usage_count=1) 후 반환.
+
+    ADR-0016 D2-c override 정책:
+      master.default_meaning_ko 는 *prefill 용* — 사용자가 다른 meaning_ko 를
+      입력해도 master 의 default 를 변경하지 않는다. passage-specific override 는
+      Vocabulary.meaning_ko 에 저장 (caller 책임).
+
+    멀티테넌트:
+      master_repo 가 tenant_ctx.tenant_id 필터를 자동 적용하므로
+      cross-tenant master reuse 구조적 불가.
+
+    Args:
+        vocab_word: 원형 어휘 표면형 (대소문자 보존).
+        vocab_meaning_ko: 한국어 뜻 (passage-specific — master override 아님).
+        vocab_pos: 품사 (None 가능 — 신규 master 생성 시 default_pos 로 사용).
+        vocab_level_label: 등급 라벨 (None 가능 — 신규 master 생성 시 사용).
+        created_by: 신규 master 생성 주체 (LLM / USER).
+        master_repo: VocabularyMasterRepository 인스턴스.
+        tenant_ctx: 현재 요청 테넌트 컨텍스트.
+
+    Returns:
+        기존 또는 신규 생성된 VocabularyMaster.
+    """
+    from uuid import uuid4
+
+    headword_normalized = _normalize_headword(vocab_word)
+
+    # 1. 기존 master 검색 (tenant_id + headword_normalized)
+    existing_master = await master_repo.find_by_headword(headword_normalized)
+
+    if existing_master is not None:
+        # 2a. reuse — usage_count += 1
+        await master_repo.increment_usage_count(existing_master.id)
+        return existing_master
+
+    # 2b. 신규 master 생성
+    new_master = VocabularyMaster(
+        id=uuid4(),
+        tenant_id=tenant_ctx.tenant_id,
+        workspace_id=tenant_ctx.workspace_id,
+        headword_normalized=headword_normalized,
+        word_canonical=vocab_word,
+        default_meaning_ko=vocab_meaning_ko,
+        default_pos=vocab_pos,
+        default_level_label=vocab_level_label,
+        usage_count=1,
+        created_by=created_by,
+    )
+    return await master_repo.create(new_master)
+
+
 @router.post(
     "/{passage_id}/vocabulary",
     response_model=VocabularyAugmentResponse,
@@ -658,6 +743,7 @@ async def augment_passage_vocabulary(
     async with session.begin():
         passage_repo = PassageRepository(session, tenant_ctx)
         vocabulary_repo = VocabularyRepository(session, tenant_ctx)
+        master_repo = VocabularyMasterRepository(session, tenant_ctx)
 
         passage = await passage_repo.get(passage_id)
         if passage is None:
@@ -702,13 +788,24 @@ async def augment_passage_vocabulary(
                 seen_headwords.add(v.headword_normalized)
             items_to_insert.append(v)
 
-        # INSERT
+        # Stage E1-c: INSERT — 각 어휘마다 master 조회 or 생성 + master_id 채움
         for v in items_to_insert:
+            # master 통합 (ADR-0016 D2-a/-b) — created_by=LLM
+            master = await _get_or_create_master(
+                vocab_word=v.word,
+                vocab_meaning_ko=v.meaning_ko,
+                vocab_pos=v.pos,
+                vocab_level_label=v.level_label,
+                created_by=VocabularyMasterCreatedBy.LLM,
+                master_repo=master_repo,
+                tenant_ctx=tenant_ctx,
+            )
             v_with_ids = v.model_copy(
                 update={
                     "tenant_id": tenant_ctx.tenant_id,
                     "workspace_id": tenant_ctx.workspace_id,
                     "passage_id": passage_id,
+                    "master_id": master.id,
                 }
             )
             await vocabulary_repo.create(v_with_ids)
@@ -773,6 +870,7 @@ async def create_passage_vocabulary_manual(
     async with session.begin():
         passage_repo = PassageRepository(session, tenant_ctx)
         vocabulary_repo = VocabularyRepository(session, tenant_ctx)
+        master_repo = VocabularyMasterRepository(session, tenant_ctx)
 
         passage = await passage_repo.get(passage_id)
         if passage is None:
@@ -781,16 +879,30 @@ async def create_passage_vocabulary_manual(
                 detail=f"Passage {passage_id} 를 찾을 수 없습니다.",
             )
 
+        # Stage E1-c: master 조회 or 생성 (created_by=USER)
+        # ADR-0016 D2-c: 사용자 입력 meaning_ko 는 passage-specific override —
+        # master.default_meaning_ko 를 변경하지 않음. Vocabulary 행에만 저장.
+        master = await _get_or_create_master(
+            vocab_word=body.word,
+            vocab_meaning_ko=body.meaning_ko,
+            vocab_pos=body.pos,
+            vocab_level_label=body.level_label,
+            created_by=VocabularyMasterCreatedBy.USER,
+            master_repo=master_repo,
+            tenant_ctx=tenant_ctx,
+        )
+
         new_vocab = Vocabulary(
             id=uuid4(),
             tenant_id=tenant_ctx.tenant_id,
             workspace_id=tenant_ctx.workspace_id,
             passage_id=passage_id,
             word=body.word,
-            headword_normalized=body.headword_normalized or body.word.lower(),
+            headword_normalized=body.headword_normalized or _normalize_headword(body.word),
             meaning_ko=body.meaning_ko,
             pos=body.pos,
             level_label=body.level_label,
+            master_id=master.id,
             selected_by=VocabularySelectedBy.USER,
             user_edited=False,
         )
@@ -911,6 +1023,7 @@ async def delete_passage_vocabulary(
     async with session.begin():
         passage_repo = PassageRepository(session, tenant_ctx)
         vocabulary_repo = VocabularyRepository(session, tenant_ctx)
+        master_repo = VocabularyMasterRepository(session, tenant_ctx)
 
         passage = await passage_repo.get(passage_id)
         if passage is None:
@@ -929,6 +1042,9 @@ async def delete_passage_vocabulary(
                 ),
             )
 
+        # Stage E1-c: master_id 가 있으면 usage_count -= 1 (ADR-0016 D4-a — master 는 유지)
+        master_id_to_decrement = existing.master_id
+
         deleted = await vocabulary_repo.delete_by_id(vocabulary_id)
         if not deleted:
             # race
@@ -936,6 +1052,10 @@ async def delete_passage_vocabulary(
                 status_code=500,
                 detail="Vocabulary delete 중 row 가 사라졌습니다 (race).",
             )
+
+        if master_id_to_decrement is not None:
+            await master_repo.decrement_usage_count(master_id_to_decrement)
+
         return Response(status_code=204)
 
 
