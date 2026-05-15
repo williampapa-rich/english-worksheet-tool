@@ -1,6 +1,7 @@
 import { Route, Routes } from "react-router-dom";
 import { EditorPoc } from "./pages/EditorPoc";
 import { Home } from "./pages/Home";
+import { ServerTiptapPreview } from "./pages/ServerTiptapPreview";
 import { WorksheetDetailPage } from "./pages/WorksheetDetailPage";
 import { WorksheetEditPage } from "./pages/WorksheetEditPage";
 import { WorksheetListPage } from "./pages/WorksheetListPage";
@@ -16,6 +17,7 @@ import { WorksheetNewPage } from "./pages/WorksheetNewPage";
  * - /worksheets/new       : 신규 학생 자료 생성 (Stage E2-2)
  * - /worksheets/:id       : 학생 자료 상세 (Stage E2-3a/b)
  * - /worksheets/:id/edit  : 통합 편집 페이지 (Stage E2-3c) — 좌측 편집 + 우측 미리보기
+ * - /preview/server-tiptap : Stage F1 PoC — server-side Tiptap HTML 비교 (Playwright E2E용)
  */
 function App() {
   return (
@@ -27,6 +29,7 @@ function App() {
       <Route path="/worksheets/new" element={<WorksheetNewPage />} />
       <Route path="/worksheets/:id" element={<WorksheetDetailPage />} />
       <Route path="/worksheets/:id/edit" element={<WorksheetEditPage />} />
+      <Route path="/preview/server-tiptap" element={<ServerTiptapPreview />} />
     </Routes>
   );
 }
