@@ -49,6 +49,17 @@ QA_VALIDATOR_VERSION = "v0.1"
 
 # ─── variant_kind 별 추가 검증 체크 텍스트 (프롬프트 {{variant_kind_check}} 치환) ──
 _VARIANT_KIND_CHECKS: dict[str, str] = {
+    VariantKind.VOCABULARY_SWAP: (
+        "V1 (vocabulary_swap) specific checks:\n"
+        "- Does the swapped word (the incorrect choice) clearly violate the passage meaning "
+        "when the whole passage is understood? (If the incorrectness is borderline → flag)\n"
+        "- Can any of the 4 appropriate words also be considered contextually wrong? "
+        "(If yes → uniqueness failure — multiple answers)\n"
+        "- Is the swapped word clearly distinguishable from the 4 appropriate words "
+        "without relying on dictionary look-up of obscure synonyms?\n"
+        "- Does the swap word belong to the same part of speech as the original? "
+        "(POS mismatch = structural error)"
+    ),
     VariantKind.TOPIC_MAIN_IDEA_SWAP: (
         "V6 (topic_main_idea_swap) specific checks:\n"
         "- Does the correct answer align precisely with the passage thesis?\n"
