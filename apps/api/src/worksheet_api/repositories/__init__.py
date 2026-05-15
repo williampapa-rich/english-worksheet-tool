@@ -15,6 +15,7 @@ P0-7 (API 엔드포인트) 에서:
 from worksheet_api.repositories.base import BaseRepository
 from worksheet_api.repositories.llm_usage_log import LlmUsageLogRepository
 from worksheet_api.repositories.passage import PassageRepository
+from worksheet_api.repositories.qa_validation_result import QAValidationResultRepository
 from worksheet_api.repositories.question import QuestionRepository
 from worksheet_api.repositories.syntax_annotation import SyntaxAnnotationRepository
 from worksheet_api.repositories.tenant_context import TenantContext, get_tenant_context
@@ -28,6 +29,7 @@ __all__ = [
     "TenantContext",
     "get_tenant_context",
     "PassageRepository",
+    "QAValidationResultRepository",
     "QuestionRepository",
     "TranslationRepository",
     "VocabularyRepository",
