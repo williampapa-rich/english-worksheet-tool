@@ -250,6 +250,14 @@ ORIGINAL, VOCABULARY_SWAP, GRAMMAR_SWAP, BLANK_INFERENCE, THEME_REWORD, ORDER_SH
 domain-expert 의 `docs/variant-type-catalog.md` 결과로 보강 (별 후속 PR — `shared/
 schemas/question.py` 주석 명시). 본 ADR 은 enum 값 결정 영역 아님.
 
+**갱신 (2026-05-15)**: domain-expert 의 카탈로그 v0.4 (`docs/variant-type-catalog.md`)
+와 동시에 `VariantKind` enum 도 V1~V10 모두 보강. v0.1 의 `THEME_REWORD` 는 카탈로그
+v0.4 V6 `TOPIC_MAIN_IDEA_SWAP` 으로 통합 (데이터 사용 0건 — 단순 교체). 최종 v0.4
+enum (11개): `ORIGINAL`, `VOCABULARY_SWAP` (V1), `VOCABULARY_INLINE` (V2),
+`GRAMMAR_SWAP` (V3), `GRAMMAR_INLINE` (V4), `BLANK_INFERENCE` (V5),
+`TOPIC_MAIN_IDEA_SWAP` (V6), `ORDER_SHUFFLE` (V7), `SENTENCE_INSERTION_SHIFT` (V8),
+`IRRELEVANT_SENTENCE_INJECT` (V9), `SUMMARY_BLANK_SWAP` (V10).
+
 #### D2-c. variant 만의 메타 — JSONB vs 별 1:1 테이블
 
 권장 안 (a) 의 `variant_metadata: JSONB | NULL` 후보 vs `question_variant_metadata`

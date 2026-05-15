@@ -15,10 +15,13 @@ Sub-form 표현 (CLAUDE.md §6.2 + audit §3.1 / §3.2 / audit-review-domain §3
     평탄화-우선 + 매트릭스-옵트인).
 
 Open Question (별 ADR 예정):
-  - §4-5 Question vs VariantQuestion 단일 테이블 vs 별 테이블 — Phase 3 진입 전 ADR.
+  - §4-5 Question vs VariantQuestion 단일 테이블 vs 별 테이블 — **ADR-0017 Accepted
+    (2026-05-15)**: 권장안 (a) 단일 ``Question`` 테이블 + ``variant_kind``
+    discriminator + ``derived_from_question_id`` self-FK NULLABLE 채택.
   - §4-8 inline_choices 도입 시점 — Phase 3 진입 전 ADR.
-  - domain-expert 의 ``docs/variant-type-catalog.md`` 재작성 결과로 enum value /
-    ``VariantKind`` 보강 가능 (작업 #5 와 동시 launch — 별 후속 PR 로 정정).
+  - ``VariantKind`` enum 보강 — **v0.4 (2026-05-15) 카탈로그 v0.4 와 동시 보강
+    완료** (V1~V10 모두 enum 멤버 추가, THEME_REWORD → TOPIC_MAIN_IDEA_SWAP 통합).
+    ADR-0017 D2-b 결정 사항.
 
 audit-review-domain §4.1 권고:
   qa-validator 가 Phase 3 에서 채울 ``uniqueness_validated`` / ``uniqueness_validator_note``
@@ -95,23 +98,46 @@ class QuestionType(StrEnum):
 class VariantKind(StrEnum):
     """변형 유형 (CLAUDE.md §6.2 정정 — 같은 ``type`` 안에서의 파생).
 
-    v0.1 은 ``ORIGINAL`` (입력에서 추출된 원본) + 1차 변형 후보 5개를 정의한다.
-    domain-expert 의 ``docs/variant-type-catalog.md`` 재작성 결과로 보강 예정 (후속 PR).
+    v0.4 (2026-05-15) — 카탈로그 v0.4 (`docs/variant-type-catalog.md` §3.2) 의
+    V1~V10 모두 흡수. ADR-0017 D2-b 결정 (variant_kind enum 보강 시점) — 본 enum
+    값은 카탈로그 v0.4 와 동시 보강.
 
-    audit-review-domain §3.6 의 1순위 5개 변형 유형 + ``ORIGINAL`` 로 시작:
-      - 어휘 변형 (Gap A 결합)
-      - 어법 변형
-      - 빈칸추론 변형
-      - 주제·요지·제목 추론 변형
-      - 순서배열 변형
+    카탈로그 ID 정합 (snake_case + 카탈로그 ID — `docs/variant-type-catalog.md` §3.2):
+
+    | enum 멤버 | 카탈로그 ID | 적용 가능 type (확실) | 우선순위 |
+    |---|---|---|---|
+    | ``ORIGINAL`` | -    | 모든 type | - |
+    | ``VOCABULARY_SWAP`` | V1 | vocabulary_30 / long_set_41_42 | 2순위 |
+    | ``VOCABULARY_INLINE`` | V2 | vocabulary_30 / blank_phrase_31 | **1순위** |
+    | ``GRAMMAR_SWAP`` | V3 | grammar_29 | 2순위 |
+    | ``GRAMMAR_INLINE`` | V4 | grammar_29 | **1순위** |
+    | ``BLANK_INFERENCE`` | V5 | blank_phrase_31 / blank_clause_32~34 | **1순위** |
+    | ``TOPIC_MAIN_IDEA_SWAP`` | V6 | main_idea_22 / topic_23 / title_24 | **1순위** |
+    | ``ORDER_SHUFFLE`` | V7 | paragraph_order_36 / _37 | **1순위** |
+    | ``SENTENCE_INSERTION_SHIFT`` | V8 | sentence_insertion_38 / _39 | 2순위 |
+    | ``IRRELEVANT_SENTENCE_INJECT`` | V9 | irrelevant_sentence_35 | 2순위 |
+    | ``SUMMARY_BLANK_SWAP`` | V10 | summary_40 | 2순위 |
+
+    Phase 3 진입 시 1순위 5개 (V2/V4/V5/V6/V7) 부터 LLM 변형 프롬프트 작성.
+
+    Breaking change 주의 — v0.3 (~v0.10.1) 의 ``THEME_REWORD = "theme_reword"`` 는
+    카탈로그 v0.4 의 V6 ``TOPIC_MAIN_IDEA_SWAP`` 으로 통합 (이전 enum value 는
+    영속 데이터에서 사용된 적 없음 — 단순 교체).
     """
 
     ORIGINAL = "original"
-    VOCABULARY_SWAP = "vocabulary_swap"
-    GRAMMAR_SWAP = "grammar_swap"
-    BLANK_INFERENCE = "blank_inference"
-    THEME_REWORD = "theme_reword"
-    ORDER_SHUFFLE = "order_shuffle"
+
+    # V1~V10 (docs/variant-type-catalog.md v0.4 §3.2 정합)
+    VOCABULARY_SWAP = "vocabulary_swap"  # V1
+    VOCABULARY_INLINE = "vocabulary_inline"  # V2 — Gap A 어휘형 sub-form 변환
+    GRAMMAR_SWAP = "grammar_swap"  # V3
+    GRAMMAR_INLINE = "grammar_inline"  # V4 — Gap A 어법형 sub-form 변환
+    BLANK_INFERENCE = "blank_inference"  # V5
+    TOPIC_MAIN_IDEA_SWAP = "topic_main_idea_swap"  # V6 — THEME_REWORD 통합
+    ORDER_SHUFFLE = "order_shuffle"  # V7
+    SENTENCE_INSERTION_SHIFT = "sentence_insertion_shift"  # V8
+    IRRELEVANT_SENTENCE_INJECT = "irrelevant_sentence_inject"  # V9
+    SUMMARY_BLANK_SWAP = "summary_blank_swap"  # V10
 
 
 # ─── Choices / InlineChoice / ChoiceMatrix (Gap A / B sub-form) ─────────────

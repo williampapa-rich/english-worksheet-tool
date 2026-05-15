@@ -1,16 +1,24 @@
-# 변형 유형 카탈로그 v0.3 — 24개 유형 인벤토리 + sub-form + variant_kind
+# 변형 유형 카탈로그 v0.4 — 24개 유형 인벤토리 + sub-form + VariantKind enum 정합
 
 - **작성자**: domain-expert agent
-- **작성일**: 2026-05-02
-- **버전**: v0.3
+- **작성일**: 2026-05-02 (v0.1~v0.3) / 2026-05-15 (v0.4 갱신)
+- **버전**: v0.4
 - **이전 버전**:
   - v0.1 (2026-05-02) — "5개 변형 유형을 별 카테고리로 정의"라는 잘못된 전제로 작성됨, 폐기.
   - v0.2 (2026-05-02) — 24개 유형 + sub-form + variant_kind 골격 완성. type 코드는 한국어명만 명시.
-- **v0.3 변경**: 각 24개 유형에 **snake_case 영문 enum value 후보** 컬럼 추가 (`Question.type` Pydantic enum의 1차 source). 한국어 표시명은 별도 보존 (UI 표시·exam-generator 호환). PM 명세 (§ "이번 작업의 범위" §1) 반영.
+  - v0.3 (2026-05-02) — 각 24개 유형에 snake_case 영문 enum value 후보 컬럼 추가.
+- **v0.4 변경** (2026-05-15, ADR-0017 Accepted 후속):
+  - §3.2 V1~V10 각 항목에 **`shared/schemas/question.py` `VariantKind` enum value** 명시 — 카탈로그 ID 와 enum 멤버 1:1 정합.
+  - V6 `topic_main_idea_swap` — v0.3 의 enum `THEME_REWORD` → `TOPIC_MAIN_IDEA_SWAP` 으로 통합 (V6 명세가 요지/주제/제목 3개 type 을 포함하므로 enum 명도 정합 갱신).
+  - §3.4 1순위 표 갱신 — V2/V4/V5/V6/V7 (5개) Phase 3 진입 시 LLM 프롬프트 작성 대상.
+  - **§3.5 신규** — LLM 변형 프롬프트 사전 가이드 (ADR-0013 augment 패턴 참고, 실제 프롬프트는 Phase 3 별 PR).
+  - **§3.6 신규** — qa-validator 검증 시나리오 (ADR-0017 D3-c 하이브리드 — `Question.uniqueness_validated` 최신 상태 + `qa_validation_results` history 정합).
 - **정정 사유 (v0.1 → v0.2 시점)**: `CLAUDE.md` v0.3 §6.2에서 PM이 전제를 정정 — **변형 유형이라는 별 카테고리는 없다**. 모든 문제 유형은 `exam-generator`의 24개 유형 중 하나에 속한다. Phase 3의 "변형문제"도 기존 유형의 **파생**일 뿐, 새 유형이 아니다. 5개만 추리지 않고 **24개 모두 1급**으로 다룬다.
 - **관련 문서**:
   - `CLAUDE.md` v0.3 §6.2 (Question 유형 — 별도 카테고리가 아니라 기존 유형의 확장)
   - `docs/adr/_pm-decisions-sprint-0.md` (PM D-1, D-2, D-3)
+  - `docs/adr/0017-question-variant-table-strategy.md` (Accepted, 2026-05-15) — 단일 `Question` 테이블 + `variant_kind` discriminator 채택. 본 v0.4 의 enum 보강과 짝 (D2-b 결정).
+  - `docs/adr/0013-llm-augmentation-pipeline.md` (Phase 2 보강 파이프라인) — Phase 3 변형 프롬프트의 모태 패턴.
   - `docs/schema-coverage-audit.md` (architect, 2026-05-02)
   - `docs/audit-review-domain.md` (domain-expert v0.1)
   - `docs/reference-program-analysis.md` (PM, 영상 레퍼런스 6종 annotation)
@@ -495,26 +503,36 @@ CLAUDE.md v0.3 §6.2: "변형문제(VariantQuestion) — 같은 24개 type 안�
 
 각 후보마다: **이름** / **적용 가능 type** / **변형 규칙** / **검증 기준**.
 
-#### 3.2.0 V1~V10 요약 표
+#### 3.2.0 V1~V10 요약 표 + VariantKind enum 정합
 
-| ID | variant_kind | 적용 type (enum value 후보) | 변형 입력 | 자산화 가치 | 우선순위 (§3.4) |
-|---|---|---|---|---|---|
-| V1 | `vocabulary_swap` | `vocabulary_30`, `long_set_41_42` (42번) | 원본 Question 또는 Passage | 중 | 2순위 |
-| V2 | `vocabulary_inline` | `vocabulary_30`, `blank_phrase_31` | Passage | 높음 | **1순위** |
-| V3 | `grammar_swap` | `grammar_29` | 원본 Question 또는 Passage | 중 | 2순위 |
-| V4 | `grammar_inline` | `grammar_29` | Passage | 높음 | **1순위** |
-| V5 | `blank_inference` | `blank_phrase_31`, `blank_clause_32~34` | Passage | 높음 | **1순위** |
-| V6 | `topic_main_idea_swap` | `main_idea_22`, `topic_23`, `title_24` | Passage | **최고** | **1순위** |
-| V7 | `order_shuffle` | `paragraph_order_36`, `paragraph_order_37` | Passage | 중 (1지문 1변형) | **1순위** |
-| V8 | `sentence_insertion_shift` | `sentence_insertion_38`, `_39` | Passage | 중 | 2순위 |
-| V9 | `irrelevant_sentence_inject` | `irrelevant_sentence_35` | Passage | 중 | 2순위 |
-| V10 | `summary_blank_swap` | `summary_40` | Passage | 중 | 2순위 |
+`shared/schemas/question.py` `VariantKind` enum 멤버 (v0.4, 2026-05-15) 와 1:1 정합:
+
+| ID | variant_kind (enum value) | `VariantKind` enum 멤버 | 적용 type (enum value 후보) | 변형 입력 | 자산화 가치 | 우선순위 (§3.4) |
+|---|---|---|---|---|---|---|
+| V1 | `vocabulary_swap` | `VOCABULARY_SWAP` | `vocabulary_30`, `long_set_41_42` (42번) | 원본 Question 또는 Passage | 중 | 2순위 |
+| V2 | `vocabulary_inline` | `VOCABULARY_INLINE` | `vocabulary_30`, `blank_phrase_31` | Passage | 높음 | **1순위** |
+| V3 | `grammar_swap` | `GRAMMAR_SWAP` | `grammar_29` | 원본 Question 또는 Passage | 중 | 2순위 |
+| V4 | `grammar_inline` | `GRAMMAR_INLINE` | `grammar_29` | Passage | 높음 | **1순위** |
+| V5 | `blank_inference` | `BLANK_INFERENCE` | `blank_phrase_31`, `blank_clause_32~34` | Passage | 높음 | **1순위** |
+| V6 | `topic_main_idea_swap` | `TOPIC_MAIN_IDEA_SWAP` | `main_idea_22`, `topic_23`, `title_24` | Passage | **최고** | **1순위** |
+| V7 | `order_shuffle` | `ORDER_SHUFFLE` | `paragraph_order_36`, `paragraph_order_37` | Passage | 중 (1지문 1변형) | **1순위** |
+| V8 | `sentence_insertion_shift` | `SENTENCE_INSERTION_SHIFT` | `sentence_insertion_38`, `_39` | Passage | 중 | 2순위 |
+| V9 | `irrelevant_sentence_inject` | `IRRELEVANT_SENTENCE_INJECT` | `irrelevant_sentence_35` | Passage | 중 | 2순위 |
+| V10 | `summary_blank_swap` | `SUMMARY_BLANK_SWAP` | `summary_40` | Passage | 중 | 2순위 |
+
+**`ORIGINAL`** (`variant_kind = "original"`): 입력에서 추출된 원본 (변형 아님). 모든 24개 type 에 적용.
 
 각 V의 상세는 아래 §3.2.1~§3.2.10.
+
+**v0.3 → v0.4 enum 변경**:
+- ❌ 폐기: `THEME_REWORD = "theme_reword"` (v0.3 잠정 명명 — 데이터 사용 0건).
+- ✅ 신규 (V6 통합): `TOPIC_MAIN_IDEA_SWAP = "topic_main_idea_swap"` — V6 명세가 요지(22)/주제(23)/제목(24) 3개 type 을 포함하므로 enum 명도 일관 갱신.
+- ✅ 신규 5개: `VOCABULARY_INLINE` (V2) / `GRAMMAR_INLINE` (V4) / `SENTENCE_INSERTION_SHIFT` (V8) / `IRRELEVANT_SENTENCE_INJECT` (V9) / `SUMMARY_BLANK_SWAP` (V10).
 
 
 #### V1. `vocabulary_swap` — 어휘 교체
 
+- **`VariantKind` enum**: `VOCABULARY_SWAP` (value: `"vocabulary_swap"`)
 - **적용 type (확실)**: 어휘(30), 장문(41-42)의 42번.
 - **변형 규칙**:
   1. 입력: 원본 Question (어휘(30) 또는 41-42), 또는 원본 Passage.
@@ -528,6 +546,7 @@ CLAUDE.md v0.3 §6.2: "변형문제(VariantQuestion) — 같은 24개 type 안�
 
 #### V2. `vocabulary_inline` — 어휘 인라인화 (Gap A 어휘형 sub-form 변환)
 
+- **`VariantKind` enum**: `VOCABULARY_INLINE` (value: `"vocabulary_inline"`) — **1순위**
 - **적용 type (확실)**: 어휘(30), 빈칸-구(31).
 - **변형 규칙**:
   1. 입력: 원본 Passage.
@@ -540,6 +559,7 @@ CLAUDE.md v0.3 §6.2: "변형문제(VariantQuestion) — 같은 24개 type 안�
 
 #### V3. `grammar_swap` — 어법 교체
 
+- **`VariantKind` enum**: `GRAMMAR_SWAP` (value: `"grammar_swap"`)
 - **적용 type (확실)**: 어법(29).
 - **변형 규칙**:
   1. 입력: 원본 Question 또는 Passage.
@@ -553,12 +573,14 @@ CLAUDE.md v0.3 §6.2: "변형문제(VariantQuestion) — 같은 24개 type 안�
 
 #### V4. `grammar_inline` — 어법 인라인화 (Gap A 어법형 sub-form 변환)
 
+- **`VariantKind` enum**: `GRAMMAR_INLINE` (value: `"grammar_inline"`) — **1순위**
 - **적용 type (확실)**: 어법(29).
 - **변형 규칙**: V2 (vocabulary_inline)와 동형, kind만 grammar.
 - **검증 기준**: V2와 동형 + 어법 정답 결정성.
 
 #### V5. `blank_inference` — 빈칸 추론 변형
 
+- **`VariantKind` enum**: `BLANK_INFERENCE` (value: `"blank_inference"`) — **1순위**
 - **적용 type (확실)**: 빈칸-구(31), 빈칸-절(32), 빈칸-절(33), 빈칸-절(34).
 - **변형 규칙**:
   1. 입력: 원본 Passage.
@@ -574,6 +596,8 @@ CLAUDE.md v0.3 §6.2: "변형문제(VariantQuestion) — 같은 24개 type 안�
 
 #### V6. `topic_main_idea_swap` — 주제·요지·제목 선택지 갱신
 
+- **`VariantKind` enum**: `TOPIC_MAIN_IDEA_SWAP` (value: `"topic_main_idea_swap"`) — **1순위 / 자산화 가치 최고**
+- **v0.4 변경 (2026-05-15)**: v0.3 의 잠정 enum `THEME_REWORD` 는 본 V6 으로 통합. V6 명세가 요지(22)/주제(23)/제목(24) 3개 type 을 묶기 때문에 enum 명도 통합. 데이터 사용 0건이라 breaking change 부담 없음.
 - **적용 type (확실)**: 요지(22), 주제(23), 제목(24).
 - **변형 규칙**:
   1. 입력: 원본 Passage.
@@ -588,6 +612,7 @@ CLAUDE.md v0.3 §6.2: "변형문제(VariantQuestion) — 같은 24개 type 안�
 
 #### V7. `order_shuffle` — 순서배열 변형
 
+- **`VariantKind` enum**: `ORDER_SHUFFLE` (value: `"order_shuffle"`) — **1순위**
 - **적용 type (확실)**: 순서배열(36), 순서배열(37).
 - **변형 규칙**:
   1. 입력: 원본 Passage (단락 1개여도 가능 — LLM이 의미 분할).
@@ -603,6 +628,7 @@ CLAUDE.md v0.3 §6.2: "변형문제(VariantQuestion) — 같은 24개 type 안�
 
 #### V8. `sentence_insertion_shift` — 문장삽입 위치 변형
 
+- **`VariantKind` enum**: `SENTENCE_INSERTION_SHIFT` (value: `"sentence_insertion_shift"`)
 - **적용 type (추정)**: 문장삽입(38), 문장삽입(39).
 - **변형 규칙**:
   1. 입력: 원본 Passage.
@@ -616,6 +642,7 @@ CLAUDE.md v0.3 §6.2: "변형문제(VariantQuestion) — 같은 24개 type 안�
 
 #### V9. `irrelevant_sentence_inject` — 무관문장 변형
 
+- **`VariantKind` enum**: `IRRELEVANT_SENTENCE_INJECT` (value: `"irrelevant_sentence_inject"`)
 - **적용 type (추정)**: 무관문장(35).
 - **변형 규칙**:
   1. 입력: 원본 Passage (5문장 추정 또는 LLM 분할).
@@ -628,6 +655,7 @@ CLAUDE.md v0.3 §6.2: "변형문제(VariantQuestion) — 같은 24개 type 안�
 
 #### V10. `summary_blank_swap` — 요약문 빈칸 변형
 
+- **`VariantKind` enum**: `SUMMARY_BLANK_SWAP` (value: `"summary_blank_swap"`)
 - **적용 type (추정)**: 요약문(40).
 - **변형 규칙**:
   1. 입력: 원본 Passage.
@@ -643,30 +671,210 @@ CLAUDE.md v0.3 §6.2: "변형문제(VariantQuestion) — 같은 24개 type 안�
 ### 3.3 variant_kind와 type의 관계 정리
 
 ```
-Question.type:           24개 enum 중 하나 (확정)
-Question.variant_kind:   "original" | V1~V10 (Phase 3 진입 후 enum 확정)
+Question.type:           24개 QuestionType enum 중 하나 (확정)
+Question.variant_kind:   VariantKind enum — ORIGINAL | V1~V10 (v0.4 모두 활성, 2026-05-15)
 ```
 
-- `variant_kind="original"`: 입력에서 추출된 원본 문제 (exam-generator 호환).
-- `variant_kind=V1~V10`: 변형. `derived_from_question_id` 또는 `derived_from_passage_id` FK 필수.
+- `variant_kind=ORIGINAL`: 입력에서 추출된 원본 문제 (exam-generator 호환). `derived_from_question_id = None`.
+- `variant_kind=V1~V10`: 변형. ADR-0017 Accepted — 단일 `Question` 테이블 + `derived_from_question_id` self-FK NOT NULL (model_validator 강제).
+
+`Question.variant_metadata` (JSONB | NULL) — 변형만의 추가 메타 (예: `llm_candidate_words`, `generation_attempt`). 원본 행에서는 항상 None. Phase 3 첫 변형 생성 PR 에서 구조 확정 (ADR-0017 D2-c).
 
 ### 3.4 Phase 3 우선순위 (audit-review-domain §3.6 + 본 §3.2 통합)
 
-**1순위 (Phase 3 첫 5개)**:
-1. V2 `vocabulary_inline` (Gap A 어휘형) — 학원 변형문제집 핵심
-2. V4 `grammar_inline` (Gap A 어법형) — 동일 표면형
-3. V5 `blank_inference` — 변형문제집 단골
-4. V6 `topic_main_idea_swap` — 자산화 가치 최고
-5. V7 `order_shuffle` — 한 지문 → 한 변형
+**1순위 — Phase 3 진입 시 LLM 변형 프롬프트 작성 대상 (5개)**:
 
-**2순위 (Phase 3 후반 또는 v0.3)**:
-6. V1 `vocabulary_swap` — 평가원 표준형
-7. V3 `grammar_swap` — 평가원 표준형
-8. V8 `sentence_insertion_shift`
-9. V9 `irrelevant_sentence_inject`
-10. V10 `summary_blank_swap`
+| 순서 | ID | `VariantKind` enum | 적용 type | 자산화 가치 | 비고 |
+|---|---|---|---|---|---|
+| 1 | V6 | `TOPIC_MAIN_IDEA_SWAP` | `main_idea_22` / `topic_23` / `title_24` | **최고** | 본문 유지, 선택지만 갱신. 한 지문에서 22/23/24 모두 변형 |
+| 2 | V2 | `VOCABULARY_INLINE` | `vocabulary_30` / `blank_phrase_31` | 높음 | 학원 변형문제집 핵심 (Gap A 어휘형) |
+| 3 | V4 | `GRAMMAR_INLINE` | `grammar_29` | 높음 | V2 와 동형 (kind 만 grammar) |
+| 4 | V5 | `BLANK_INFERENCE` | `blank_phrase_31` / `blank_clause_32~34` | 높음 | 변형문제집 단골 |
+| 5 | V7 | `ORDER_SHUFFLE` | `paragraph_order_36` / `_37` | 중 | 한 지문 → 한 변형 |
 
-**우선순위는 §5.1 와이프 인터뷰로 검증 필요** (audit-review-domain §5.1과 동일 항목).
+**시작 가이드 (Phase 3 진입 후 첫 PR)**:
+1. **V6 우선** — 본문 변형 없음 + 선택지 5개만 LLM 생성 → 가장 단순 + 자산화 가치 최고.
+2. V6 통과 후 V2/V4 (sub-form 변환) 진행 — `inline_choices` 필드 + 매트릭스 `choice_format` 활용.
+3. V5 (`blank_inference`) 는 빈칸 위치 결정 + 5개 선택지 생성 — V6 패턴 + 본문 마커 부착.
+4. V7 (`order_shuffle`) 은 마지막 — LLM 의 단락 분할 자체가 새 도메인.
+
+**2순위 — Phase 3 후반 또는 별도 sprint**:
+
+| 순서 | ID | `VariantKind` enum | 적용 type | 비고 |
+|---|---|---|---|---|
+| 6 | V1 | `VOCABULARY_SWAP` | `vocabulary_30` / `long_set_41_42` | 평가원 표준형 |
+| 7 | V3 | `GRAMMAR_SWAP` | `grammar_29` | 평가원 표준형 |
+| 8 | V8 | `SENTENCE_INSERTION_SHIFT` | `sentence_insertion_38` / `_39` | — |
+| 9 | V9 | `IRRELEVANT_SENTENCE_INJECT` | `irrelevant_sentence_35` | — |
+| 10 | V10 | `SUMMARY_BLANK_SWAP` | `summary_40` | — |
+
+**우선순위는 §5.1 와이프 인터뷰로 최종 검증 필요** (audit-review-domain §5.1과 동일 항목).
+
+### 3.5 LLM 변형 프롬프트 사전 가이드 (실제 프롬프트는 Phase 3 별 PR)
+
+ADR-0013 (Phase 2 보강 파이프라인) 의 augment 패턴을 모태로 한 사전 가이드. 실제 프롬프트 본문은 Phase 3 진입 시 도메인 + LLM 코드 PR 에서 작성.
+
+#### 3.5.1 공통 구조 (ADR-0013 augment 패턴 재사용)
+
+`packages/llm/augment.py` 의 패턴을 그대로 답습:
+
+1. **입력 schema** (Pydantic): `Passage` (또는 `Question`) — 원본.
+2. **출력 schema** (Pydantic): `VariantOutput` — 1개 변형 후보 + `plan` (자기계획) + `naturalness_check` (자가검증).
+3. **mode 파라미터** (ADR-0013 mode 패턴 확장):
+   - `generate` (default): 새 변형 생성.
+   - `retry_on_uniqueness_fail`: qa-validator 가 정답 유일성 실패 보고 → LLM 이 재생성.
+   - `regenerate`: 사용자가 거부 → 같은 type/variant_kind 로 새 후보.
+4. **LLM 자가검증** (exam-generator 흡수): `naturalness_check: Literal["OK", "REWRITE_SCOPE_TOO_BROAD", ...]` — 변형 결과의 자연스러움 자체 평가.
+
+#### 3.5.2 V6 (`topic_main_idea_swap`) — 첫 변형 프롬프트의 모범 (1순위 #1)
+
+```
+입력: Passage (body_text + translation + vocabulary)
+출력: VariantOutput:
+  - type: Literal[main_idea_22, topic_23, title_24]   # 3개 중 LLM 선택 또는 호출자 지정
+  - choices: list[str]  # 5개, type 별 형식 (한국어 단문 / 영어 명사구 / 영어 제목)
+  - answer: int  # 1~5
+  - explanation: str
+  - plan: QuestionPlan
+  - naturalness_check: Literal["OK", ...]
+
+프롬프트 가이드:
+  - 본문 thesis 정확히 1문장 식별 → 정답 선택지 압축.
+  - 4개 오답 패턴 분포 강제: [too-narrow, too-broad, 결론 반대, 무관 그럴듯].
+  - 영어 명사구 (topic_23) 의 경우 동사 시작 회피, 정관사 the 시작 권장.
+  - 영어 제목 (title_24) 의 경우 4~10 단어, 첫 글자 대문자.
+  - 한국어 단문 (main_idea_22) 의 경우 "~이다" 형식.
+
+검증 포인트 (qa-validator §3.6):
+  - 정답 유일성: 다른 4개 선택지 모두 변별 가능.
+  - 형식 준수: type 별 형식 패턴 정합.
+  - thesis 정합: 정답이 본문 thesis 와 의미 정확 일치 (LLM-as-judge 2차 호출 가능).
+```
+
+#### 3.5.3 V2/V4 (`vocabulary_inline` / `grammar_inline`) — Gap A sub-form 변환 (1순위 #2, #3)
+
+```
+입력: Passage
+출력: VariantOutput:
+  - type: vocabulary_30 (V2) 또는 grammar_29 (V4)
+  - inline_choices: list[InlineChoice]  # 2~3개
+      - label: "(A)" / "(B)" / "(C)"
+      - options: list[str]  # 보통 2개
+      - answer_index: int
+      - position_marker: str  # 본문 내 위치
+      - kind: vocabulary | grammar
+  - choice_format: matrix_AB | matrix_ABC
+  - choice_matrix: ChoiceMatrix  # 5행 매트릭스
+  - answer: int
+
+프롬프트 가이드:
+  - 박스 2~3개 위치는 본문 핵심 어휘/어법 포인트.
+  - 어휘형 옵션: dictionary 동의어 회피 (변별력 없음) — 반의어 또는 의미 충돌어.
+  - 어법형 옵션: 회색지대 문법 회피 (비제한적 관계사 that/which 등).
+  - 5행 매트릭스: 박스 N개 → 컬럼 N개 → 5행 = 박스별 옵션 조합.
+  - 정답 = 모든 박스에서 자연스러운 조합 1개만.
+
+검증 포인트:
+  - 각 박스 정답 유일성 (qa-validator 박스별 검증).
+  - 매트릭스 5행 모두 컬럼 길이 정합 (Pydantic validator 자동 강제).
+```
+
+#### 3.5.4 V5 (`blank_inference`) — 빈칸 추론 변형 (1순위 #4)
+
+```
+입력: Passage
+출력: VariantOutput:
+  - type: blank_phrase_31 (구) 또는 blank_clause_32~34 (절)
+  - question_text: 표준 지시문
+  - choices: list[str]  # 5개 영어 명사구 또는 절
+  - answer: int
+  - body_with_blank: str  # 본문에 `______` 1개 박힌 형태 (Annotation 으로 분리)
+
+프롬프트 가이드:
+  - 빈칸 위치: 본문 thesis 문장의 핵심 어구.
+  - 연결어 처리: `that ______` 처럼 빈칸 직전 연결어가 있으면 choices 에 그 연결어 포함 금지.
+  - 정답이 본문 다른 곳에 그대로 등장 금지 (literal repetition — 추론이 아니라 검색).
+  - 오답 4개 패턴: 본문 표현 변형 + too-narrow + too-broad + 본문 일부 의미적 관련되되 빈칸 위치 부적합.
+
+검증 포인트:
+  - 정답 유일성.
+  - literal repetition 자동 검출 (qa-validator).
+```
+
+#### 3.5.5 V7 (`order_shuffle`) — 순서배열 변형 (1순위 #5)
+
+```
+입력: Passage
+출력: VariantOutput:
+  - type: paragraph_order_36 또는 _37
+  - given_passage: str  # 주어진 글 1단락
+  - sub_passages: list[list[str]]  # [[A단락], [B단락], [C단락]]
+  - choices: list[str]  # 정확히 ["(A)-(C)-(B)", "(B)-(A)-(C)", "(B)-(C)-(A)", "(C)-(A)-(B)", "(C)-(B)-(A)"]
+  - answer: int
+
+프롬프트 가이드:
+  - 단락 분할: 의미 단위 (문장 중간 자르기 금지).
+  - 응결 단서 충분: 각 단락 시작/끝에 다음 단락 가리키는 접속사/대명사/정관사.
+  - 단락 길이 균형 (학생이 길이 추측으로 못 풀게).
+  - 정답 분포 편향 회피 (5개 후보 균등 분포 — exam-generator Hotfix 17-2 참조).
+
+검증 포인트:
+  - 응결 단서 ≥ 2개 per 인접 단락 쌍.
+  - 분할 위치가 문장 경계 (sentence boundary).
+  - 정답 분포 통계 모니터링 (qa-validator history).
+```
+
+#### 3.5.6 후속 작업 (별 PR, 본 카탈로그 외)
+
+- `docs/prompts/variant_v6_topic_main_idea_swap.md` 등 V1~V10 모두 별 마크다운 + few-shot 2~3개.
+- `packages/llm/variant.py` — augment.py 와 대칭 구조 (mode 분기 + Pydantic 입출력).
+- `POST /passages/{id}/variants` 라우트 (variant_kind 파라미터).
+
+### 3.6 qa-validator 검증 시나리오 (ADR-0017 D3-c 하이브리드)
+
+ADR-0017 D3-c 결정: `Question.uniqueness_validated: bool` (최신 상태 캐시) + 별도 `qa_validation_results` 테이블 (history). qa-validator agent 가 별 LLM call 로 검증.
+
+#### 3.6.1 공통 검증 흐름
+
+1. **입력**: 1개 `Question` (variant_kind != ORIGINAL).
+2. **검증 LLM call**: 변형 생성 LLM 과 *다른 모델* 또는 *다른 프롬프트* — 자기검증 회피 (NRTW: LLM-as-judge 패턴).
+3. **출력**: `QAValidationResult`:
+   - `passed: bool`
+   - `category: Literal["uniqueness", "naturalness", "format", "literal_repetition"]`
+   - `note: str` (실패 사유)
+   - `timestamp: datetime`
+4. **저장**:
+   - `Question.uniqueness_validated` ← 최신 결과의 `passed` 값.
+   - `Question.uniqueness_validator_note` ← 최신 `note`.
+   - `qa_validation_results` 테이블에 raw history append (별 PR — Phase 3).
+
+#### 3.6.2 variant_kind 별 검증 카테고리 매핑
+
+| variant_kind | 검증 카테고리 (우선순위) | 검증 방법 |
+|---|---|---|
+| `VOCABULARY_SWAP` / `VOCABULARY_INLINE` | (1) uniqueness (2) literal_repetition (3) format | LLM 2차 호출 + 본문 fuzzy match |
+| `GRAMMAR_SWAP` / `GRAMMAR_INLINE` | (1) uniqueness (2) naturalness (회색지대 회피) | LLM 2차 호출 + 문법 규칙 체크리스트 |
+| `BLANK_INFERENCE` | (1) uniqueness (2) literal_repetition | LLM 2차 호출 + 본문 fuzzy match (정답이 본문 어디 그대로 등장하는지) |
+| `TOPIC_MAIN_IDEA_SWAP` | (1) thesis 정합 (2) format (3) uniqueness | LLM 2차 호출 (정답 ↔ thesis 의미 정합) + 형식 정규식 |
+| `ORDER_SHUFFLE` | (1) 응결 단서 (2) 분포 편향 (3) uniqueness | LLM 2차 호출 (인접 단락 응결 분석) + 분포 통계 history |
+| `SENTENCE_INSERTION_SHIFT` | (1) uniqueness (2) 응결 단서 | LLM 2차 호출 |
+| `IRRELEVANT_SENTENCE_INJECT` | (1) 본문 주제 관련성 (2) uniqueness | LLM 2차 호출 |
+| `SUMMARY_BLANK_SWAP` | (1) uniqueness (2) 본문 압축 정합 | LLM 2차 호출 |
+
+#### 3.6.3 실패 시 흐름
+
+```
+variant 생성 → qa-validator 검증 → passed=False?
+  ├─ Yes: retry (mode="retry_on_uniqueness_fail") — 최대 3회
+  ├─ No: 사용자에게 노출 + uniqueness_validated=True 캐시
+  └─ 3회 retry 모두 실패: 사용자에게 "검증 미통과" 라벨로 노출, 사용자 검수로 위임
+```
+
+CLAUDE.md §1.3 핵심 가치 명제 #3 ("편집 가능한 출력") 정합 — 자동 검증 실패도 사용자가 검수 후 채택할 수 있음.
+
+#### 3.6.4 Phase 3 진입 시 qa-validator 활성화
+
+CLAUDE.md §7.6 ("Phase 3 시작 시 활성화") 정합. Phase 3 첫 변형 생성 PR 과 동시 또는 직후 별 PR.
 
 ---
 
@@ -886,12 +1094,13 @@ audit-review-domain §4.1 + 본 §3.2 V1~V10 모두에 영향.
 
 ### 5.8 [domain-expert 자체] 후속 산출물
 
-본 카탈로그 v0.2가 트리거하는 domain-expert 자체 후속 작업:
+본 카탈로그 v0.4 가 트리거하는 domain-expert 자체 후속 작업:
 
-- `docs/prompts/variant_*.md` — V2/V4/V5/V6/V7 (1순위 5개) LLM 프롬프트 본문 + few-shot 예시. **Phase 3 진입 전**.
-- 와이프 인터뷰 후 v0.3 카탈로그 — §5.1, §5.2, §5.4 답변 흡수.
+- `docs/prompts/variant_*.md` — V6/V2/V4/V5/V7 (1순위 5개) LLM 프롬프트 본문 + few-shot 예시. **Phase 3 진입 시점**. §3.5 사전 가이드를 모태로 작성.
+- 와이프 인터뷰 후 v0.5 카탈로그 — §5.1, §5.2, §5.4 답변 흡수.
 - 자료 sweep 추가 — 아잉카·내신 sample을 받으면 §2 sub-form 추가.
 - annotation kind 카탈로그 v0.2 — 와이프 sample 받은 후 §4 보강.
+- qa-validator 활성화 sprint (Phase 3) — §3.6 검증 카테고리를 자동 알고리즘으로.
 
 ---
 
@@ -927,4 +1136,6 @@ audit-review-domain §4.1 + 본 §3.2 V1~V10 모두에 영향.
 |---|---|---|
 | v0.1 | 2026-05-02 | 초안 — 5개 변형 유형을 별 카테고리로 정의 (잘못된 전제, 폐기) |
 | v0.2 | 2026-05-02 | 전면 재작성 — 24개 유형 인벤토리 + sub-form (Gap A/B/K) + variant_kind 10개 + annotation kind 7종 + 미해결 8개. CLAUDE.md v0.3 §6.2 정정 반영. |
+| v0.3 | 2026-05-02 | 각 24개 type 에 snake_case 영문 enum value 후보 컬럼 추가. |
+| v0.4 | 2026-05-15 | ADR-0017 Accepted 후속 — V1~V10 모두 `VariantKind` enum value 명시 (`shared/schemas/question.py` 동시 보강). V6 명 변경 `THEME_REWORD` → `TOPIC_MAIN_IDEA_SWAP`. §3.4 1순위 표 상세화. §3.5 LLM 프롬프트 사전 가이드 신규. §3.6 qa-validator 검증 시나리오 신규. |
 | v0.3 | 2026-05-02 | (1) §1.1 24개 유형 표에 **enum value 후보 (snake_case 영문)** 컬럼 추가 — `Question.type` Pydantic enum의 1차 source. (2) §1.1에 LAYOUT_PATTERN 컬럼 추가. (3) enum value 명명 컨벤션 명시 (architect 검토 권고). (4) §3.2.0 V1~V10 요약 표 추가 — 적용 type을 enum value 후보로 매핑. PM 명세 (24개 type code 추출 + 매핑 표) 반영. |
