@@ -31,11 +31,11 @@ from datetime import UTC, datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
-
 from llm.client import StructuredLLMClient
 from llm.errors import LLMSchemaValidationError, LLMTimeoutError, PermanentLLMError
 from llm.prompt import PromptSpec
+from pydantic import BaseModel, Field
+
 from shared.schemas.qa_validation_result import QAValidationResult
 from shared.schemas.question import Question, VariantKind
 
@@ -88,6 +88,30 @@ _VARIANT_KIND_CHECKS: dict[str, str] = {
         "- Are there enough cues to rule out ALL four wrong orders? "
         "(If not → uniqueness failure)\n"
         "- Is the answer distribution plausible (not always choice ①)?"
+    ),
+    VariantKind.SENTENCE_INSERTION_SHIFT: (
+        "V8 (sentence_insertion_shift) specific checks:\n"
+        "- 주어진 문장의 단서 (대명사 referent / 접속사) 가 정답 위치 앞 문장에 명확히 있는가?\n"
+        "- 다른 4개 위치 삽입 시 문맥 흐름이 깨지는가? "
+        "(If not → uniqueness failure — the given sentence could fit multiple positions)\n"
+        "- 정답 위치 뒤 문장과의 연결도 자연스러운가 "
+        "(not just the sentence before the correct position)?\n"
+        "- given_sentence 가 body_with_markers 에서 완전히 제거되었는가 "
+        "(remnants of the extracted sentence = structural error)?"
+    ),
+    VariantKind.SUMMARY_BLANK_SWAP: (
+        "V10 (summary_blank_swap) specific checks:\n"
+        "- For blank (A): is exactly one candidate word the clear, unambiguous correct choice "
+        "given the passage thesis? Could any distractor fill (A) without contradiction? "
+        "(If yes → uniqueness failure for (A))\n"
+        "- For blank (B): is exactly one candidate word the clear, unambiguous correct choice? "
+        "Could any distractor fill (B) without contradiction? "
+        "(If yes → uniqueness failure for (B))\n"
+        "- Does the full summary sentence (with correct (A)/(B) filled in) accurately "
+        "compress the passage thesis — not too narrow, not too broad, not a verbatim copy?\n"
+        "- Are the 'swap' distractor (A)/(B) roles clearly wrong when reversed?\n"
+        "- Are the 'wrong_a', 'wrong_b', 'both_wrong' distractors plausible but clearly "
+        "incorrect in context?"
     ),
 }
 
