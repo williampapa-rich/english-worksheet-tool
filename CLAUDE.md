@@ -3,9 +3,9 @@
 > 이 문서는 Claude Code CLI가 프로젝트 컨텍스트를 이해하기 위한 헌장(charter)이자, subagent들의 협업 규칙서다.
 > 변경 시 PR로 관리한다. 모든 핵심 의사결정은 여기 반영된다.
 
-**버전**: v0.12
+**버전**: v0.13
 **최종 갱신**: 2026-05-15
-**상태**: **와이프 v0.2 통합 검수 종료** (2026-05-15). annotation 영역 5건 fix OK (PR #82) — highlight 다중 layer / 12색 정합 / 모서리 굴곡 제거 / 라벨 검정 / paragraph 분리. 잔존 = 에디터 ↔ PDF 본문 wrap 미세 차이 (두 엔진 본질적 차이) → **ADR-0018 Accepted** (PR #81) — server-side Tiptap 으로 근본 해결. **Phase 2.5 (unified-rendering) sprint 진입 신호** — Stage F1~F4 (3.5주). Phase 3 진입 차단 ADR-0016 (VocabularyMaster) / ADR-0017 (Question variant) 모두 Accepted (PR #80, 2026-05-15) — schema v0.2 + Alembic 마이그레이션은 별 PR. Tiptap 전환 (ADR-0015 D5 a) 은 ADR-0018 sprint 안에 흡수.
+**상태**: **Phase 2.5 sprint 좌초 → Phase 3 진입** (2026-05-15). ADR-0018 옵션 (a) server-side Tiptap 시도 (PR #89~#93) 가 와이프 검수에서 *추가 회귀* 유발 (ProseMirror View 가 mark + Decoration.widget 둘 다 emit / widget 이 단어 중간 inline 삽입 / 개발용 클래스 노출) — 5건 PR 모두 **revert** (PR #94). annotation 영역 5건 fix (PR #82) 만 유지. wrap 정합 미해결 — 두 엔진 본질적 한계 인정 + 사용자 결정 (2026-05-15): "PR #82 fix 만 유지" → Phase 3 진입. ADR-0018 → **Superseded by acceptance of wrap divergence** (별 메모로 마무리). Phase 3 진입 차단 ADR-0016 (VocabularyMaster) / ADR-0017 (Question variant) Accepted + schema v0.2 + Migration 1/2 적용 완료.
 
 ---
 
@@ -75,16 +75,14 @@
   - 다중 템플릿 (1단/2단, 어휘 위치 변형 등)
   - 로고/컬러 외 추가 프리셋
 
-#### Phase 2.5 — unified-rendering sprint (ADR-0018, 2026-05-15)
+#### Phase 2.5 — unified-rendering sprint (좌초, 2026-05-15)
 
-- **목표**: 에디터 ↔ PDF 본문 렌더링을 **단일 엔진** (server-side Tiptap, Node.js + jsdom) 으로 통합. 와이프 v0.2 검수에서 발견된 wrap 위치 본질적 차이 (Tiptap Decoration.widget vs Chromium inline span) 해소.
-- **DoD**:
-  - server-side Tiptap PoC — annotation → HTML 동등성 검증 (Stage F1).
-  - `annotation_html.py` 폐기 → `apps/web/server` (또는 별 Node 서비스) 의 단일 렌더 라이브러리로 대체 (Stage F2). ADR-0014 → Superseded.
-  - Worksheet preview / PDF export 라우트가 새 라이브러리 사용 (Stage F3).
-  - 회귀 (Playwright wrap parity spec) + cleanup (Stage F4).
-- **소요**: 3.5주 / 6~9 PR (ADR-0018 추정).
-- **트리거**: Phase 3 진입 전 봉합 — Phase 3 변형문제 출력도 동일 렌더 엔진 의존.
+**상태**: **Superseded by acceptance of wrap divergence** (2026-05-15).
+
+- ADR-0018 옵션 (a) server-side Tiptap 시도 (PR #89~#93) 가 ProseMirror View 의 *mark + Decoration.widget 동시 emit* 으로 시각 회귀 유발 — 와이프 검수에서 즉시 거부. revert (PR #94).
+- 사용자 결정: wrap 차이는 본질적 한계 인정 + Phase 3 진입.
+- Phase 4 (클라우드 배포) 전 재검토 가능 — 그 시점에 옵션 (b) ProseMirror Mark + CSS / (c) cross-lang lib / (d) wrap 차이 영구 인정 중 선택.
+- 본 sprint 의 ADR-0014 → Superseded 결정은 **무효화** (annotation_html.py 그대로 production 경로).
 
 #### Phase 3 — 변형문제 (Feature 3)
 
@@ -104,14 +102,19 @@
 
 ### 2.2 현재 위치
 
-**Phase 2-edit sprint 종료 + Phase 2.5 (unified-rendering) sprint 진입 신호** (2026-05-15).
+**Phase 2.5 sprint 좌초 → wrap 정합 미해결 인정 → Phase 3 진입** (2026-05-15).
 
-- 와이프 v0.2 통합 검수 종료 — annotation 영역 5건 fix OK (PR #82 머지).
-- 잔존 (에디터 ↔ PDF wrap 미세 차이) = **ADR-0018 Accepted** → Phase 2.5 sprint 신설 (Stage F1~F4, 3.5주). ADR-0014 → Superseded.
-- Phase 3 진입 차단 ADR 2건 Accepted: **ADR-0016** (VocabularyMaster 별 테이블) / **ADR-0017** (Question 단일 테이블 + variant_kind). 별 PR 에서 schema v0.2 + Alembic 마이그레이션.
-- 다음 트리거:
-  - Phase 2.5 종료 (wrap 정합 100%) → Phase 3 진입 신호.
-  - 병렬 가능: ADR-0016/0017 schema v0.2 PR + Phase 3 카탈로그 v0.4 보강 (domain-expert).
+- ADR-0018 옵션 (a) server-side Tiptap 시도 (PR #89~#93, 1일) 가 와이프 검수에서 *추가 회귀* — ProseMirror View 가 mark + Decoration.widget 둘 다 emit / widget 이 단어 중간 inline 삽입 / 개발용 클래스 노출. 5건 PR 모두 **revert** (PR #94).
+- 사용자 결정 (2026-05-15): wrap 차이는 본질적 한계 — PR #82 annotation 영역 5건 fix 만 유지하고 Phase 3 진입.
+- 와이프 v0.2 통합 검수 OK 시점 그대로 복원:
+  - annotation 영역 5건 fix (highlight 다중 layer / 12색 정합 / 모서리 굴곡 제거 / 라벨 검정 / paragraph 분리) — PR #82.
+  - wrap 정합 미세 차이는 *알려진 한계* — PDF 출력물은 학생에게 한 권 자료로 배포되므로 에디터 ↔ PDF 정합 100% 는 사용 흐름에 영향 적음.
+- Phase 3 진입 차단 ADR 2건 Accepted + schema v0.2 + Alembic Migration 1/2 적용 완료: **ADR-0016** (VocabularyMaster) / **ADR-0017** (Question variant). 변형문제 카탈로그 v0.4 + VariantKind enum V1~V10 완성.
+- 다음 트리거: **Phase 3 (변형문제) 진입** — 카탈로그 §3.4 1순위 5개 (V6 / V2 / V4 / V5 / V7) 부터 LLM 프롬프트 작성 + qa-validator 활성화.
+- 보류 영역:
+  - ADR-0018 → Superseded by acceptance of wrap divergence (Phase 4 클라우드 배포 전 재검토 가능).
+  - Tiptap 전환 (ADR-0015 D5 a) — 별 sprint 보류.
+  - 환경 정리 — root `.env` 손상 (1줄만 남음, `apps/api/.env` 가 실제 사용). 사용자 직접 정리 권장.
 
 **이전 마일스톤**:
 - Phase 2 baseline 종료 (2026-05-07) — B5 와이프 검수 OK, PDF 퀄리티 A 등급.
@@ -612,3 +615,4 @@ Phase 0를 시작할 수 있는 기반을 깔고, architect + domain-expert의 a
 | v0.10.1 | 2026-05-07 | (1) ADR-0015 Accepted — D3-D6 모두 권장안 채택 (Vocabulary DELETE 모든 항목 / Passage 메타 없음 / Tiptap 재사용 + prop 분기 / "+" 버튼). Stage E1 시작 가능 (PR #58 머지 후). (2) §2.2 "Phase 1 baseline 와이프 OK 별도 대기" 표기 정정 — 2026-05-04 검수 완료 (Editor A / HWPX D), ADR-0008 로 HWPX 폐기 + HTML→PDF 전환. Phase 1 출력 경로는 Phase 2 PDF 로 통합 흡수. |
 | v0.11 | 2026-05-09 | **Stage E1/E2/E3 코드 완료** (Phase 2-edit sprint). (1) Stage E2 PR #65~#73 머지: WorksheetNewPage / WorksheetDetailPage / WorksheetEditPage / Translation·Vocabulary·본문 인라인 편집 / 메타 편집 모달 / items 추가·삭제·순서 / 에디터-PDF wrap 정합 (Pretendard webfont + paragraph 분할 emit + bracket 라벨 밖). (2) Stage E3 = `<PassageBodyEditor>` (textarea 기반, paragraphs 빈 줄 분리, body 변경 시 annotation 전체 삭제 + confirm) + Playwright E2E `passage_body_editor.spec.ts`. (3) Tiptap 전환 (ADR-0015 D5 a) 은 후속 — 현재 textarea 로 와이프 검수 가능. (4) §1.3 핵심 가치 명제 #3 "편집 가능한 출력" 실현 완료 — 와이프 v0.2 통합 검수 → Phase 3 (변형문제) 진입 신호. |
 | v0.12 | 2026-05-15 | **와이프 v0.2 검수 종료 + Phase 2.5 (unified-rendering) sprint 진입**. (1) PR #82 annotation 영역 fix 5건 머지 — highlight 다중 layer / 12색 정합 / 모서리 굴곡 제거 / 라벨 검정 / paragraph 분리. (2) **ADR-0018 Accepted** (PR #81) — 에디터 ↔ PDF 본문 wrap 미세 차이 (Tiptap vs Chromium 본질적 차이) 해소 위해 server-side Tiptap (Node.js + jsdom) 채택. Stage F1~F4 (3.5주). ADR-0014 → Superseded. (3) **ADR-0016 / ADR-0017 Accepted** (PR #80) — VocabularyMaster 별 테이블 + `Vocabulary.master_id` nullable FK / Question 단일 테이블 + `variant_kind` discriminator + self-FK NULLABLE. 별 PR 에서 schema v0.2 + Alembic. (4) §2.1 Phase 2.5 자리 신설 — Phase 3 진입 전 wrap 정합 봉합. (5) Tiptap 전환 (ADR-0015 D5 a) 은 ADR-0018 sprint 안에 흡수. |
+| v0.13 | 2026-05-15 | **Phase 2.5 sprint 좌초 → wrap 정합 미해결 인정 → Phase 3 진입**. (1) ADR-0018 옵션 (a) server-side Tiptap 구현 시도 (PR #89~#93) 가 같은 날 와이프 검수에서 즉시 거부 — ProseMirror View 가 *mark + Decoration.widget 동시 emit* / widget 이 단어 중간 inline 삽입 / 개발용 클래스 (`ProseMirror-widget`) 노출. 5건 PR 모두 revert (PR #94). (2) ADR-0014 Superseded → Accepted 복귀 (annotation_html.py production 경로 유지). (3) ADR-0018 → Superseded by acceptance of wrap divergence. Phase 4 클라우드 배포 전 옵션 (b)/(c)/(d) 재검토. (4) §2.1 Phase 2.5 자리 좌초 표기. (5) §2.2 현재 위치 = Phase 3 (변형문제) 진입 신호. (6) ADR-0016/0017 schema v0.2 + Migration 1/2 + 카탈로그 v0.4 + VariantKind v1~v10 모두 적용 — Phase 3 진입 unblock. |

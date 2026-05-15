@@ -1,8 +1,9 @@
 # ADR 0018 — 에디터 ↔ PDF 본문 렌더링 통합 sprint 정의
 
-- **상태(Status)**: Accepted
+- **상태(Status)**: **Superseded by acceptance of wrap divergence** (2026-05-15)
 - **작성일**: 2026-05-15
-- **결정일**: 2026-05-15 (PM Dennis — 옵션 (a) server-side Tiptap 채택. ADR-0014 → Superseded. Phase 2.5 자리 신설. Stage F1~F4 즉시 시작.)
+- **결정일**: 2026-05-15 (PM Dennis — 옵션 (a) server-side Tiptap 채택 후 같은 날 좌초). 옵션 (a) 구현 시도 (PR #89~#93) 가 ProseMirror View 의 *mark + Decoration.widget 동시 emit* 으로 PDF 시각 추가 회귀 — widget 이 단어 중간 inline 삽입 + 개발용 클래스 (`ProseMirror-widget`) 노출. 와이프 검수 즉시 거부 → 5건 PR revert (PR #94). 사용자 결정: **wrap 차이는 본질적 한계 인정** + Phase 3 진입. ADR-0014 → Superseded 도 무효화 (annotation_html.py production 경로 복귀).
+- **재검토 시점**: Phase 4 (클라우드 배포) 전. 그때 옵션 (b) ProseMirror Mark + CSS 재설계 / (c) cross-lang lib / (d) wrap 차이 영구 인정 중 선택.
 - **작성자**: architect
 - **결정자**: PM (Dennis)
 - **유형**: Phase 2-edit baseline 마무리 중 발견된 *근본 결함* (에디터 ↔ PDF wrap
