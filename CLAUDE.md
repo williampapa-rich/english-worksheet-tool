@@ -3,9 +3,9 @@
 > 이 문서는 Claude Code CLI가 프로젝트 컨텍스트를 이해하기 위한 헌장(charter)이자, subagent들의 협업 규칙서다.
 > 변경 시 PR로 관리한다. 모든 핵심 의사결정은 여기 반영된다.
 
-**버전**: v0.13
+**버전**: v0.14
 **최종 갱신**: 2026-05-15
-**상태**: **Phase 2.5 sprint 좌초 → Phase 3 진입** (2026-05-15). ADR-0018 옵션 (a) server-side Tiptap 시도 (PR #89~#93) 가 와이프 검수에서 *추가 회귀* 유발 (ProseMirror View 가 mark + Decoration.widget 둘 다 emit / widget 이 단어 중간 inline 삽입 / 개발용 클래스 노출) — 5건 PR 모두 **revert** (PR #94). annotation 영역 5건 fix (PR #82) 만 유지. wrap 정합 미해결 — 두 엔진 본질적 한계 인정 + 사용자 결정 (2026-05-15): "PR #82 fix 만 유지" → Phase 3 진입. ADR-0018 → **Superseded by acceptance of wrap divergence** (별 메모로 마무리). Phase 3 진입 차단 ADR-0016 (VocabularyMaster) / ADR-0017 (Question variant) Accepted + schema v0.2 + Migration 1/2 적용 완료.
+**상태**: **Phase 3 핵심 영역 종료** (2026-05-15). 카탈로그 v0.4 의 변형 10개 (V1~V10) 모두 LLM 변형 라우트 + 프롬프트 + qa-validator 정답 유일성 검증 통합 완료. PR #96~#108 머지 (10개 변형 + qa-validator). DoD 충족: 변형 5개+ ✅ / 정답 유일성 자동 검증 ✅ / 단일 테이블 + variant_kind ✅. wrap 정합은 ADR-0018 좌초 후 본질적 한계 인정 (Phase 4 재검토 영역).
 
 ---
 
@@ -84,17 +84,25 @@
 - Phase 4 (클라우드 배포) 전 재검토 가능 — 그 시점에 옵션 (b) ProseMirror Mark + CSS / (c) cross-lang lib / (d) wrap 차이 영구 인정 중 선택.
 - 본 sprint 의 ADR-0014 → Superseded 결정은 **무효화** (annotation_html.py 그대로 production 경로).
 
-#### Phase 3 — 변형문제 (Feature 3)
+#### Phase 3 — 변형문제 (Feature 3) — **핵심 영역 종료 (2026-05-15)**
 
 - **목표**: 변형 유형별 프롬프트 카탈로그 + 자동 검증 + 출력
-- **DoD**:
-  - 변형 유형 5개 이상 지원 (어휘, 어법, 빈칸, 어순, 주제·요지 등)
-  - 정답 유일성 자동 검증 (qa-validator agent가 별도 LLM call로)
-  - 변형 결과가 다시 정규화된 Question으로 들어가서 Phase 1, 2 파이프라인과 호환
+- **DoD 모두 충족**:
+  - ✅ **변형 유형 10개 지원** (V1~V10, 카탈로그 v0.4) — 1순위 5개 + 2순위 5개 모두 LLM 변형 라우트 + 프롬프트 머지.
+  - ✅ **정답 유일성 자동 검증** — qa-validator (PR #102) 가 모든 variant_kind 별 체크 텍스트로 LLM call 검증. `Question.uniqueness_validated` 캐시 + `qa_validation_results` history 하이브리드 (ADR-0017 D3-c).
+  - ✅ **변형 결과가 정규화된 Question** — 단일 테이블 + `variant_kind` discriminator + `derived_from_question_id` self-FK (ADR-0017 D1 a).
 - **진입 전 차단 ADR (모두 Accepted, 2026-05-15)**:
   - ADR-0016 VocabularyMaster (글로벌 어휘 dedup) — 별 테이블 + `Vocabulary.master_id` nullable FK.
   - ADR-0017 Question / VariantQuestion 단일 테이블 + `variant_kind` discriminator + self-FK NULLABLE.
-  - ADR-0018 unified-rendering (Phase 2.5 sprint 선행).
+  - ADR-0018 unified-rendering — *좌초* (Phase 2.5 sprint 실패) → wrap 정합은 본질적 한계 인정, Phase 4 재검토.
+- **머지된 PR**:
+  - 변형 10개: #96 (V6) / #97 (V5) / #98 (V2) / #99 (V4) / #101 (V7) / #103 (V8) / #104 (V10) / #105 (V9) / #106 (V1) / #108 (V3).
+  - qa-validator 활성화: #102.
+- **점진 개선 영역 (Phase 3 종료 후 지속 개선)**:
+  - LLM 비용 모니터링 / 캐싱 전략 (CLAUDE.md §11 Open Questions).
+  - 프롬프트 평가 / 회귀 테스트 자동화 (`admin/eval/`).
+  - 변형 결과 와이프 검수 (Phase 3 운영 검수 — Phase 2-edit 같은 통합 검수 sprint 별도).
+  - Stage E1-c VocabularyMaster 활용 (manual vocabulary add) — 별 PR 영역.
 
 #### Phase 4 — 클라우드 배포 + 멀티테넌트 활성화
 
@@ -102,19 +110,26 @@
 
 ### 2.2 현재 위치
 
-**Phase 2.5 sprint 좌초 → wrap 정합 미해결 인정 → Phase 3 진입** (2026-05-15).
+**Phase 3 핵심 영역 종료** (2026-05-15) — 카탈로그 v0.4 변형 10개 (V1~V10) 모두 LLM 라우트 + qa-validator 통합 완료.
 
-- ADR-0018 옵션 (a) server-side Tiptap 시도 (PR #89~#93, 1일) 가 와이프 검수에서 *추가 회귀* — ProseMirror View 가 mark + Decoration.widget 둘 다 emit / widget 이 단어 중간 inline 삽입 / 개발용 클래스 노출. 5건 PR 모두 **revert** (PR #94).
-- 사용자 결정 (2026-05-15): wrap 차이는 본질적 한계 — PR #82 annotation 영역 5건 fix 만 유지하고 Phase 3 진입.
-- 와이프 v0.2 통합 검수 OK 시점 그대로 복원:
-  - annotation 영역 5건 fix (highlight 다중 layer / 12색 정합 / 모서리 굴곡 제거 / 라벨 검정 / paragraph 분리) — PR #82.
-  - wrap 정합 미세 차이는 *알려진 한계* — PDF 출력물은 학생에게 한 권 자료로 배포되므로 에디터 ↔ PDF 정합 100% 는 사용 흐름에 영향 적음.
-- Phase 3 진입 차단 ADR 2건 Accepted + schema v0.2 + Alembic Migration 1/2 적용 완료: **ADR-0016** (VocabularyMaster) / **ADR-0017** (Question variant). 변형문제 카탈로그 v0.4 + VariantKind enum V1~V10 완성.
-- 다음 트리거: **Phase 3 (변형문제) 진입** — 카탈로그 §3.4 1순위 5개 (V6 / V2 / V4 / V5 / V7) 부터 LLM 프롬프트 작성 + qa-validator 활성화.
-- 보류 영역:
-  - ADR-0018 → Superseded by acceptance of wrap divergence (Phase 4 클라우드 배포 전 재검토 가능).
-  - Tiptap 전환 (ADR-0015 D5 a) — 별 sprint 보류.
-  - 환경 정리 — root `.env` 손상 (1줄만 남음, `apps/api/.env` 가 실제 사용). 사용자 직접 정리 권장.
+- 머지 PR (Phase 3 영역):
+  - **V6** topic_main_idea_swap (#96) / **V5** blank_inference (#97) / **V2** vocabulary_inline (#98) / **V4** grammar_inline (#99) / **V7** order_shuffle (#101) — 1순위 5개.
+  - **V8** sentence_insertion_shift (#103) / **V10** summary_blank_swap (#104) / **V9** irrelevant_sentence_inject (#105) / **V1** vocabulary_swap (#106) / **V3** grammar_swap (#108) — 2순위 5개.
+  - **qa-validator 활성화** (#102) — 정답 유일성 검증 LLM call. variant_kind 별 체크 텍스트 (10개 모두 등록).
+- 변형 생성 흐름: `POST /questions/{id}/variants/{kind}` → LLM 생성 → qa-validator → DB 저장 (Question + QAValidationResult 하이브리드).
+- LLM 비용: 변형당 2회 호출 (생성 + 검증). 캐싱 비활성. Phase 4 모니터링 영역.
+- DoD 충족 — Phase 3 운영 검수 (와이프 변형 결과 시각 확인) 는 별 sprint.
+
+**점진 개선 영역** (Phase 3 종료 후 지속):
+- LLM 비용 모니터링 / 캐싱.
+- Stage E1-c VocabularyMaster 활용 (manual vocab add).
+- 프롬프트 평가 / 회귀 테스트 자동화 (`admin/eval/`).
+- 와이프 운영 검수 — 실제 변형 결과 사용해보고 프롬프트 미세 조정.
+
+**보류 영역**:
+- ADR-0018 unified-rendering → Superseded by acceptance of wrap divergence (Phase 4 재검토).
+- Tiptap 전환 (ADR-0015 D5 a) → 별 sprint 보류.
+- 환경 정리 — root `.env` 손상 (1줄만 남음, `apps/api/.env` 가 실제 사용). 사용자 직접 정리 권장.
 
 **이전 마일스톤**:
 - Phase 2 baseline 종료 (2026-05-07) — B5 와이프 검수 OK, PDF 퀄리티 A 등급.
@@ -616,3 +631,4 @@ Phase 0를 시작할 수 있는 기반을 깔고, architect + domain-expert의 a
 | v0.11 | 2026-05-09 | **Stage E1/E2/E3 코드 완료** (Phase 2-edit sprint). (1) Stage E2 PR #65~#73 머지: WorksheetNewPage / WorksheetDetailPage / WorksheetEditPage / Translation·Vocabulary·본문 인라인 편집 / 메타 편집 모달 / items 추가·삭제·순서 / 에디터-PDF wrap 정합 (Pretendard webfont + paragraph 분할 emit + bracket 라벨 밖). (2) Stage E3 = `<PassageBodyEditor>` (textarea 기반, paragraphs 빈 줄 분리, body 변경 시 annotation 전체 삭제 + confirm) + Playwright E2E `passage_body_editor.spec.ts`. (3) Tiptap 전환 (ADR-0015 D5 a) 은 후속 — 현재 textarea 로 와이프 검수 가능. (4) §1.3 핵심 가치 명제 #3 "편집 가능한 출력" 실현 완료 — 와이프 v0.2 통합 검수 → Phase 3 (변형문제) 진입 신호. |
 | v0.12 | 2026-05-15 | **와이프 v0.2 검수 종료 + Phase 2.5 (unified-rendering) sprint 진입**. (1) PR #82 annotation 영역 fix 5건 머지 — highlight 다중 layer / 12색 정합 / 모서리 굴곡 제거 / 라벨 검정 / paragraph 분리. (2) **ADR-0018 Accepted** (PR #81) — 에디터 ↔ PDF 본문 wrap 미세 차이 (Tiptap vs Chromium 본질적 차이) 해소 위해 server-side Tiptap (Node.js + jsdom) 채택. Stage F1~F4 (3.5주). ADR-0014 → Superseded. (3) **ADR-0016 / ADR-0017 Accepted** (PR #80) — VocabularyMaster 별 테이블 + `Vocabulary.master_id` nullable FK / Question 단일 테이블 + `variant_kind` discriminator + self-FK NULLABLE. 별 PR 에서 schema v0.2 + Alembic. (4) §2.1 Phase 2.5 자리 신설 — Phase 3 진입 전 wrap 정합 봉합. (5) Tiptap 전환 (ADR-0015 D5 a) 은 ADR-0018 sprint 안에 흡수. |
 | v0.13 | 2026-05-15 | **Phase 2.5 sprint 좌초 → wrap 정합 미해결 인정 → Phase 3 진입**. (1) ADR-0018 옵션 (a) server-side Tiptap 구현 시도 (PR #89~#93) 가 같은 날 와이프 검수에서 즉시 거부 — ProseMirror View 가 *mark + Decoration.widget 동시 emit* / widget 이 단어 중간 inline 삽입 / 개발용 클래스 (`ProseMirror-widget`) 노출. 5건 PR 모두 revert (PR #94). (2) ADR-0014 Superseded → Accepted 복귀 (annotation_html.py production 경로 유지). (3) ADR-0018 → Superseded by acceptance of wrap divergence. Phase 4 클라우드 배포 전 옵션 (b)/(c)/(d) 재검토. (4) §2.1 Phase 2.5 자리 좌초 표기. (5) §2.2 현재 위치 = Phase 3 (변형문제) 진입 신호. (6) ADR-0016/0017 schema v0.2 + Migration 1/2 + 카탈로그 v0.4 + VariantKind v1~v10 모두 적용 — Phase 3 진입 unblock. |
+| v0.14 | 2026-05-15 | **Phase 3 핵심 영역 종료** — 카탈로그 v0.4 변형 10개 (V1~V10) 모두 LLM 변형 라우트 + 프롬프트 + qa-validator 정답 유일성 검증 통합 완료. (1) V6/V5/V2/V4/V7 (1순위 5개) PR #96/#97/#98/#99/#101 머지. (2) V8/V10/V9/V1/V3 (2순위 5개) PR #103/#104/#105/#106/#108 머지. (3) qa-validator 활성화 PR #102 — 변형 생성 직후 별 LLM call 로 정답 유일성 검증, `Question.uniqueness_validated` 최신 캐시 + `qa_validation_results` history 하이브리드 (ADR-0017 D3-c). (4) §2.1 Phase 3 DoD 모두 충족 표기. (5) §2.2 현재 위치 = Phase 3 핵심 영역 종료, 점진 개선 영역 + 보류 영역 명시. LLM 비용 변형당 2회 (생성 + 검증), 캐싱 비활성, Phase 4 모니터링 영역. |
