@@ -157,8 +157,13 @@
     letter-spacing: 0.05em;
   }
 
-  /* ADR-0014 — annotation HTML 시각 표현 (자동 주입) */
+  /* ADR-0014 — annotation HTML 시각 표현 (legacy annotation_html.py 출력 fallback) */
   {{ annotation_css | safe }}
+
+  /* Phase 2.5 Stage F4 fix — server-side Tiptap 마크업 annotation CSS (단일 SOT).
+   * EditorPoc.css 와 @import 공유 — [data-annotation-kind] / [data-*-widget] 셀렉터
+   * + --anno-color-N 변수 정의. */
+  {{ editor_annotation_css | safe }}
 </style>
 </head>
 <body>

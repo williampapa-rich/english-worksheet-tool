@@ -1,0 +1,236 @@
+/* _editor_annotation.css — server-side Tiptap 출력용 annotation CSS 단일 SOT
+ *
+ * ADR-0018 §fix / Phase 2.5 Stage F4
+ *
+ * 배경:
+ *   PR #90 (Stage F2) 가 worksheet preview/PDF 라우트를 server-side Tiptap 으로
+ *   교체하면서 HTML 마크업이 변경됨:
+ *     이전 (annotation_html.py): .annot-top-label, .annot-bracket 등
+ *     현재 (server-side Tiptap): [data-annotation-kind="top_label"], [data-bracket-widget]
+ *
+ *   _annotation.css 는 구 .annot-* 셀렉터만 정의 → 새 마크업 매칭 안 됨 →
+ *   borderline 없음 + bracket 색 fallback 검정 (와이프 보고 2026-05-15).
+ *
+ * 목적:
+ *   에디터 (EditorPoc.css) 와 PDF (playful/classic/modern 템플릿) 가 동일한 CSS 를
+ *   공유해 annotation 시각이 정확히 일치하도록 단일 SOT 화.
+ *
+ * 사용:
+ *   - EditorPoc.css: `@import url("@templates/_editor_annotation.css");` 로 로드.
+ *   - PDF 템플릿: render.py 가 `_EDITOR_ANNOTATION_CSS` 캐시 → `editor_annotation_css`
+ *     컨텍스트 변수로 주입 → `<style>{{ editor_annotation_css | safe }}</style>`.
+ *
+ * 변경 금지 픽셀 값 (memory: feedback_pdf_annotation_visual.md, 2026-05-08 확정):
+ *   - top_label border-top: 2px
+ *   - bottom_label border-bottom: 2px
+ *   - label text font-size: 0.65em
+ *   - label text top (widget): calc(-1.1em - 3px)
+ *   - bracket font-weight: 700
+ *
+ * 매핑 single-source-of-truth: docs/annotation-hwpx-mapping.md
+ */
+
+/* ─── 12색 팔레트 변수 ──────────────────────────────────────────────────────
+ *
+ * color_index 별 의미 (sentence_role 매핑 등) 는 미결정 — 드래프트는 순수 색 팔레트.
+ * Tailwind 300/200 파스텔 톤 — 에디터와 PDF 양쪽 정합 (2026-05-10 fix).
+ * EditorPoc.css :root 블록과 완전 동일 값.
+ */
+:root {
+  --anno-color-0: #9ca3af; /* gray-400 — 디폴트 (미설정) */
+  --anno-color-1: #fef08a; /* yellow-200 */
+  --anno-color-2: #86efac; /* green-300 */
+  --anno-color-3: #93c5fd; /* blue-300 */
+  --anno-color-4: #f9a8d4; /* pink-300 */
+  --anno-color-5: #fdba74; /* orange-300 */
+  --anno-color-6: #c4b5fd; /* violet-300 */
+  --anno-color-7: #6ee7b7; /* emerald-300 */
+  --anno-color-8: #fca5a5; /* red-300 */
+  --anno-color-9: #67e8f9; /* cyan-300 */
+  --anno-color-10: #d9f99d; /* lime-200 */
+  --anno-color-11: #fde68a; /* amber-200 */
+  --anno-color-12: #e9d5ff; /* purple-200 */
+}
+
+/* ─── color_index → CSS 변수 매핑 ──────────────────────────────────────────
+ *
+ * data-color-index 속성 값으로 분기.
+ * top_label / bottom_label mark span 과 bracket mark span 에 함께 적용됨.
+ */
+[data-color-index="1"]  { --current-anno-color: var(--anno-color-1); }
+[data-color-index="2"]  { --current-anno-color: var(--anno-color-2); }
+[data-color-index="3"]  { --current-anno-color: var(--anno-color-3); }
+[data-color-index="4"]  { --current-anno-color: var(--anno-color-4); }
+[data-color-index="5"]  { --current-anno-color: var(--anno-color-5); }
+[data-color-index="6"]  { --current-anno-color: var(--anno-color-6); }
+[data-color-index="7"]  { --current-anno-color: var(--anno-color-7); }
+[data-color-index="8"]  { --current-anno-color: var(--anno-color-8); }
+[data-color-index="9"]  { --current-anno-color: var(--anno-color-9); }
+[data-color-index="10"] { --current-anno-color: var(--anno-color-10); }
+[data-color-index="11"] { --current-anno-color: var(--anno-color-11); }
+[data-color-index="12"] { --current-anno-color: var(--anno-color-12); }
+
+/* ─── top_label — 위 borderline + Decoration.widget 라벨 텍스트 ─────────────
+ *
+ * mark span (data-annotation-kind="top_label") 에 border-top 그림.
+ * 라벨 텍스트 / 위치 스타일은 topLabel.ts makeTopLabelWidget 인라인 style.
+ * widget span (data-top-label-widget) 은 pointer-events / user-select 만.
+ *
+ * 픽셀 값 절대 변경 금지 (2026-05-08 확정):
+ *   border-top: 2px solid (색상만 변수)
+ */
+[data-annotation-kind="top_label"] {
+  border-top: 2px solid var(--current-anno-color, var(--anno-color-0));
+}
+
+[data-top-label-widget="true"] {
+  user-select: none;
+  pointer-events: none;
+}
+
+/* ─── bottom_label — 아래 borderline + Decoration.widget 라벨 텍스트 ─────────
+ *
+ * top_label 과 대칭. border-bottom 2px.
+ * 픽셀 값 절대 변경 금지 (2026-05-08 확정).
+ */
+[data-annotation-kind="bottom_label"] {
+  border-bottom: 2px solid var(--current-anno-color, var(--anno-color-0));
+}
+
+[data-bottom-label-widget="true"] {
+  user-select: none;
+  pointer-events: none;
+}
+
+/* ─── bracket — 괄호 Decoration.widget ──────────────────────────────────────
+ *
+ * bracket mark span (data-annotation-kind="bracket") 은 배경/테두리 색상용.
+ * 여는/닫는 괄호 글자는 bracket.ts makeBracketWidget 이 data-bracket-widget span 으로 삽입.
+ *
+ * bracket widget 의 color 는 colorUtils.colorVar() 가 var(--anno-color-N) 를 인라인 style 로
+ * 주입 — 이 파일의 :root --anno-color-N 정의가 없으면 fallback 검정이 되는 버그 원인.
+ * (와이프 보고 2026-05-15: bracket 색상이 검정으로 나옴)
+ *
+ * bracket mark span 의 --current-anno-color 초기화:
+ *   data-bracket-color 속성이 없는 bracket 은 gray-400 디폴트.
+ */
+[data-annotation-kind="bracket"] {
+  --current-anno-color: var(--anno-color-0);
+}
+
+[data-annotation-kind="bracket"][data-bracket-color="1"]  { --current-anno-color: var(--anno-color-1); }
+[data-annotation-kind="bracket"][data-bracket-color="2"]  { --current-anno-color: var(--anno-color-2); }
+[data-annotation-kind="bracket"][data-bracket-color="3"]  { --current-anno-color: var(--anno-color-3); }
+[data-annotation-kind="bracket"][data-bracket-color="4"]  { --current-anno-color: var(--anno-color-4); }
+[data-annotation-kind="bracket"][data-bracket-color="5"]  { --current-anno-color: var(--anno-color-5); }
+[data-annotation-kind="bracket"][data-bracket-color="6"]  { --current-anno-color: var(--anno-color-6); }
+[data-annotation-kind="bracket"][data-bracket-color="7"]  { --current-anno-color: var(--anno-color-7); }
+[data-annotation-kind="bracket"][data-bracket-color="8"]  { --current-anno-color: var(--anno-color-8); }
+[data-annotation-kind="bracket"][data-bracket-color="9"]  { --current-anno-color: var(--anno-color-9); }
+[data-annotation-kind="bracket"][data-bracket-color="10"] { --current-anno-color: var(--anno-color-10); }
+[data-annotation-kind="bracket"][data-bracket-color="11"] { --current-anno-color: var(--anno-color-11); }
+[data-annotation-kind="bracket"][data-bracket-color="12"] { --current-anno-color: var(--anno-color-12); }
+
+/* bracket widget span — colorUtils.colorVar() 가 인라인 style 로 color 설정.
+ * 여기선 pointer-events / user-select 만. */
+[data-bracket-widget="true"] {
+  user-select: none;
+  pointer-events: none;
+}
+
+/* ─── highlight — 배경색 ────────────────────────────────────────────────────
+ *
+ * @tiptap/extension-highlight 이 background-color inline style 을 직접 주입.
+ * CSS 변수 기반 스타일 불필요 — 인라인 style 강제 출력만.
+ */
+
+/* ─── underline — <u> 태그 ──────────────────────────────────────────────────
+ *
+ * @tiptap/extension-underline 이 <u> 태그로 렌더링.
+ * 브라우저/Chromium 기본 underline 그대로 사용.
+ */
+
+/* ─── inline_note — ::after pseudo-element ──────────────────────────────────
+ *
+ * data-annotation-kind="inline_note" span 의 ::after 로 "(=노트)" 형태 렌더.
+ * data-inline-note-color 속성으로 color_index 연동.
+ */
+[data-annotation-kind="inline_note"] {
+  --current-anno-color: var(--anno-color-0);
+}
+
+[data-annotation-kind="inline_note"][data-inline-note-color="1"]  { --current-anno-color: var(--anno-color-1); }
+[data-annotation-kind="inline_note"][data-inline-note-color="2"]  { --current-anno-color: var(--anno-color-2); }
+[data-annotation-kind="inline_note"][data-inline-note-color="3"]  { --current-anno-color: var(--anno-color-3); }
+[data-annotation-kind="inline_note"][data-inline-note-color="4"]  { --current-anno-color: var(--anno-color-4); }
+[data-annotation-kind="inline_note"][data-inline-note-color="5"]  { --current-anno-color: var(--anno-color-5); }
+[data-annotation-kind="inline_note"][data-inline-note-color="6"]  { --current-anno-color: var(--anno-color-6); }
+[data-annotation-kind="inline_note"][data-inline-note-color="7"]  { --current-anno-color: var(--anno-color-7); }
+[data-annotation-kind="inline_note"][data-inline-note-color="8"]  { --current-anno-color: var(--anno-color-8); }
+[data-annotation-kind="inline_note"][data-inline-note-color="9"]  { --current-anno-color: var(--anno-color-9); }
+[data-annotation-kind="inline_note"][data-inline-note-color="10"] { --current-anno-color: var(--anno-color-10); }
+[data-annotation-kind="inline_note"][data-inline-note-color="11"] { --current-anno-color: var(--anno-color-11); }
+[data-annotation-kind="inline_note"][data-inline-note-color="12"] { --current-anno-color: var(--anno-color-12); }
+
+[data-annotation-kind="inline_note"]::after {
+  content: " (=" attr(data-inline-note-text) ")";
+  font-size: 0.75em;
+  color: #4b5563;
+  margin-left: 1px;
+}
+
+/* ─── arrow — 점선 border-bottom ────────────────────────────────────────────
+ *
+ * 실제 SVG 화살표는 P1-8c 영역. 드래프트는 점선 underline 으로 대체.
+ */
+[data-annotation-kind="arrow"] {
+  border-bottom: 2px dashed var(--current-anno-color, var(--anno-color-0));
+  padding-bottom: 1px;
+  --current-anno-color: var(--anno-color-0);
+}
+
+[data-annotation-kind="arrow"][data-arrow-color="1"]  { --current-anno-color: var(--anno-color-1);  border-bottom-color: var(--anno-color-1); }
+[data-annotation-kind="arrow"][data-arrow-color="2"]  { --current-anno-color: var(--anno-color-2);  border-bottom-color: var(--anno-color-2); }
+[data-annotation-kind="arrow"][data-arrow-color="3"]  { --current-anno-color: var(--anno-color-3);  border-bottom-color: var(--anno-color-3); }
+[data-annotation-kind="arrow"][data-arrow-color="4"]  { --current-anno-color: var(--anno-color-4);  border-bottom-color: var(--anno-color-4); }
+[data-annotation-kind="arrow"][data-arrow-color="5"]  { --current-anno-color: var(--anno-color-5);  border-bottom-color: var(--anno-color-5); }
+[data-annotation-kind="arrow"][data-arrow-color="6"]  { --current-anno-color: var(--anno-color-6);  border-bottom-color: var(--anno-color-6); }
+[data-annotation-kind="arrow"][data-arrow-color="7"]  { --current-anno-color: var(--anno-color-7);  border-bottom-color: var(--anno-color-7); }
+[data-annotation-kind="arrow"][data-arrow-color="8"]  { --current-anno-color: var(--anno-color-8);  border-bottom-color: var(--anno-color-8); }
+[data-annotation-kind="arrow"][data-arrow-color="9"]  { --current-anno-color: var(--anno-color-9);  border-bottom-color: var(--anno-color-9); }
+[data-annotation-kind="arrow"][data-arrow-color="10"] { --current-anno-color: var(--anno-color-10); border-bottom-color: var(--anno-color-10); }
+[data-annotation-kind="arrow"][data-arrow-color="11"] { --current-anno-color: var(--anno-color-11); border-bottom-color: var(--anno-color-11); }
+[data-annotation-kind="arrow"][data-arrow-color="12"] { --current-anno-color: var(--anno-color-12); border-bottom-color: var(--anno-color-12); }
+
+[data-annotation-kind="arrow"]::after {
+  content: " →";
+  font-size: 0.75em;
+  opacity: 0.7;
+}
+
+/* ─── print 호환 — Chromium PDF 색상 강제 출력 ───────────────────────────────
+ *
+ * -webkit-print-color-adjust: exact 없으면 Chromium 이 annotation 배경색 / border 를
+ * 흑백으로 flatten 하거나 제거할 수 있음.
+ */
+[data-annotation-kind] {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+[data-top-label-widget="true"],
+[data-bottom-label-widget="true"] {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+[data-bracket-widget="true"] {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* highlight inline style 강제 인쇄 */
+mark[style] {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
