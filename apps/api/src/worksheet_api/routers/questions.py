@@ -264,6 +264,7 @@ async def create_v6_variant(
         }
     )
 
+    await session.rollback()
     async with session.begin():
         question_repo2 = QuestionRepository(session, tenant_ctx)
         saved_variant = await question_repo2.create(variant_with_qa)
@@ -403,6 +404,7 @@ async def create_v2_variant(
         }
     )
 
+    await session.rollback()
     async with session.begin():
         question_repo2 = QuestionRepository(session, tenant_ctx)
         saved_variant = await question_repo2.create(variant_with_qa)
@@ -541,6 +543,7 @@ async def create_v5_variant(
         }
     )
 
+    await session.rollback()
     async with session.begin():
         question_repo2 = QuestionRepository(session, tenant_ctx)
         saved_variant = await question_repo2.create(variant_with_qa)
@@ -679,6 +682,7 @@ async def create_v4_variant(
         }
     )
 
+    await session.rollback()
     async with session.begin():
         question_repo2 = QuestionRepository(session, tenant_ctx)
         saved_variant = await question_repo2.create(variant_with_qa)
@@ -820,6 +824,7 @@ async def create_v3_variant(
         }
     )
 
+    await session.rollback()
     async with session.begin():
         question_repo2 = QuestionRepository(session, tenant_ctx)
         saved_v3 = await question_repo2.create(variant_with_qa_v3)
@@ -959,6 +964,7 @@ async def create_v7_variant(
         }
     )
 
+    await session.rollback()
     async with session.begin():
         question_repo2 = QuestionRepository(session, tenant_ctx)
         saved_v7 = await question_repo2.create(variant_with_qa_v7)
@@ -1099,6 +1105,7 @@ async def create_v8_variant(
         }
     )
 
+    await session.rollback()
     async with session.begin():
         question_repo2 = QuestionRepository(session, tenant_ctx)
         saved_v8 = await question_repo2.create(variant_with_qa_v8)
@@ -1240,6 +1247,7 @@ async def create_v10_variant(
         }
     )
 
+    await session.rollback()
     async with session.begin():
         question_repo2 = QuestionRepository(session, tenant_ctx)
         saved_v10 = await question_repo2.create(variant_with_qa_v10)
@@ -1380,6 +1388,7 @@ async def create_v9_variant(
         }
     )
 
+    await session.rollback()
     async with session.begin():
         question_repo2 = QuestionRepository(session, tenant_ctx)
         saved_v9 = await question_repo2.create(variant_with_qa_v9)
@@ -1521,6 +1530,7 @@ async def create_v1_variant(
         }
     )
 
+    await session.rollback()
     async with session.begin():
         question_repo2 = QuestionRepository(session, tenant_ctx)
         saved_v1 = await question_repo2.create(variant_with_qa_v1)
