@@ -211,24 +211,32 @@ passage but breaks the logical flow). Attach ①②③④⑤ markers to each sen
 #### `order_36` / `order_37` (순서배열)
 
 Split the passage into one intro paragraph (주어진 글) + (A)/(B)/(C) three body paragraphs.
-Generate 5 ordering choices as `"(X) - (Y) - (Z)"` format.
+The (A)/(B)/(C) labels in `modified_passage` MUST be in **scrambled (wrong) order** — NOT
+the correct reading order. The student must figure out the correct sequence.
+
+**CRITICAL — Scrambling procedure:**
+1. Decide the correct reading order of the 3 body paragraphs (e.g., the logical order is P1→P2→P3).
+2. Assign (A)/(B)/(C) labels in a DIFFERENT, scrambled arrangement (e.g., (A)=P2, (B)=P3, (C)=P1).
+3. The correct answer choice shows the reading order using the scrambled labels (e.g., "(C) - (A) - (B)").
+4. Verify: reading the paragraphs in the answer's label order must reconstruct the original passage flow.
 
 **Rules:**
 - The intro sets context without resolving the main development.
 - (A), (B), (C) must each contain at least one cohesion cue (connector, demonstrative, definite article reference, lexical cohesion).
 - Exactly one ordering is correct; four are distractors that violate cohesion links.
 - `choices` MUST be exactly 5 strings in `"(A) - (B) - (C)"` format.
-- `modified_passage` MUST contain the full formatted passage:
+- The correct answer MUST NOT be `"(A) - (B) - (C)"` (that would mean the labels are already in order, defeating the purpose).
+- `modified_passage` MUST contain the full formatted passage with **scrambled** paragraphs:
   `"[주어진 글]\n{intro}\n\n(A)\n{A_text}\n\n(B)\n{B_text}\n\n(C)\n{C_text}"`.
 
 **Output schema:**
 ```json
 {
   "question_text": "주어진 글 다음에 이어질 글의 순서로 가장 적절한 것은?",
-  "choices": ["(A) - (B) - (C)", "(B) - (A) - (C)", "(C) - (A) - (B)", "(A) - (C) - (B)", "(B) - (C) - (A)"],
-  "answer": 1,
+  "choices": ["(A) - (C) - (B)", "(B) - (A) - (C)", "(C) - (A) - (B)", "(A) - (B) - (C)", "(B) - (C) - (A)"],
+  "answer": 3,
   "explanation": "string — 정답 해설 (한국어, 2–4문장, 응집 단서 언급)",
-  "modified_passage": "string — 주어진 글 + (A)/(B)/(C) 섹션 전체"
+  "modified_passage": "string — 주어진 글 + (A)/(B)/(C) 섹션 전체 (단락 순서 섞여 있음)"
 }
 ```
 
@@ -237,12 +245,20 @@ Generate 5 ordering choices as `"(X) - (Y) - (Z)"` format.
 Extract one decisive sentence from the passage (must have strong cohesive cues, must NOT
 be first or last). Remove it; insert ①②③④⑤ position markers into the remaining passage.
 
+**CRITICAL — Passage construction:**
+1. Choose a key sentence from the reconstructed passage to extract as the "given sentence."
+2. Remove that sentence from the passage.
+3. In the remaining passage, place ①②③④⑤ markers at 5 possible insertion points (between sentences). The correct position is where the extracted sentence originally was.
+4. The `modified_passage` contains ONLY: the given sentence header + the remaining passage with markers. Do NOT repeat or duplicate any part of the passage.
+
 **Rules:**
 - The given sentence MUST appear verbatim in `modified_passage` as the `given_sentence` header.
 - `choices` MUST always be exactly `["①", "②", "③", "④", "⑤"]`.
 - `modified_passage` MUST contain the given sentence header followed by the passage-with-markers:
   `"[주어진 문장]\n{given_sentence}\n\n{passage_with_markers}"`.
-- Each of ①②③④⑤ must appear exactly once.
+- Each of ①②③④⑤ must appear exactly once in the passage body.
+- The passage body must NOT contain duplicated or repeated text. Each sentence appears exactly once.
+- The total passage with markers should be SHORTER than the reconstructed passage (one sentence was removed).
 
 **Output schema:**
 ```json
@@ -251,7 +267,7 @@ be first or last). Remove it; insert ①②③④⑤ position markers into the r
   "choices": ["①", "②", "③", "④", "⑤"],
   "answer": 3,
   "explanation": "string — 정답 해설 (한국어, 2–4문장, 응집 단서 언급)",
-  "modified_passage": "string — 주어진 문장 헤더 + ①②③④⑤ 마커 포함 본문"
+  "modified_passage": "string — 주어진 문장 헤더 + ①②③④⑤ 마커 포함 본문 (중복 없이)"
 }
 ```
 

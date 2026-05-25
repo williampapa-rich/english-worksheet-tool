@@ -215,9 +215,45 @@ function QuestionCard({
 // 서브 컴포넌트 — CrossTypeResultCard
 // ---------------------------------------------------------------------------
 
+// 어법/어휘 본문의 ①_word_ 마커를 밑줄 스타일로 렌더링
+function renderMarkedPassage(text: string): ReactElement {
+  const parts = text.split(/([①②③④⑤]_[^_]+_)/g);
+  return (
+    <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+      {parts.map((part) => {
+        const match = part.match(/^([①②③④⑤])_([^_]+)_$/);
+        if (match) {
+          return (
+            <span key={`marker-${match[1]}-${match[2]}`}>
+              {match[1]}
+              <span className="underline decoration-2 font-medium">{match[2]}</span>
+            </span>
+          );
+        }
+        return <span key={part}>{part}</span>;
+      })}
+    </p>
+  );
+}
+
+// 보기가 본문 내 마커와 동일한 유형 (어법/어휘/무관문장/문장삽입)
+const MARKER_CHOICE_TYPES = new Set([
+  "grammar_29",
+  "vocabulary_30",
+  "irrelevant_sentence_35",
+  "insertion_38",
+  "insertion_39",
+]);
+
 function CrossTypeResultCard({ result }: { result: Question }): ReactElement {
   const typeLabel = QUESTION_TYPE_LABELS[result.type] ?? result.type;
   const modifiedPassage = result.variant_metadata?.modified_passage as string | undefined;
+  const reconstructedPassage = result.variant_metadata?.reconstructed_passage_text as
+    | string
+    | undefined;
+  const displayPassage = modifiedPassage ?? reconstructedPassage;
+  const isMarkerType = MARKER_CHOICE_TYPES.has(result.type);
+  const isGrammarVocab = result.type === "grammar_29" || result.type === "vocabulary_30";
 
   return (
     <div className="mt-3 bg-indigo-50 border border-indigo-200 rounded-xl p-4 space-y-3">
@@ -231,13 +267,19 @@ function CrossTypeResultCard({ result }: { result: Question }): ReactElement {
         <span className="text-xs text-gray-400 font-mono">{result.id.slice(0, 8)}…</span>
       </div>
 
-      {/* 변형된 본문 */}
-      {modifiedPassage && (
+      {/* 본문 (변형 또는 복원) */}
+      {displayPassage && (
         <div className="bg-white border border-indigo-100 rounded-lg p-3">
-          <p className="text-xs font-medium text-indigo-600 mb-1.5">변형 본문</p>
-          <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
-            {modifiedPassage}
+          <p className="text-xs font-medium text-indigo-600 mb-1.5">
+            {modifiedPassage ? "변형 본문" : "복원 본문"}
           </p>
+          {isGrammarVocab ? (
+            renderMarkedPassage(displayPassage)
+          ) : (
+            <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+              {displayPassage}
+            </p>
+          )}
         </div>
       )}
 
@@ -245,7 +287,8 @@ function CrossTypeResultCard({ result }: { result: Question }): ReactElement {
         <p className="text-sm text-gray-700 leading-relaxed">{result.question_text}</p>
       )}
 
-      {result.choices.length > 0 && (
+      {/* 보기 — 마커형(어법/어휘/무관/삽입)은 이미 본문에 번호 있으므로 별도 표시 생략 가능 */}
+      {result.choices.length > 0 && !isMarkerType && (
         <ol className="space-y-1">
           {result.choices.map((choice, idx) => (
             <li
@@ -261,6 +304,11 @@ function CrossTypeResultCard({ result }: { result: Question }): ReactElement {
             </li>
           ))}
         </ol>
+      )}
+
+      {/* 마커형은 정답만 표시 */}
+      {isMarkerType && (
+        <p className="text-sm font-medium text-green-700">정답: {"①②③④⑤"[result.answer - 1]}</p>
       )}
 
       {result.explanation && (
