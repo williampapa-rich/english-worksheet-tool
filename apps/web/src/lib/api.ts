@@ -120,6 +120,7 @@ export interface Passage {
  */
 export type VariantKind =
   | "original"
+  | "cross_type"
   | "vocabulary_swap"
   | "vocabulary_inline"
   | "grammar_swap"
@@ -130,6 +131,12 @@ export type VariantKind =
   | "sentence_insertion_shift"
   | "irrelevant_sentence_inject"
   | "summary_blank_swap";
+
+export interface CompatibleTypeInfo {
+  type: string;
+  label: string;
+  level: string;
+}
 
 /**
  * Question — POST /passages/extract 응답 / POST /questions/{id}/variants/{kind} 응답.
@@ -146,6 +153,7 @@ export interface Question {
   number: number | null;
   question_text: string;
   choices: string[];
+  variant_metadata: Record<string, unknown> | null;
   answer: number;
   explanation: string;
   uniqueness_validated: boolean;
@@ -762,6 +770,31 @@ export async function createVariant(
   const response = await fetch(`${API_BASE_URL}/questions/${questionId}/variants/${kindPath}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+  });
+  await checkOk(response);
+  return (await response.json()) as Question;
+}
+
+/**
+ * getCompatibleTypes — GET /questions/{questionId}/compatible-types
+ */
+export async function getCompatibleTypes(questionId: string): Promise<CompatibleTypeInfo[]> {
+  const response = await fetch(`${API_BASE_URL}/questions/${questionId}/compatible-types`);
+  await checkOk(response);
+  return (await response.json()) as CompatibleTypeInfo[];
+}
+
+/**
+ * createCrossTypeVariant — POST /questions/{questionId}/variants
+ */
+export async function createCrossTypeVariant(
+  questionId: string,
+  targetType: string
+): Promise<Question> {
+  const response = await fetch(`${API_BASE_URL}/questions/${questionId}/variants`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ target_type: targetType }),
   });
   await checkOk(response);
   return (await response.json()) as Question;

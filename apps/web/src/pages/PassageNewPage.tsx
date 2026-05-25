@@ -2,61 +2,19 @@ import type { ReactElement } from "react";
 import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
+  type CompatibleTypeInfo,
   type ExtractedPassageResult,
   type Question,
-  type VariantKind,
-  createVariant,
+  createCrossTypeVariant,
   extractPassageImage,
   extractPassagePdf,
   extractPassageText,
+  getCompatibleTypes,
 } from "../lib/api";
 
 // ---------------------------------------------------------------------------
-// 변형 버튼 필터 테이블 — catalog v0.4 §3.2.0
-// variant_kind → 적용 가능한 QuestionType enum value 목록
+// (V1~V10 type-preserving 변형 테이블 — 폐기 예정, cross-type 로 전환)
 // ---------------------------------------------------------------------------
-
-const VARIANT_APPLICABLE_TYPES: Record<VariantKind, string[]> = {
-  topic_main_idea_swap: ["gist_22", "theme_23", "title_24"],
-  blank_inference: ["blank_phrase_31", "blank_clause_32", "blank_clause_33", "blank_clause_34"],
-  vocabulary_inline: ["vocabulary_30", "blank_phrase_31"],
-  grammar_inline: ["grammar_29"],
-  order_shuffle: ["order_36", "order_37"],
-  sentence_insertion_shift: ["insertion_38", "insertion_39"],
-  summary_blank_swap: ["summary_40"],
-  irrelevant_sentence_inject: ["irrelevant_sentence_35"],
-  vocabulary_swap: ["vocabulary_30", "long_set_41_42"],
-  grammar_swap: ["grammar_29"],
-  original: [],
-};
-
-const VARIANT_LABELS: Record<VariantKind, string> = {
-  topic_main_idea_swap: "V6 요지·주제·제목 선택지 갱신",
-  blank_inference: "V5 빈칸 추론",
-  vocabulary_inline: "V2 어휘 인라인화",
-  grammar_inline: "V4 어법 인라인화",
-  order_shuffle: "V7 순서배열 변형",
-  sentence_insertion_shift: "V8 문장삽입 변형",
-  summary_blank_swap: "V10 요약문 빈칸 변형",
-  irrelevant_sentence_inject: "V9 무관문장 삽입",
-  vocabulary_swap: "V1 어휘 교체",
-  grammar_swap: "V3 어법 교체",
-  original: "원본",
-};
-
-// 카탈로그 1순위 우선 노출 (V6/V2/V4/V5/V7), 2순위 나머지
-const VARIANT_ORDER: VariantKind[] = [
-  "topic_main_idea_swap",
-  "vocabulary_inline",
-  "grammar_inline",
-  "blank_inference",
-  "order_shuffle",
-  "sentence_insertion_shift",
-  "irrelevant_sentence_inject",
-  "summary_blank_swap",
-  "vocabulary_swap",
-  "grammar_swap",
-];
 
 // Question type 한국어 표시명
 const QUESTION_TYPE_LABELS: Record<string, string> = {
@@ -100,29 +58,46 @@ const TARGET_GRADE_OPTIONS = [
 type InputTab = "text" | "image" | "pdf";
 
 // ---------------------------------------------------------------------------
-// 서브 컴포넌트 — QuestionCard
+// 서브 컴포넌트 — QuestionCard (cross-type variant)
 // ---------------------------------------------------------------------------
 
 interface QuestionCardProps {
   question: Question;
-  variantResults: Record<string, Question>;
-  variantLoading: Record<string, boolean>;
-  variantErrors: Record<string, string>;
-  onVariantCreate: (questionId: string, variantKind: VariantKind) => void;
+  crossTypeResults: Question[];
+  onCrossTypeCreate: (questionId: string, targetType: string) => void;
+  crossTypeLoading: boolean;
+  crossTypeError: string | null;
 }
 
 function QuestionCard({
   question,
-  variantResults,
-  variantLoading,
-  variantErrors,
-  onVariantCreate,
+  crossTypeResults,
+  onCrossTypeCreate,
+  crossTypeLoading,
+  crossTypeError,
 }: QuestionCardProps): ReactElement {
-  const applicableVariants = VARIANT_ORDER.filter(
-    (vk) => vk !== "original" && VARIANT_APPLICABLE_TYPES[vk].includes(question.type)
-  );
+  const [compatibleTypes, setCompatibleTypes] = useState<CompatibleTypeInfo[]>([]);
+  const [typesLoaded, setTypesLoaded] = useState(false);
+  const [selectedType, setSelectedType] = useState("");
+  const [showSelector, setShowSelector] = useState(false);
 
   const typeLabel = QUESTION_TYPE_LABELS[question.type] ?? question.type;
+
+  async function loadCompatibleTypes(): Promise<void> {
+    if (typesLoaded) {
+      setShowSelector(true);
+      return;
+    }
+    try {
+      const types = await getCompatibleTypes(question.id);
+      setCompatibleTypes(types);
+      setTypesLoaded(true);
+      setShowSelector(true);
+      if (types.length > 0 && types[0] != null) setSelectedType(types[0].type);
+    } catch (err) {
+      console.error("Failed to load compatible types:", err);
+    }
+  }
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
@@ -180,72 +155,91 @@ function QuestionCard({
         )}
       </div>
 
-      {/* 변형 버튼 */}
-      {applicableVariants.length > 0 && (
-        <div className="pt-2 border-t border-gray-100">
-          <p className="text-xs font-medium text-gray-500 mb-2">변형 생성</p>
-          <div className="flex flex-wrap gap-2">
-            {applicableVariants.map((vk) => {
-              const key = `${question.id}__${vk}`;
-              const isLoading = variantLoading[key] ?? false;
-              return (
-                <button
-                  key={vk}
-                  type="button"
-                  disabled={isLoading}
-                  onClick={() => onVariantCreate(question.id, vk)}
-                  className="text-xs bg-gray-50 border border-gray-200 text-gray-700 px-3 py-1.5 rounded-lg hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isLoading ? "생성 중…" : VARIANT_LABELS[vk]}
-                </button>
-              );
-            })}
-          </div>
-          {/* 변형 에러 */}
-          {applicableVariants.map((vk) => {
-            const key = `${question.id}__${vk}`;
-            const err = variantErrors[key];
-            return err ? (
-              <p key={key} className="text-xs text-red-600 mt-1">
-                {VARIANT_LABELS[vk]}: {err}
-              </p>
-            ) : null;
-          })}
-        </div>
-      )}
+      {/* 유형 변경 */}
+      <div className="pt-2 border-t border-gray-100">
+        <p className="text-xs font-medium text-gray-500 mb-2">유형 변경</p>
 
-      {applicableVariants.length === 0 && (
-        <p className="text-xs text-gray-400 pt-2 border-t border-gray-100">
-          이 문제 유형에 자동 필터된 변형 버튼이 없습니다.
-        </p>
-      )}
+        {!showSelector && (
+          <button
+            type="button"
+            onClick={() => {
+              void loadCompatibleTypes();
+            }}
+            className="text-xs bg-indigo-50 border border-indigo-200 text-indigo-700 px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors"
+          >
+            변환 가능한 유형 보기
+          </button>
+        )}
+
+        {showSelector && compatibleTypes.length > 0 && (
+          <div className="flex items-center gap-2">
+            <select
+              value={selectedType}
+              onChange={(e) => setSelectedType(e.target.value)}
+              disabled={crossTypeLoading}
+              className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:border-indigo-400"
+            >
+              {compatibleTypes.map((ct) => (
+                <option key={ct.type} value={ct.type}>
+                  {ct.label} {ct.level === "conditional" ? " ⚠️" : ""}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              disabled={crossTypeLoading || !selectedType}
+              onClick={() => onCrossTypeCreate(question.id, selectedType)}
+              className="text-xs bg-indigo-600 text-white px-4 py-1.5 rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {crossTypeLoading ? "생성 중…" : "변형 생성"}
+            </button>
+          </div>
+        )}
+
+        {showSelector && compatibleTypes.length === 0 && (
+          <p className="text-xs text-gray-400">변환 가능한 유형이 없습니다.</p>
+        )}
+
+        {crossTypeError && <p className="text-xs text-red-600 mt-1">{crossTypeError}</p>}
+      </div>
 
       {/* 변형 결과 */}
-      {applicableVariants.map((vk) => {
-        const key = `${question.id}__${vk}`;
-        const result = variantResults[key];
-        return result ? <VariantResultCard key={key} variantKind={vk} result={result} /> : null;
-      })}
+      {crossTypeResults.map((result) => (
+        <CrossTypeResultCard key={result.id} result={result} />
+      ))}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// 서브 컴포넌트 — VariantResultCard
+// 서브 컴포넌트 — CrossTypeResultCard
 // ---------------------------------------------------------------------------
 
-interface VariantResultCardProps {
-  variantKind: VariantKind;
-  result: Question;
-}
+function CrossTypeResultCard({ result }: { result: Question }): ReactElement {
+  const typeLabel = QUESTION_TYPE_LABELS[result.type] ?? result.type;
+  const modifiedPassage = result.variant_metadata?.modified_passage as string | undefined;
 
-function VariantResultCard({ variantKind, result }: VariantResultCardProps): ReactElement {
   return (
-    <div className="mt-3 bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-3">
+    <div className="mt-3 bg-indigo-50 border border-indigo-200 rounded-xl p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold text-blue-700">{VARIANT_LABELS[variantKind]}</span>
+        <div className="flex items-center gap-2">
+          <span className="inline-block bg-indigo-100 text-indigo-700 text-xs font-medium px-2 py-0.5 rounded-md">
+            {typeLabel}
+          </span>
+          <span className="text-xs text-indigo-500 font-medium">유형 변경</span>
+        </div>
         <span className="text-xs text-gray-400 font-mono">{result.id.slice(0, 8)}…</span>
       </div>
+
+      {/* 변형된 본문 */}
+      {modifiedPassage && (
+        <div className="bg-white border border-indigo-100 rounded-lg p-3">
+          <p className="text-xs font-medium text-indigo-600 mb-1.5">변형 본문</p>
+          <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+            {modifiedPassage}
+          </p>
+        </div>
+      )}
 
       {result.question_text && (
         <p className="text-sm text-gray-700 leading-relaxed">{result.question_text}</p>
@@ -275,8 +269,7 @@ function VariantResultCard({ variantKind, result }: VariantResultCardProps): Rea
         </p>
       )}
 
-      {/* QA Validator 결과 */}
-      <div className="flex items-center gap-2 text-xs pt-1 border-t border-blue-200">
+      <div className="flex items-center gap-2 text-xs pt-1 border-t border-indigo-200">
         <span
           className={`inline-block w-2 h-2 rounded-full ${
             result.uniqueness_validated ? "bg-green-400" : "bg-gray-300"
@@ -319,11 +312,11 @@ export function PassageNewPage(): ReactElement {
   const [extractError, setExtractError] = useState<string | null>(null);
   const [extractResults, setExtractResults] = useState<ExtractedPassageResult[] | null>(null);
 
-  // ─── 변형 상태 ────────────────────────────────────────────────────────
-  // key: `${questionId}__${variantKind}`
-  const [variantLoading, setVariantLoading] = useState<Record<string, boolean>>({});
-  const [variantErrors, setVariantErrors] = useState<Record<string, string>>({});
-  const [variantResults, setVariantResults] = useState<Record<string, Question>>({});
+  // ─── Cross-type 변형 상태 ────────────────────────────────────────────
+  // key: questionId
+  const [crossTypeLoading, setCrossTypeLoading] = useState<Record<string, boolean>>({});
+  const [crossTypeErrors, setCrossTypeErrors] = useState<Record<string, string | null>>({});
+  const [crossTypeResults, setCrossTypeResults] = useState<Record<string, Question[]>>({});
 
   // ─── 추출 핸들러 ──────────────────────────────────────────────────────
 
@@ -364,27 +357,25 @@ export function PassageNewPage(): ReactElement {
     }
   }
 
-  // ─── 변형 생성 핸들러 ─────────────────────────────────────────────────
+  // ─── Cross-type 변형 생성 핸들러 ──────────────────────────────────────
 
-  async function handleVariantCreate(questionId: string, variantKind: VariantKind): Promise<void> {
-    const key = `${questionId}__${variantKind}`;
-    setVariantLoading((prev) => ({ ...prev, [key]: true }));
-    setVariantErrors((prev) => {
-      const next = { ...prev };
-      delete next[key];
-      return next;
-    });
+  async function handleCrossTypeCreate(questionId: string, targetType: string): Promise<void> {
+    setCrossTypeLoading((prev) => ({ ...prev, [questionId]: true }));
+    setCrossTypeErrors((prev) => ({ ...prev, [questionId]: null }));
 
     try {
-      const result = await createVariant(questionId, variantKind);
-      setVariantResults((prev) => ({ ...prev, [key]: result }));
-    } catch (err) {
-      setVariantErrors((prev) => ({
+      const result = await createCrossTypeVariant(questionId, targetType);
+      setCrossTypeResults((prev) => ({
         ...prev,
-        [key]: err instanceof Error ? err.message : String(err),
+        [questionId]: [...(prev[questionId] ?? []), result],
+      }));
+    } catch (err) {
+      setCrossTypeErrors((prev) => ({
+        ...prev,
+        [questionId]: err instanceof Error ? err.message : String(err),
       }));
     } finally {
-      setVariantLoading((prev) => ({ ...prev, [key]: false }));
+      setCrossTypeLoading((prev) => ({ ...prev, [questionId]: false }));
     }
   }
 
@@ -707,10 +698,10 @@ export function PassageNewPage(): ReactElement {
                           <QuestionCard
                             key={q.id}
                             question={q}
-                            variantResults={variantResults}
-                            variantLoading={variantLoading}
-                            variantErrors={variantErrors}
-                            onVariantCreate={handleVariantCreate}
+                            crossTypeResults={crossTypeResults[q.id] ?? []}
+                            crossTypeLoading={crossTypeLoading[q.id] ?? false}
+                            crossTypeError={crossTypeErrors[q.id] ?? null}
+                            onCrossTypeCreate={handleCrossTypeCreate}
                           />
                         ))}
                       </div>

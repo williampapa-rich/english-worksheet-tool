@@ -42,7 +42,7 @@ from __future__ import annotations
 
 import logging
 from typing import Annotated
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
 from llm.client import StructuredLLMClient
@@ -51,6 +51,9 @@ from llm.errors import (
     LLMTimeoutError,
     PermanentLLMError,
 )
+from llm.variants.compatibility import compatible_target_types, is_compatible
+from llm.variants.cross_type import generate_cross_type_question
+from llm.variants.reconstruct import reconstruct_passage
 from llm.variants.v1_vocabulary_swap import (
     V1_APPLICABLE_TYPES,
     generate_v1_variant,
@@ -91,6 +94,7 @@ from llm.variants.v10_summary_blank_swap import (
     V10_APPLICABLE_TYPES,
     generate_v10_variant,
 )
+from pydantic import BaseModel, Field
 from qa_validator.uniqueness import validate_question_uniqueness
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -239,6 +243,7 @@ async def create_v6_variant(
     # ADR-0003 §D-3.6: model_copy 로 실제 tenant_id / workspace_id / passage_id / derived_from 주입
     variant_with_ids = variant_question_sentinel.model_copy(  # type: ignore[union-attr]
         update={
+            "id": uuid4(),
             "tenant_id": tenant_ctx.tenant_id,
             "workspace_id": tenant_ctx.workspace_id,
             "passage_id": original_question.passage_id,
@@ -381,6 +386,7 @@ async def create_v2_variant(
     # 5. sentinel UUID → 실제 ID 교체
     variant_with_ids = variant_question_sentinel.model_copy(  # type: ignore[union-attr]
         update={
+            "id": uuid4(),
             "tenant_id": tenant_ctx.tenant_id,
             "workspace_id": tenant_ctx.workspace_id,
             "passage_id": original_question.passage_id,
@@ -520,6 +526,7 @@ async def create_v5_variant(
     # ADR-0003 §D-3.6: model_copy 로 실제 tenant_id / workspace_id / passage_id / derived_from 주입
     variant_with_ids = variant_question_sentinel.model_copy(  # type: ignore[union-attr]
         update={
+            "id": uuid4(),
             "tenant_id": tenant_ctx.tenant_id,
             "workspace_id": tenant_ctx.workspace_id,
             "passage_id": original_question.passage_id,
@@ -659,6 +666,7 @@ async def create_v4_variant(
     # ADR-0003 §D-3.6: model_copy 로 실제 tenant_id / workspace_id / passage_id / derived_from 주입
     variant_with_ids = variant_question_sentinel.model_copy(  # type: ignore[union-attr]
         update={
+            "id": uuid4(),
             "tenant_id": tenant_ctx.tenant_id,
             "workspace_id": tenant_ctx.workspace_id,
             "passage_id": original_question.passage_id,
@@ -801,6 +809,7 @@ async def create_v3_variant(
     # ADR-0003 §D-3.6: model_copy 로 실제 tenant_id / workspace_id / passage_id / derived_from 주입
     variant_with_ids_v3 = variant_question_sentinel.model_copy(  # type: ignore[union-attr]
         update={
+            "id": uuid4(),
             "tenant_id": tenant_ctx.tenant_id,
             "workspace_id": tenant_ctx.workspace_id,
             "passage_id": original_question.passage_id,
@@ -941,6 +950,7 @@ async def create_v7_variant(
     # 5. sentinel UUID → 실제 ID 교체
     variant_with_ids_v7 = variant_question_sentinel.model_copy(  # type: ignore[union-attr]
         update={
+            "id": uuid4(),
             "tenant_id": tenant_ctx.tenant_id,
             "workspace_id": tenant_ctx.workspace_id,
             "passage_id": original_question.passage_id,
@@ -1082,6 +1092,7 @@ async def create_v8_variant(
     # 5. sentinel UUID → 실제 ID 교체
     variant_with_ids_v8 = variant_question_sentinel.model_copy(  # type: ignore[union-attr]
         update={
+            "id": uuid4(),
             "tenant_id": tenant_ctx.tenant_id,
             "workspace_id": tenant_ctx.workspace_id,
             "passage_id": original_question.passage_id,
@@ -1224,6 +1235,7 @@ async def create_v10_variant(
     # ADR-0003 §D-3.6: model_copy 로 실제 tenant_id / workspace_id / passage_id / derived_from 주입
     variant_with_ids_v10 = variant_question_sentinel.model_copy(  # type: ignore[union-attr]
         update={
+            "id": uuid4(),
             "tenant_id": tenant_ctx.tenant_id,
             "workspace_id": tenant_ctx.workspace_id,
             "passage_id": original_question.passage_id,
@@ -1365,6 +1377,7 @@ async def create_v9_variant(
     # 5. sentinel UUID → 실제 ID 교체
     variant_with_ids_v9 = variant_question_sentinel.model_copy(  # type: ignore[union-attr]
         update={
+            "id": uuid4(),
             "tenant_id": tenant_ctx.tenant_id,
             "workspace_id": tenant_ctx.workspace_id,
             "passage_id": original_question.passage_id,
@@ -1507,6 +1520,7 @@ async def create_v1_variant(
     # 5. sentinel UUID → 실제 ID 교체
     variant_with_ids_v1 = variant_question_sentinel.model_copy(  # type: ignore[union-attr]
         update={
+            "id": uuid4(),
             "tenant_id": tenant_ctx.tenant_id,
             "workspace_id": tenant_ctx.workspace_id,
             "passage_id": original_question.passage_id,
@@ -1540,3 +1554,131 @@ async def create_v1_variant(
         await qa_repo_v1.create(qa_result_v1_with_id)
 
     return saved_v1
+
+
+# ─── Cross-type variant 라우트 ───────────────────────────────────────────────
+
+
+class CrossTypeVariantRequest(BaseModel):
+    target_type: str = Field(..., description="출제할 QuestionType (snake_case enum value)")
+
+
+class CompatibleTypeInfo(BaseModel):
+    type: str
+    label: str
+    level: str
+
+
+@router.get(
+    "/{question_id}/compatible-types",
+    response_model=list[CompatibleTypeInfo],
+)
+async def get_compatible_types_for_question(
+    question_id: UUID,
+    tenant_ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> list[CompatibleTypeInfo]:
+    question_repo = QuestionRepository(session, tenant_ctx)
+    original_question = await question_repo.get(question_id)
+    if original_question is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Question {question_id} 를 찾을 수 없습니다.",
+        )
+
+    raw = compatible_target_types(original_question.type)
+    return [CompatibleTypeInfo(**item) for item in raw]
+
+
+@router.post(
+    "/{question_id}/variants",
+    response_model=Question,
+    status_code=201,
+)
+async def create_cross_type_variant(
+    question_id: UUID,
+    body: CrossTypeVariantRequest,
+    tenant_ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    llm_client: Annotated[StructuredLLMClient, Depends(get_llm_client)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> Question:
+    question_repo = QuestionRepository(session, tenant_ctx)
+    original_question = await question_repo.get(question_id)
+    if original_question is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Question {question_id} 를 찾을 수 없습니다.",
+        )
+
+    if not is_compatible(original_question.type, body.target_type):
+        raise HTTPException(
+            status_code=422,
+            detail=(f"'{original_question.type}' → '{body.target_type}' 변환은 호환되지 않습니다."),
+        )
+
+    passage_repo = PassageRepository(session, tenant_ctx)
+    passage = await passage_repo.get(original_question.passage_id)
+    if passage is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Passage {original_question.passage_id} 를 찾을 수 없습니다.",
+        )
+
+    reconstructed = reconstruct_passage(passage, original_question)
+
+    try:
+        variant_question_sentinel = await generate_cross_type_question(
+            reconstructed_text=reconstructed.text,
+            target_type=body.target_type,
+            original_question=original_question,
+            llm_client=llm_client,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except LLMSchemaValidationError as exc:
+        _raise_llm_http_exception(exc)
+    except LLMTimeoutError as exc:
+        _raise_llm_http_exception(exc)
+    except Exception as exc:
+        _raise_llm_http_exception(exc)
+
+    variant_with_ids = variant_question_sentinel.model_copy(
+        update={
+            "id": uuid4(),
+            "tenant_id": tenant_ctx.tenant_id,
+            "workspace_id": tenant_ctx.workspace_id,
+            "passage_id": original_question.passage_id,
+            "derived_from_question_id": original_question.id,
+        }
+    )
+
+    metadata = dict(variant_with_ids.variant_metadata or {})
+    metadata["reconstructed_passage_text"] = reconstructed.text
+    metadata["reconstruction_method"] = str(reconstructed.method)
+    variant_with_ids = variant_with_ids.model_copy(update={"variant_metadata": metadata})
+
+    qa_result = await validate_question_uniqueness(
+        question=variant_with_ids,
+        passage_text=passage.body_text,
+        client=llm_client,
+        tenant_id=tenant_ctx.tenant_id,
+        workspace_id=tenant_ctx.workspace_id,
+    )
+
+    variant_with_qa = variant_with_ids.model_copy(
+        update={
+            "uniqueness_validated": qa_result.passed,
+            "uniqueness_validator_note": qa_result.validator_note,
+        }
+    )
+
+    await session.rollback()
+    async with session.begin():
+        question_repo2 = QuestionRepository(session, tenant_ctx)
+        saved_variant = await question_repo2.create(variant_with_qa)
+
+        qa_result_with_question_id = qa_result.model_copy(update={"question_id": saved_variant.id})
+        qa_repo = QAValidationResultRepository(session, tenant_ctx)
+        await qa_repo.create(qa_result_with_question_id)
+
+    return saved_variant

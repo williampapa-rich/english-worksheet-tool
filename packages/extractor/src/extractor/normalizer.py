@@ -343,6 +343,14 @@ def _parse_answer_index(raw: str | None) -> int:
     return 1
 
 
+_CHOICE_MARKER_RE = re.compile(r"^[①②③④⑤]\s*")
+
+
+def _strip_choice_marker(choice: str) -> str:
+    """선택지 앞에 붙은 번호 마커(①②③④⑤)를 제거."""
+    return _CHOICE_MARKER_RE.sub("", choice).strip()
+
+
 def _normalize_question(
     raw: RawQuestion,
     *,
@@ -374,7 +382,7 @@ def _normalize_question(
         derived_from_question_id=None,
         number=raw.number,
         question_text=raw.stem,
-        choices=raw.choices,
+        choices=[_strip_choice_marker(c) for c in raw.choices],
         answer=answer_idx,
         explanation=raw.explanation or "",
     )

@@ -139,6 +139,9 @@ class VariantKind(StrEnum):
     IRRELEVANT_SENTENCE_INJECT = "irrelevant_sentence_inject"  # V9
     SUMMARY_BLANK_SWAP = "summary_blank_swap"  # V10
 
+    # Cross-type variant (카탈로그 v0.5 — 이종 유형 간 변환)
+    CROSS_TYPE = "cross_type"
+
 
 # ─── Choices / InlineChoice / ChoiceMatrix (Gap A / B sub-form) ─────────────
 class ChoiceFormat(StrEnum):
