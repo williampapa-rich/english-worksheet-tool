@@ -1,19 +1,31 @@
-# 변형 유형 카탈로그 v0.4 — 24개 유형 인벤토리 + sub-form + VariantKind enum 정합
+# 변형 유형 카탈로그 v0.5 — Cross-type Variant 재정의 (본문 복원 → 새 type 출제)
 
 - **작성자**: domain-expert agent
-- **작성일**: 2026-05-02 (v0.1~v0.3) / 2026-05-15 (v0.4 갱신)
-- **버전**: v0.4
+- **작성일**: 2026-05-02 (v0.1~v0.3) / 2026-05-15 (v0.4) / 2026-05-18 (v0.5 재작성)
+- **버전**: v0.5
 - **이전 버전**:
   - v0.1 (2026-05-02) — "5개 변형 유형을 별 카테고리로 정의"라는 잘못된 전제로 작성됨, 폐기.
   - v0.2 (2026-05-02) — 24개 유형 + sub-form + variant_kind 골격 완성. type 코드는 한국어명만 명시.
   - v0.3 (2026-05-02) — 각 24개 유형에 snake_case 영문 enum value 후보 컬럼 추가.
-- **v0.4 변경** (2026-05-15, ADR-0017 Accepted 후속):
-  - §3.2 V1~V10 각 항목에 **`shared/schemas/question.py` `VariantKind` enum value** 명시 — 카탈로그 ID 와 enum 멤버 1:1 정합.
-  - V6 `topic_main_idea_swap` — v0.3 의 enum `THEME_REWORD` → `TOPIC_MAIN_IDEA_SWAP` 으로 통합 (V6 명세가 요지/주제/제목 3개 type 을 포함하므로 enum 명도 정합 갱신).
-  - §3.4 1순위 표 갱신 — V2/V4/V5/V6/V7 (5개) Phase 3 진입 시 LLM 프롬프트 작성 대상.
-  - **§3.5 신규** — LLM 변형 프롬프트 사전 가이드 (ADR-0013 augment 패턴 참고, 실제 프롬프트는 Phase 3 별 PR).
-  - **§3.6 신규** — qa-validator 검증 시나리오 (ADR-0017 D3-c 하이브리드 — `Question.uniqueness_validated` 최신 상태 + `qa_validation_results` history 정합).
-- **정정 사유 (v0.1 → v0.2 시점)**: `CLAUDE.md` v0.3 §6.2에서 PM이 전제를 정정 — **변형 유형이라는 별 카테고리는 없다**. 모든 문제 유형은 `exam-generator`의 24개 유형 중 하나에 속한다. Phase 3의 "변형문제"도 기존 유형의 **파생**일 뿐, 새 유형이 아니다. 5개만 추리지 않고 **24개 모두 1급**으로 다룬다.
+  - v0.4 (2026-05-15) — V1~V10 모두 `VariantKind` enum 으로 명시. **type-preserving** 멘탈모델 기반.
+- **v0.5 변경** (2026-05-18, 와이프 검수 발견에 따른 멘탈모델 정정):
+  - **§3 전면 재작성** — variant 정의가 **type-preserving** (같은 type 안 파생) 에서 **cross-type** (본문 복원 → 사용자가 선택한 새 type 출제) 으로 전환.
+  - **§3.1 정의 재작성** — variant 의 본질은 "원본 문제의 정답을 본문에 채워 *완전한 본문 복원* → 그 본문으로 24개 type 중 사용자가 선택한 새 type 으로 출제". 한 본문을 multi-type 자산화하는 것이 핵심 가치.
+  - **§3.2 신규** — type 별 본문 복원 규칙 (빈칸형 → 정답 채움, 어휘/어법 → 오답 선지 제거, 무관문장 → 무관 문장 제거, 순서배열 → 정답 순서 합본, 문장삽입 → 정답 위치에 삽입, 그 외 → 본문 이미 완전).
+  - **§3.3 신규** — 원본 type × 새 type 24×24 호환성 매트릭스 (도메인 판단).
+  - **§3.4 재작성** — 같은-type 변형 (대각선 셀) 의 위치. v0.4 의 V1~V10 type-preserving 변형 중 도메인 가치 있는 것만 흡수.
+  - **§3.5 폐기** — v0.4 의 V1~V10 별 LLM 프롬프트 사전 가이드는 *cross-type* 모델에서 의미가 바뀜. 새 가이드는 별 PR (`docs/prompts/`).
+  - **§3.6 보존** — qa-validator 검증 시나리오는 cross-type 전환에도 본질 변함 없음 (검증 카테고리 매핑만 type 기준으로 재라벨).
+- **v0.5 폐기 / 흡수 / 보존 결정**:
+  - **카탈로그의 V1~V10 enum 식별자**: 폐기 (cross-type 모델에선 variant_kind = "원본 type 로부터 새 type 으로의 본문 재사용" 이지 "어휘 swap / 빈칸 위치 재생성" 류가 아님).
+  - **`shared/schemas/question.py` `VariantKind` enum 멤버 11개**: 본 카탈로그 PR 범위 *외* — architect 가 ADR-0017 보강 시 결정. 본 카탈로그는 의미론적 변경만 기록. 코드/스키마 변경은 별 PR.
+  - **§1 24개 유형 인벤토리 / §4 Annotation kind / §5 미해결 항목**: 보존 (cross-type 전환과 직교).
+- **PM 의 발견 (와이프 인터뷰, 2026-05-18)**:
+  > "유형 변경을 하게 되면, 예를 들어 현재 원래 문제에서 답을 가지고 빈칸을 채운 완전한 본문을 가지고 주제 찾기 혹은 지문 일치/불일치 문제 등을 내는 게 유형 변경이야."
+
+  v0.4 카탈로그가 변형 = *같은 type 안의 표면 변형* 으로 정의한 반면, 와이프는 본문 1개의 *multi-type 자산화* 를 의도했다. 본 v0.5 는 그 정정.
+
+- **CLAUDE.md §6.2 와의 정합 (변함 없음)**: "변형 유형이라는 별도 카테고리는 없다. 모든 문제 유형은 24개 중 하나에 속한다" — 본 v0.5 도 이 원칙 그대로. cross-type variant 의 *출력* 도 24개 type 중 하나. 단 `Question.type` 이 원본과 *다를 수 있다* (이전 v0.4 는 `Question.type` 이 원본과 *같다* 가정).
 - **관련 문서**:
   - `CLAUDE.md` v0.3 §6.2 (Question 유형 — 별도 카테고리가 아니라 기존 유형의 확장)
   - `docs/adr/_pm-decisions-sprint-0.md` (PM D-1, D-2, D-3)
@@ -34,7 +46,7 @@
 **구조**:
 - **§1**: exam-generator 24개 유형의 도메인 인벤토리 (출제 의도 / 표면 형태 / 입출력 매핑 / 검증 기준)
 - **§2**: 자료 sweep으로 발견되는 sub-form (Gap A 본문 내장 어휘 / Gap B 매트릭스 등) — 어느 type의 sub-form인지 매핑
-- **§3**: Phase 3 변형 생성에서의 variant_kind 후보 — 같은 type 안의 파생
+- **§3**: Cross-type variant — 원본 Question 의 정답으로 본문 복원 → 사용자가 선택한 *새* type 으로 출제. 한 본문의 multi-type 자산화 (v0.5 재정의)
 - **§4**: Annotation kind 카탈로그 — 영상 레퍼런스 6종 (구문분석 도메인)
 - **§5**: 미해결 / 추가 조사 필요 항목
 
@@ -491,392 +503,359 @@ audit-review-domain §4.2가 권고했고 PM이 D-1에서 채택 — `Passage.ta
 
 ---
 
-## 3. Phase 3 변형 생성에서의 variant_kind 후보
+## 3. Cross-type Variant — 본문 1개의 multi-type 자산화 (v0.5 재정의)
 
-### 3.1 정의
+### 3.1 정의 (v0.5 재작성)
 
-**variant_kind**: 같은 type 안에서 **원본 → 변형의 변환 규칙**. `VariantQuestion.derived_from_question_id` + `variant_kind` 조합으로 표현.
+**variant** 는 **원본 Question 의 정답을 활용해 완전한 본문 1개를 복원하고, 그 본문 위에서 24개 type 중 사용자가 명시적으로 선택한 *새* type 으로 출제하는 행위**다. v0.4 의 *같은 type 안의 표면 변형* 멘탈모델은 폐기.
 
-CLAUDE.md v0.3 §6.2: "변형문제(VariantQuestion) — 같은 24개 type 안에서 원본의 `derived_from_question_id` + `variant_kind` 필드로 표현."
+#### 3.1.1 입력 / 출력
 
-### 3.2 variant_kind 후보 목록
+| 항목 | 내용 |
+|---|---|
+| **입력** | 원본 `Question` (정답 포함) + 그 `Passage` |
+| **중간 산출물** | 완전 복원된 본문 (단일 paragraph 또는 multi-paragraph) — *영구 저장 가능 또는 in-memory* (§3.7 architect 결정) |
+| **사용자 선택** | 24개 `QuestionType` 중 하나 — 새 출제 type |
+| **출력** | 새 `Question` — `type = 사용자 선택 type`, `variant_kind != ORIGINAL`, `derived_from_question_id = 원본 Question id` |
 
-각 후보마다: **이름** / **적용 가능 type** / **변형 규칙** / **검증 기준**.
+#### 3.1.2 핵심 가치 명제 — 한 본문, multi-type 자산화
 
-#### 3.2.0 V1~V10 요약 표 + VariantKind enum 정합
+- 와이프가 같은 본문을 가지고 22(요지) / 23(주제) / 24(제목) / 26(인물일치) / 33(빈칸-절) 등 *복수의* 문제 type 을 출제해 자료 자산을 누적.
+- CLAUDE.md §1.3 "콘텐츠 자산화" 가치 명제의 핵심 실현 — 본문 1개의 수명을 type 24개 곱하기로 확장.
+- LLM 의 자동 type 추천 ❌ — *사용자가 명시적으로* 새 type 선택 (UI 책임, frontend-dev). domain 입장: 출제 의도는 강사의 교육적 판단이지 LLM 의 추론 영역이 아니다.
 
-`shared/schemas/question.py` `VariantKind` enum 멤버 (v0.4, 2026-05-15) 와 1:1 정합:
+#### 3.1.3 v0.4 멘탈모델과의 차이
 
-| ID | variant_kind (enum value) | `VariantKind` enum 멤버 | 적용 type (enum value 후보) | 변형 입력 | 자산화 가치 | 우선순위 (§3.4) |
-|---|---|---|---|---|---|---|
-| V1 | `vocabulary_swap` | `VOCABULARY_SWAP` | `vocabulary_30`, `long_set_41_42` (42번) | 원본 Question 또는 Passage | 중 | 2순위 |
-| V2 | `vocabulary_inline` | `VOCABULARY_INLINE` | `vocabulary_30`, `blank_phrase_31` | Passage | 높음 | **1순위** |
-| V3 | `grammar_swap` | `GRAMMAR_SWAP` | `grammar_29` | 원본 Question 또는 Passage | 중 | 2순위 |
-| V4 | `grammar_inline` | `GRAMMAR_INLINE` | `grammar_29` | Passage | 높음 | **1순위** |
-| V5 | `blank_inference` | `BLANK_INFERENCE` | `blank_phrase_31`, `blank_clause_32~34` | Passage | 높음 | **1순위** |
-| V6 | `topic_main_idea_swap` | `TOPIC_MAIN_IDEA_SWAP` | `main_idea_22`, `topic_23`, `title_24` | Passage | **최고** | **1순위** |
-| V7 | `order_shuffle` | `ORDER_SHUFFLE` | `paragraph_order_36`, `paragraph_order_37` | Passage | 중 (1지문 1변형) | **1순위** |
-| V8 | `sentence_insertion_shift` | `SENTENCE_INSERTION_SHIFT` | `sentence_insertion_38`, `_39` | Passage | 중 | 2순위 |
-| V9 | `irrelevant_sentence_inject` | `IRRELEVANT_SENTENCE_INJECT` | `irrelevant_sentence_35` | Passage | 중 | 2순위 |
-| V10 | `summary_blank_swap` | `SUMMARY_BLANK_SWAP` | `summary_40` | Passage | 중 | 2순위 |
-
-**`ORIGINAL`** (`variant_kind = "original"`): 입력에서 추출된 원본 (변형 아님). 모든 24개 type 에 적용.
-
-각 V의 상세는 아래 §3.2.1~§3.2.10.
-
-**v0.3 → v0.4 enum 변경**:
-- ❌ 폐기: `THEME_REWORD = "theme_reword"` (v0.3 잠정 명명 — 데이터 사용 0건).
-- ✅ 신규 (V6 통합): `TOPIC_MAIN_IDEA_SWAP = "topic_main_idea_swap"` — V6 명세가 요지(22)/주제(23)/제목(24) 3개 type 을 포함하므로 enum 명도 일관 갱신.
-- ✅ 신규 5개: `VOCABULARY_INLINE` (V2) / `GRAMMAR_INLINE` (V4) / `SENTENCE_INSERTION_SHIFT` (V8) / `IRRELEVANT_SENTENCE_INJECT` (V9) / `SUMMARY_BLANK_SWAP` (V10).
-
-
-#### V1. `vocabulary_swap` — 어휘 교체
-
-- **`VariantKind` enum**: `VOCABULARY_SWAP` (value: `"vocabulary_swap"`)
-- **적용 type (확실)**: 어휘(30), 장문(41-42)의 42번.
-- **변형 규칙**:
-  1. 입력: 원본 Question (어휘(30) 또는 41-42), 또는 원본 Passage.
-  2. 본문에서 5개(또는 (a)~(e)) 어휘 후보 위치 재선택 또는 유지.
-  3. 5개 후보 중 1개를 의미 부적절한 단어로 swap.
-  4. 출력: `Question(type=동일, variant_kind="vocabulary_swap", derived_from=원본id)`.
-- **검증 기준**:
-  - 부적절 단어가 본문 의미를 명확히 어긋나게 만들어야 함.
-  - 4개 적절 단어가 dictionary 동의어로 swap 가능한 변별 가치 있는 위치.
-  - 정답 유일성 (qa-validator 별도 LLM call).
-
-#### V2. `vocabulary_inline` — 어휘 인라인화 (Gap A 어휘형 sub-form 변환)
-
-- **`VariantKind` enum**: `VOCABULARY_INLINE` (value: `"vocabulary_inline"`) — **1순위**
-- **적용 type (확실)**: 어휘(30), 빈칸-구(31).
-- **변형 규칙**:
-  1. 입력: 원본 Passage.
-  2. 본문에서 핵심 어휘 2~3곳 위치 선택.
-  3. 각 위치를 `(A) [opt1 / opt2]` 박스로 변환 (sub-form `inline_word_choice` 활성).
-  4. 출력: `Question(type="어휘(30)", variant_kind="vocabulary_inline", inline_choices=[...], choices=[5개 매트릭스])`.
-- **검증 기준**:
-  - 각 박스 옵션 정답 유일성.
-  - 오답 옵션이 dictionary 동의어 쌍 회피.
-
-#### V3. `grammar_swap` — 어법 교체
-
-- **`VariantKind` enum**: `GRAMMAR_SWAP` (value: `"grammar_swap"`)
-- **적용 type (확실)**: 어법(29).
-- **변형 규칙**:
-  1. 입력: 원본 Question 또는 Passage.
-  2. 5개 어법 후보 위치 재선택 또는 유지.
-  3. 1개를 어법상 틀린 형태로 swap.
-  4. 출력: `Question(type="어법(29)", variant_kind="grammar_swap", derived_from=원본id)`.
-- **검증 기준**:
-  - 5개 어법 포인트 다양성.
-  - 회색지대 문법 회피 (정답 모호 위험).
-  - 미국식/영국식 차이로 갈리는 케이스 회피.
-
-#### V4. `grammar_inline` — 어법 인라인화 (Gap A 어법형 sub-form 변환)
-
-- **`VariantKind` enum**: `GRAMMAR_INLINE` (value: `"grammar_inline"`) — **1순위**
-- **적용 type (확실)**: 어법(29).
-- **변형 규칙**: V2 (vocabulary_inline)와 동형, kind만 grammar.
-- **검증 기준**: V2와 동형 + 어법 정답 결정성.
-
-#### V5. `blank_inference` — 빈칸 추론 변형
-
-- **`VariantKind` enum**: `BLANK_INFERENCE` (value: `"blank_inference"`) — **1순위**
-- **적용 type (확실)**: 빈칸-구(31), 빈칸-절(32), 빈칸-절(33), 빈칸-절(34).
-- **변형 규칙**:
-  1. 입력: 원본 Passage.
-  2. 본문에서 thesis 문장의 핵심 어구/절 위치 선택.
-  3. 그 위치를 `______`로 비움.
-  4. 5개 영어 표현 (명사구 또는 절) 생성, 1개 정답 / 4개 오답 (본문 표현 변형 + too-narrow/too-broad).
-  5. 출력: `Question(type="빈칸-구(N)" 또는 "빈칸-절(N)", variant_kind="blank_inference")`.
-- **추가 sub-type 가능성 (추정 — §5.2)**: **빈칸-문장** (빈칸이 문장 1개) — 평가원에는 별 분류 없음, 사설 변형에서 등장. 만약 채택되면 type 코드 결정 필요 (PM).
-- **검증 기준**:
-  - 빈칸 위치가 본문 thesis의 핵심.
-  - 정답이 본문 다른 곳에 그대로 등장하지 않음 (literal repetition 회피).
-  - 오답이 너무 무관하지 않음.
-
-#### V6. `topic_main_idea_swap` — 주제·요지·제목 선택지 갱신
-
-- **`VariantKind` enum**: `TOPIC_MAIN_IDEA_SWAP` (value: `"topic_main_idea_swap"`) — **1순위 / 자산화 가치 최고**
-- **v0.4 변경 (2026-05-15)**: v0.3 의 잠정 enum `THEME_REWORD` 는 본 V6 으로 통합. V6 명세가 요지(22)/주제(23)/제목(24) 3개 type 을 묶기 때문에 enum 명도 통합. 데이터 사용 0건이라 breaking change 부담 없음.
-- **적용 type (확실)**: 요지(22), 주제(23), 제목(24).
-- **변형 규칙**:
-  1. 입력: 원본 Passage.
-  2. 본문은 그대로.
-  3. 5개 선택지 새로 생성 (sub-type별 형식 — 한국어 단문 / 영어 명사구 / 영어 제목).
-  4. 출력: `Question(type=동일, variant_kind="topic_main_idea_swap", choices=[5개])`.
-- **자산화 가치**: **본 6개 후보 중 가장 높음** — 본문 변형 없이 선택지만 갱신. 한 지문에서 22/23/24를 모두 변형 생성 가능.
-- **검증 기준**:
-  - 정답이 본문 thesis 정확 일치.
-  - sub-type별 형식 준수 (영어 명사구는 동사 시작 회피 등).
-  - 오답 4개의 패턴 다양성 (too-narrow / too-broad / 결론 반대 / 무관 그럴듯).
-
-#### V7. `order_shuffle` — 순서배열 변형
-
-- **`VariantKind` enum**: `ORDER_SHUFFLE` (value: `"order_shuffle"`) — **1순위**
-- **적용 type (확실)**: 순서배열(36), 순서배열(37).
-- **변형 규칙**:
-  1. 입력: 원본 Passage (단락 1개여도 가능 — LLM이 의미 분할).
-  2. 도입 1단락 + (A)/(B)/(C) 3단락으로 분할.
-  3. 5개 순서 조합 선택지 생성.
-  4. 출력: `Question(type="순서배열(N)", variant_kind="order_shuffle")`.
-- **자산화 가치**: 한 지문에서 1회 변형 가능 (재변형 시 분할 위치만 달라지지만 변별력 떨어짐).
-- **검증 기준**:
-  - 단락 분할이 의미 단위 (문장 중간 자르기 금지).
-  - 응결 단서 충분 (접속사·대명사·정관사).
-  - 단락 길이 균형.
-  - 정답 분포 편향 회피 (exam-generator의 Hotfix 17-2 참조).
-
-#### V8. `sentence_insertion_shift` — 문장삽입 위치 변형
-
-- **`VariantKind` enum**: `SENTENCE_INSERTION_SHIFT` (value: `"sentence_insertion_shift"`)
-- **적용 type (추정)**: 문장삽입(38), 문장삽입(39).
-- **변형 규칙**:
-  1. 입력: 원본 Passage.
-  2. 본문에서 1문장 추출 → given_sentence로.
-  3. 본문 안 ①~⑤ 위치 마커 5개 부착.
-  4. 출력: `Question(type="문장삽입(N)", variant_kind="sentence_insertion_shift")`.
-- **빈도 (추정)**: 변형문제집 2순위 (audit-review-domain §3.6 분류).
-- **검증 기준**:
-  - 추출 문장이 인접 문장과 응결 단서로 강하게 연결.
-  - 다른 4개 위치에서 흐름 단절 (정답 유일성).
-
-#### V9. `irrelevant_sentence_inject` — 무관문장 변형
-
-- **`VariantKind` enum**: `IRRELEVANT_SENTENCE_INJECT` (value: `"irrelevant_sentence_inject"`)
-- **적용 type (추정)**: 무관문장(35).
-- **변형 규칙**:
-  1. 입력: 원본 Passage (5문장 추정 또는 LLM 분할).
-  2. 1문장을 본문 주제와 관련 있어 보이되 흐름에서 벗어난 문장으로 swap.
-  3. ①~⑤ 마커 부착.
-  4. 출력: `Question(type="무관문장(35)", variant_kind="irrelevant_sentence_inject")`.
-- **검증 기준**:
-  - 무관 문장이 본문과 관련 있어 보여야 (완전 무관은 너무 명백).
-  - 4개 정상 문장 간 응결 단서 보존.
-
-#### V10. `summary_blank_swap` — 요약문 빈칸 변형
-
-- **`VariantKind` enum**: `SUMMARY_BLANK_SWAP` (value: `"summary_blank_swap"`)
-- **적용 type (추정)**: 요약문(40).
-- **변형 규칙**:
-  1. 입력: 원본 Passage.
-  2. 본문 한 문장 요약문 생성.
-  3. 핵심 어구 2곳 빈칸 (A)/(B).
-  4. 5개 (A)/(B) 단어 조합 생성.
-  5. 출력: `Question(type="요약문(40)", variant_kind="summary_blank_swap")`.
-- **빈도 (추정)**: 2순위 (audit-review-domain §3.6).
-- **검증 기준**:
-  - (A)/(B) 두 어구 모두 본문 핵심 압축.
-  - 5개 조합 중 1개만 정답.
-
-### 3.3 variant_kind와 type의 관계 정리
-
-```
-Question.type:           24개 QuestionType enum 중 하나 (확정)
-Question.variant_kind:   VariantKind enum — ORIGINAL | V1~V10 (v0.4 모두 활성, 2026-05-15)
-```
-
-- `variant_kind=ORIGINAL`: 입력에서 추출된 원본 문제 (exam-generator 호환). `derived_from_question_id = None`.
-- `variant_kind=V1~V10`: 변형. ADR-0017 Accepted — 단일 `Question` 테이블 + `derived_from_question_id` self-FK NOT NULL (model_validator 강제).
-
-`Question.variant_metadata` (JSONB | NULL) — 변형만의 추가 메타 (예: `llm_candidate_words`, `generation_attempt`). 원본 행에서는 항상 None. Phase 3 첫 변형 생성 PR 에서 구조 확정 (ADR-0017 D2-c).
-
-### 3.4 Phase 3 우선순위 (audit-review-domain §3.6 + 본 §3.2 통합)
-
-**1순위 — Phase 3 진입 시 LLM 변형 프롬프트 작성 대상 (5개)**:
-
-| 순서 | ID | `VariantKind` enum | 적용 type | 자산화 가치 | 비고 |
-|---|---|---|---|---|---|
-| 1 | V6 | `TOPIC_MAIN_IDEA_SWAP` | `main_idea_22` / `topic_23` / `title_24` | **최고** | 본문 유지, 선택지만 갱신. 한 지문에서 22/23/24 모두 변형 |
-| 2 | V2 | `VOCABULARY_INLINE` | `vocabulary_30` / `blank_phrase_31` | 높음 | 학원 변형문제집 핵심 (Gap A 어휘형) |
-| 3 | V4 | `GRAMMAR_INLINE` | `grammar_29` | 높음 | V2 와 동형 (kind 만 grammar) |
-| 4 | V5 | `BLANK_INFERENCE` | `blank_phrase_31` / `blank_clause_32~34` | 높음 | 변형문제집 단골 |
-| 5 | V7 | `ORDER_SHUFFLE` | `paragraph_order_36` / `_37` | 중 | 한 지문 → 한 변형 |
-
-**시작 가이드 (Phase 3 진입 후 첫 PR)**:
-1. **V6 우선** — 본문 변형 없음 + 선택지 5개만 LLM 생성 → 가장 단순 + 자산화 가치 최고.
-2. V6 통과 후 V2/V4 (sub-form 변환) 진행 — `inline_choices` 필드 + 매트릭스 `choice_format` 활용.
-3. V5 (`blank_inference`) 는 빈칸 위치 결정 + 5개 선택지 생성 — V6 패턴 + 본문 마커 부착.
-4. V7 (`order_shuffle`) 은 마지막 — LLM 의 단락 분할 자체가 새 도메인.
-
-**2순위 — Phase 3 후반 또는 별도 sprint**:
-
-| 순서 | ID | `VariantKind` enum | 적용 type | 비고 |
-|---|---|---|---|---|
-| 6 | V1 | `VOCABULARY_SWAP` | `vocabulary_30` / `long_set_41_42` | 평가원 표준형 |
-| 7 | V3 | `GRAMMAR_SWAP` | `grammar_29` | 평가원 표준형 |
-| 8 | V8 | `SENTENCE_INSERTION_SHIFT` | `sentence_insertion_38` / `_39` | — |
-| 9 | V9 | `IRRELEVANT_SENTENCE_INJECT` | `irrelevant_sentence_35` | — |
-| 10 | V10 | `SUMMARY_BLANK_SWAP` | `summary_40` | — |
-
-**우선순위는 §5.1 와이프 인터뷰로 최종 검증 필요** (audit-review-domain §5.1과 동일 항목).
-
-### 3.5 LLM 변형 프롬프트 사전 가이드 (실제 프롬프트는 Phase 3 별 PR)
-
-ADR-0013 (Phase 2 보강 파이프라인) 의 augment 패턴을 모태로 한 사전 가이드. 실제 프롬프트 본문은 Phase 3 진입 시 도메인 + LLM 코드 PR 에서 작성.
-
-#### 3.5.1 공통 구조 (ADR-0013 augment 패턴 재사용)
-
-`packages/llm/augment.py` 의 패턴을 그대로 답습:
-
-1. **입력 schema** (Pydantic): `Passage` (또는 `Question`) — 원본.
-2. **출력 schema** (Pydantic): `VariantOutput` — 1개 변형 후보 + `plan` (자기계획) + `naturalness_check` (자가검증).
-3. **mode 파라미터** (ADR-0013 mode 패턴 확장):
-   - `generate` (default): 새 변형 생성.
-   - `retry_on_uniqueness_fail`: qa-validator 가 정답 유일성 실패 보고 → LLM 이 재생성.
-   - `regenerate`: 사용자가 거부 → 같은 type/variant_kind 로 새 후보.
-4. **LLM 자가검증** (exam-generator 흡수): `naturalness_check: Literal["OK", "REWRITE_SCOPE_TOO_BROAD", ...]` — 변형 결과의 자연스러움 자체 평가.
-
-#### 3.5.2 V6 (`topic_main_idea_swap`) — 첫 변형 프롬프트의 모범 (1순위 #1)
-
-```
-입력: Passage (body_text + translation + vocabulary)
-출력: VariantOutput:
-  - type: Literal[main_idea_22, topic_23, title_24]   # 3개 중 LLM 선택 또는 호출자 지정
-  - choices: list[str]  # 5개, type 별 형식 (한국어 단문 / 영어 명사구 / 영어 제목)
-  - answer: int  # 1~5
-  - explanation: str
-  - plan: QuestionPlan
-  - naturalness_check: Literal["OK", ...]
-
-프롬프트 가이드:
-  - 본문 thesis 정확히 1문장 식별 → 정답 선택지 압축.
-  - 4개 오답 패턴 분포 강제: [too-narrow, too-broad, 결론 반대, 무관 그럴듯].
-  - 영어 명사구 (topic_23) 의 경우 동사 시작 회피, 정관사 the 시작 권장.
-  - 영어 제목 (title_24) 의 경우 4~10 단어, 첫 글자 대문자.
-  - 한국어 단문 (main_idea_22) 의 경우 "~이다" 형식.
-
-검증 포인트 (qa-validator §3.6):
-  - 정답 유일성: 다른 4개 선택지 모두 변별 가능.
-  - 형식 준수: type 별 형식 패턴 정합.
-  - thesis 정합: 정답이 본문 thesis 와 의미 정확 일치 (LLM-as-judge 2차 호출 가능).
-```
-
-#### 3.5.3 V2/V4 (`vocabulary_inline` / `grammar_inline`) — Gap A sub-form 변환 (1순위 #2, #3)
-
-```
-입력: Passage
-출력: VariantOutput:
-  - type: vocabulary_30 (V2) 또는 grammar_29 (V4)
-  - inline_choices: list[InlineChoice]  # 2~3개
-      - label: "(A)" / "(B)" / "(C)"
-      - options: list[str]  # 보통 2개
-      - answer_index: int
-      - position_marker: str  # 본문 내 위치
-      - kind: vocabulary | grammar
-  - choice_format: matrix_AB | matrix_ABC
-  - choice_matrix: ChoiceMatrix  # 5행 매트릭스
-  - answer: int
-
-프롬프트 가이드:
-  - 박스 2~3개 위치는 본문 핵심 어휘/어법 포인트.
-  - 어휘형 옵션: dictionary 동의어 회피 (변별력 없음) — 반의어 또는 의미 충돌어.
-  - 어법형 옵션: 회색지대 문법 회피 (비제한적 관계사 that/which 등).
-  - 5행 매트릭스: 박스 N개 → 컬럼 N개 → 5행 = 박스별 옵션 조합.
-  - 정답 = 모든 박스에서 자연스러운 조합 1개만.
-
-검증 포인트:
-  - 각 박스 정답 유일성 (qa-validator 박스별 검증).
-  - 매트릭스 5행 모두 컬럼 길이 정합 (Pydantic validator 자동 강제).
-```
-
-#### 3.5.4 V5 (`blank_inference`) — 빈칸 추론 변형 (1순위 #4)
-
-```
-입력: Passage
-출력: VariantOutput:
-  - type: blank_phrase_31 (구) 또는 blank_clause_32~34 (절)
-  - question_text: 표준 지시문
-  - choices: list[str]  # 5개 영어 명사구 또는 절
-  - answer: int
-  - body_with_blank: str  # 본문에 `______` 1개 박힌 형태 (Annotation 으로 분리)
-
-프롬프트 가이드:
-  - 빈칸 위치: 본문 thesis 문장의 핵심 어구.
-  - 연결어 처리: `that ______` 처럼 빈칸 직전 연결어가 있으면 choices 에 그 연결어 포함 금지.
-  - 정답이 본문 다른 곳에 그대로 등장 금지 (literal repetition — 추론이 아니라 검색).
-  - 오답 4개 패턴: 본문 표현 변형 + too-narrow + too-broad + 본문 일부 의미적 관련되되 빈칸 위치 부적합.
-
-검증 포인트:
-  - 정답 유일성.
-  - literal repetition 자동 검출 (qa-validator).
-```
-
-#### 3.5.5 V7 (`order_shuffle`) — 순서배열 변형 (1순위 #5)
-
-```
-입력: Passage
-출력: VariantOutput:
-  - type: paragraph_order_36 또는 _37
-  - given_passage: str  # 주어진 글 1단락
-  - sub_passages: list[list[str]]  # [[A단락], [B단락], [C단락]]
-  - choices: list[str]  # 정확히 ["(A)-(C)-(B)", "(B)-(A)-(C)", "(B)-(C)-(A)", "(C)-(A)-(B)", "(C)-(B)-(A)"]
-  - answer: int
-
-프롬프트 가이드:
-  - 단락 분할: 의미 단위 (문장 중간 자르기 금지).
-  - 응결 단서 충분: 각 단락 시작/끝에 다음 단락 가리키는 접속사/대명사/정관사.
-  - 단락 길이 균형 (학생이 길이 추측으로 못 풀게).
-  - 정답 분포 편향 회피 (5개 후보 균등 분포 — exam-generator Hotfix 17-2 참조).
-
-검증 포인트:
-  - 응결 단서 ≥ 2개 per 인접 단락 쌍.
-  - 분할 위치가 문장 경계 (sentence boundary).
-  - 정답 분포 통계 모니터링 (qa-validator history).
-```
-
-#### 3.5.6 후속 작업 (별 PR, 본 카탈로그 외)
-
-- `docs/prompts/variant_v6_topic_main_idea_swap.md` 등 V1~V10 모두 별 마크다운 + few-shot 2~3개.
-- `packages/llm/variant.py` — augment.py 와 대칭 구조 (mode 분기 + Pydantic 입출력).
-- `POST /passages/{id}/variants` 라우트 (variant_kind 파라미터).
-
-### 3.6 qa-validator 검증 시나리오 (ADR-0017 D3-c 하이브리드)
-
-ADR-0017 D3-c 결정: `Question.uniqueness_validated: bool` (최신 상태 캐시) + 별도 `qa_validation_results` 테이블 (history). qa-validator agent 가 별 LLM call 로 검증.
-
-#### 3.6.1 공통 검증 흐름
-
-1. **입력**: 1개 `Question` (variant_kind != ORIGINAL).
-2. **검증 LLM call**: 변형 생성 LLM 과 *다른 모델* 또는 *다른 프롬프트* — 자기검증 회피 (NRTW: LLM-as-judge 패턴).
-3. **출력**: `QAValidationResult`:
-   - `passed: bool`
-   - `category: Literal["uniqueness", "naturalness", "format", "literal_repetition"]`
-   - `note: str` (실패 사유)
-   - `timestamp: datetime`
-4. **저장**:
-   - `Question.uniqueness_validated` ← 최신 결과의 `passed` 값.
-   - `Question.uniqueness_validator_note` ← 최신 `note`.
-   - `qa_validation_results` 테이블에 raw history append (별 PR — Phase 3).
-
-#### 3.6.2 variant_kind 별 검증 카테고리 매핑
-
-| variant_kind | 검증 카테고리 (우선순위) | 검증 방법 |
+| 측면 | v0.4 (type-preserving) | v0.5 (cross-type) |
 |---|---|---|
-| `VOCABULARY_SWAP` / `VOCABULARY_INLINE` | (1) uniqueness (2) literal_repetition (3) format | LLM 2차 호출 + 본문 fuzzy match |
-| `GRAMMAR_SWAP` / `GRAMMAR_INLINE` | (1) uniqueness (2) naturalness (회색지대 회피) | LLM 2차 호출 + 문법 규칙 체크리스트 |
-| `BLANK_INFERENCE` | (1) uniqueness (2) literal_repetition | LLM 2차 호출 + 본문 fuzzy match (정답이 본문 어디 그대로 등장하는지) |
-| `TOPIC_MAIN_IDEA_SWAP` | (1) thesis 정합 (2) format (3) uniqueness | LLM 2차 호출 (정답 ↔ thesis 의미 정합) + 형식 정규식 |
-| `ORDER_SHUFFLE` | (1) 응결 단서 (2) 분포 편향 (3) uniqueness | LLM 2차 호출 (인접 단락 응결 분석) + 분포 통계 history |
-| `SENTENCE_INSERTION_SHIFT` | (1) uniqueness (2) 응결 단서 | LLM 2차 호출 |
-| `IRRELEVANT_SENTENCE_INJECT` | (1) 본문 주제 관련성 (2) uniqueness | LLM 2차 호출 |
-| `SUMMARY_BLANK_SWAP` | (1) uniqueness (2) 본문 압축 정합 | LLM 2차 호출 |
+| `Question.type` (원본 vs 변형) | 항상 같음 | **다를 수 있음** (대각선 셀 ✅ 이면 같을 수 있음) |
+| 변형 의도 | 같은 type 안에서 어휘 swap / 빈칸 위치 재생성 등 표면 재생성 | 본문 복원 후 새 type 출제 — *출제 의도 자체가 바뀜* |
+| 자산화 단위 | Question (변형 Question 이 자산) | **Passage** (복원된 본문이 multi-type 자산의 base) |
+| LLM 의 역할 | type 별 변형 프롬프트 N개 | (1) 본문 복원 어댑터 (대부분 mechanical) + (2) 새 type 출제 프롬프트 (= Phase 2 의 *최초 출제* 프롬프트와 같은 패턴) |
 
-#### 3.6.3 실패 시 흐름
+특히 (2) 의 함의가 크다 — **cross-type variant 의 LLM 호출은 새 type 의 *최초 출제* 와 본질적으로 같다**. 입력이 *raw passage* 가 아니라 *복원된 passage* 일 뿐. 즉 Phase 3 LLM 코드는 Phase 2 의 출제 코드를 재사용해야 한다 (NRTW 정합).
+
+#### 3.1.4 CLAUDE.md §6.2 정합
+
+CLAUDE.md §6.2: "변형 유형이라는 별도 카테고리는 없다. 모든 문제 유형은 24개 중 하나에 속한다" — 본 v0.5 도 그대로. variant 의 *출력* `Question.type` 은 24개 중 하나. 단 *원본과 다를 수 있다*. `Question.variant_kind != ORIGINAL` 은 "이 Question 이 다른 Question 으로부터 본문 재사용 경로로 파생됐다" 는 trace 메타.
+
+### 3.2 본문 복원 규칙 (type 별)
+
+cross-type variant 의 1단계 — 원본 Question + Passage 로부터 *완전한 영어 paragraph(s)* 를 복원. ADR-0006 마커 처리 정책에 따라 출제용 마커 (`①②③④⑤`, `_..._`, `______`, 본문 내장 박스) 는 제거된 정제 본문이 산출돼야 한다. 단락 라벨 (`(A)~(D)`) / 지칭 라벨 (`(a)~(e)`) 은 본문 구조 일부로 inline 보존.
+
+복원 산출물의 형태:
+- **단일 paragraph** (대부분 — 18~40번대 기본 가정): 1개 영어 문단.
+- **multi-paragraph** (41-42, 43-45 장문 세트): 단락 4개 분리 유지 (장문 본연 구조).
+
+복원 규칙은 type 별로 *mechanical* (LLM 호출 없음) vs *LLM 보조* (오답 선지에서 정답을 식별) 로 나뉜다.
+
+#### 3.2.1 본문이 이미 완전 — 복원 불필요 (mechanical, 14개 type)
+
+원본이 본문에 출제용 마커를 박지 않는 type. body 만 그대로 추출하면 끝.
+
+| type | 비고 |
+|---|---|
+| `purpose_18` | 편지/공고, 마커 없음 |
+| `mood_19` | 1인칭 서사 |
+| `claim_20` | 논설문 |
+| `main_idea_22` | |
+| `topic_23` | |
+| `title_24` | |
+| `figure_match_26` | 인물 약력 — 마커 일체 금지 type, 본문 자체 완전 |
+| `notice_mismatch_27` | 안내문 박스. 박스 구조는 단락 분리로 보존 |
+| `notice_match_28` | 동일 |
+| `summary_40` | 본문 자체에는 빈칸이 없고 요약문에만 있음. 본문은 그대로 완전 |
+| `long_set_41_42` | 본문은 이미 완전. (a)~(e) 라벨은 inline 보존 (ADR-0006) |
+| `long_reading_43_45` | (A)~(D) 단락 라벨 + (a)~(e) 지칭 라벨 inline 보존 |
+
+> 단 `underline_implication_21` 은 본문에 `_..._` 1개 → §3.2.3 참고.
+> 그리고 41-42 / 43-45 의 시스템 후처리 underline (exam-generator `_apply_alpha_markers`) 은 제거.
+
+#### 3.2.2 빈칸형 — 정답으로 빈칸 채움 (mechanical)
+
+| type | 복원 방법 |
+|---|---|
+| `blank_phrase_31` | 본문 `______` 1곳을 원본 정답 (영어 명사구) 으로 치환 |
+| `blank_clause_32` / `_33` / `_34` | 본문 `______` 1곳을 정답 절로 치환. **연결어 처리** — 원본 빈칸 직전에 `that` 등 연결어가 있고 정답이 그 연결어를 포함하지 않는 경우, 치환 후 자연스럽게 이어지는지 확인 (대부분 자동, 어색하면 LLM 보조) |
+| `summary_40` | 본문은 그대로 — §3.2.1 참고. *요약문* 의 (A)/(B) 빈칸을 정답 단어로 채우면 별도의 *완성된 요약문* 산출물도 부산물로 생성 가능 (도메인 가치: 학생 노트 자료) |
+
+#### 3.2.3 인라인 underline / 어휘·어법 — 오답 선지 제거 (mechanical)
+
+| type | 복원 방법 |
+|---|---|
+| `underline_implication_21` | 본문 `_단어_` 마커 제거 → 정제 본문. 정답 함의는 본문에 이미 텍스트로 들어있음 (마커는 underline 표시일 뿐) |
+| `grammar_29` | 본문 5곳 `①_w_` ~ `⑤_w_` 중 4곳은 옳은 형태 그대로, **1곳 (정답 = 어법상 틀린 위치)** 은 *옳은 형태로* 교체. 어떤 옳은 형태인지는 LLM 보조 (원본 explanation 또는 별 LLM call). 마커 모두 제거 |
+| `vocabulary_30` | 동일하게 1곳 (정답 = 문맥 부적절 어휘) 을 *문맥 적절 어휘* 로 교체. LLM 보조 — 원본 explanation 또는 본문 의미 기반 단어 추론 |
+
+> 도메인 주의: `grammar_29` / `vocabulary_30` 의 복원은 *원본 explanation 이 충실한가* 에 의존. explanation 이 단순 ("⑤가 틀림") 이면 LLM 이 옳은 형태를 자체 추론해야 함 — 오류 위험. 와이프 검수 강력 권고 (`uniqueness_validated` 플래그 활용, ADR-0017 D3).
+
+#### 3.2.4 무관문장 / 순서배열 / 문장삽입 — 구조 재구성 (mechanical)
+
+| type | 복원 방법 |
+|---|---|
+| `irrelevant_sentence_35` | 본문 6원소 `[도입, ①, ②, ③, ④, ⑤]` 중 정답 (= 무관문장 1개) 을 *제거* → 5원소 본문. 마커 제거. ① 마커는 원래 도입 다음 첫 문장이라 무관문장 제거 후 자연스러운 연속 흐름이어야 함 (대부분 자동) |
+| `paragraph_order_36` / `_37` | `(주어진 글) + sub_passages[A, B, C]` 를 원본 정답 순서 (예: (B)-(A)-(C)) 로 합본 → 단일 paragraph. 단락 라벨 (A)/(B)/(C) 제거. 결과는 4단락 → 1단락 합성 |
+| `sentence_insertion_38` / `_39` | `given_sentence` 를 본문 `①②③④⑤` 중 정답 위치에 삽입 → 정답 위치의 *직전* 에 끼움. ①~⑤ 마커 모두 제거. 결과는 본문 + 1문장 inline |
+
+> 36/37 의 합본 산출물은 *4단락이 한 흐름으로 합쳐진 단일 paragraph* 가 자연스러움. 단 결과가 너무 길면 (300단어+) 새 type 으로 출제할 때 21~40번 단일 paragraph 형식과 길이 불일치 가능 — §3.3 매트릭스에서 ⚠️ 표기.
+
+#### 3.2.5 본문 복원 산출물 검증
+
+| 검증 | 통과 기준 |
+|---|---|
+| 출제용 마커 0 | `①②③④⑤`, `_..._`, `______`, `[opt1 / opt2]` 박스 — 본문에 0건 |
+| 단락 라벨 / 지칭 라벨 보존 | `(A)~(D)`, `(a)~(e)` 가 원본에 있었으면 그대로 inline |
+| 자연 흐름 | 본문이 첫 문장부터 끝까지 자연스럽게 읽힘 (특히 §3.2.3/§3.2.4 의 mechanical 교체/제거 후 어색하지 않은지) |
+| 의미 보존 | 원본 출제 의도의 핵심 thesis / fact 가 보존 (특히 빈칸형 — 정답 채움 후 본문 thesis 가 명확해야 함) |
+
+검증 실패 시 LLM 보조 (자연 흐름 다듬기) — 별 LLM call. 사용자 검수 강제는 ADR-0017 D3-c 의 `uniqueness_validated` 플래그로 표현.
+
+### 3.3 원본 type × 새 type 호환성 매트릭스 (24 × 24)
+
+본 매트릭스는 도메인 expert 의 판단. 출제 베테랑 관점에서 "이 본문이면 이 type 출제 의미 있나?" 기준.
+
+#### 3.3.1 범례
+
+- ✅ **호환** — 본문 복원 후 새 type 출제가 도메인적으로 의미 있고 자산화 가치 있음.
+- ⚠️ **조건부** — 호환은 되지만 본문 길이 / 구조 / 출제 의도의 제약이 있음. 사용자 검수 필수.
+- ❌ **비호환** — 도메인적으로 의미가 없거나 본문 구조가 부적합.
+
+#### 3.3.2 매트릭스 (행 = 원본 type, 열 = 새 type)
+
+표 가독성을 위해 type 을 *그룹* 으로 분류:
+
+- **G1 추론형 단일 paragraph**: `purpose_18`, `mood_19`, `claim_20`, `underline_implication_21`, `main_idea_22`, `topic_23`, `title_24`
+- **G2 사실형 박스/약력**: `figure_match_26`, `notice_mismatch_27`, `notice_match_28`
+- **G3 마커형 어휘/어법**: `grammar_29`, `vocabulary_30`
+- **G4 빈칸형**: `blank_phrase_31`, `blank_clause_32`, `_33`, `_34`
+- **G5 논리형**: `irrelevant_sentence_35`, `paragraph_order_36`, `_37`, `sentence_insertion_38`, `_39`, `summary_40`
+- **G6 장문 세트**: `long_set_41_42`, `long_reading_43_45`
+
+##### 그룹간 매트릭스 (요약)
+
+| 원본 \ 새 type | → G1 추론형 | → G2 사실형 | → G3 어휘/어법 | → G4 빈칸형 | → G5 논리형 | → G6 장문 |
+|---|---|---|---|---|---|---|
+| **G1 추론형** (18~24) | ✅ (대각선 동일 type 은 §3.4 참고) | ❌ (서사/논설/편지는 인물 약력·안내문 구조 아님) | ⚠️ 본문에 충분한 어휘/어법 변별 포인트 있어야 | ✅ thesis 명확하면 빈칸 출제 가능 | ⚠️ 본문 길이/문장 수 충분해야 (35 5문장, 36/37 4단락 분할 가능, 38/39 5위치 마커 가능) | ❌ 단일 paragraph 라 장문 세트 구조 부적합 |
+| **G2 사실형** (26~28) | ❌ 약력·안내문에는 thesis/심경/주장 없음 | ✅ 같은 그룹 내 정/역 변형 (27↔28) | ❌ 마커 일체 금지 type (26) 또는 박스형 (27/28) 은 어휘/어법 출제 의도 부적합 | ❌ 사실 진술이라 빈칸 추론 의미 약함 | ❌ 사실형 본문은 응결 흐름 출제 부적합 | ❌ 본문 짧음 + 구조 부적합 |
+| **G3 어휘/어법** (29~30) | ✅ 일반 설명문 본문 — 모든 추론형 출제 가능 | ❌ 약력/안내문 구조 아님 | ✅ (대각선 §3.4) | ✅ | ⚠️ 본문이 5문장 또는 4단락으로 분할 가능해야 | ❌ |
+| **G4 빈칸형** (31~34) | ✅ thesis 명확한 본문 — 추론형 출제 강함 | ❌ | ⚠️ 본문에 변별 어휘/어법 포인트 있어야 | ✅ (대각선 §3.4) — 빈칸 위치 옮김 | ⚠️ 본문 길이/구조 검증 | ❌ |
+| **G5 논리형** (35~40) | ⚠️ 복원 본문이 자연 흐름이면 추론형 가능 (§3.2.4 주의) | ❌ | ⚠️ | ✅ thesis 식별 가능하면 | ✅ (대각선) | ❌ |
+| **G6 장문 세트** (41-42, 43-45) | ⚠️ 장문 본문이 너무 김 — 18~24 형식 (4~7문장) 과 길이 불일치. 일부 발췌라면 가능 | ❌ | ⚠️ 장문 한 단락 발췌해서 어휘/어법 출제 가능 | ⚠️ 발췌 단락에서 빈칸 출제 가능 | ⚠️ 장문 1개 단락에서 35 가능, 다른 단락 조합으로 36/37/38/39 가능 (그러나 도메인 가치는 낮음 — 장문은 장문대로 자산) | ✅ (대각선 + 41-42↔43-45 상호) |
+
+> 위 표는 그룹간 *기본 경향* 이지 셀별 절대 규칙 아님. 각 type 별 세부 호환은 §3.3.3 의 셀별 표 참고.
+
+##### 세부 매트릭스 (24개 type 별 — 행 = 원본 type, 셀 = ✅/⚠️/❌)
+
+표 가독성을 위해 6개 행 (G1~G6 그룹) 별로 split. 각 셀은 원본 type 의 본문이 *복원* 된 후 새 type 으로 출제할 때의 도메인 판단.
+
+###### G1 추론형 (18~24) 행
+
+행 = 원본 type, 열 = 새 type. 셀 내용 = ✅ / ⚠️근거 / ❌근거.
+
+| 원본 \ 새 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38 | 39 | 40 | 41-42 | 43-45 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 18 목적 | ⚠️ same-type | ❌ | ❌ | ⚠️ 편지 내 비유표현 드묾 | ⚠️ 편지의 요지 출제 가능하나 어색 | ⚠️ | ⚠️ | ❌ | ❌ | ❌ | ⚠️ 어법 포인트 있을 수 | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ❌ 짧음 | ❌ 4단락 분할 불가 | ❌ | ❌ | ❌ | ❌ 요약 의미 약함 | ❌ | ❌ |
+| 19 심경 | ❌ | ⚠️ same-type | ❌ 서사이지 주장 아님 | ⚠️ 비유 표현 있을 수 | ⚠️ | ⚠️ | ⚠️ | ❌ | ❌ | ❌ | ⚠️ | ⚠️ | ⚠️ 핵심 감정 어구 빈칸 | ⚠️ | ⚠️ | ⚠️ | ⚠️ 서사 5문장이면 | ❌ | ❌ | ⚠️ | ⚠️ | ❌ | ❌ | ❌ |
+| 20 주장 | ❌ | ❌ | ⚠️ same-type | ⚠️ | ✅ thesis 명확 | ✅ | ✅ | ❌ | ❌ | ❌ | ⚠️ | ⚠️ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ 4단락 분할 가능하면 | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ❌ | ❌ |
+| 21 밑줄함의 | ❌ | ❌ | ❌ | ⚠️ same-type | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ⚠️ | ⚠️ | ⚠️ 비유표현이 핵심이면 | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ❌ | ❌ |
+| 22 요지 | ❌ | ❌ | ⚠️ thesis 강하면 | ⚠️ | ⚠️ same-type | ✅ | ✅ | ❌ | ❌ | ❌ | ⚠️ | ⚠️ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ❌ | ❌ |
+| 23 주제 | ❌ | ❌ | ⚠️ | ⚠️ | ✅ | ⚠️ same-type | ✅ | ❌ | ❌ | ❌ | ⚠️ | ⚠️ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ❌ | ❌ |
+| 24 제목 | ❌ | ❌ | ⚠️ | ⚠️ | ✅ | ✅ | ⚠️ same-type | ❌ | ❌ | ❌ | ⚠️ | ⚠️ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ❌ | ❌ |
+
+###### G2 사실형 (26~28) 행
+
+| 원본 \ 새 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38 | 39 | 40 | 41-42 | 43-45 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 26 인물일치 | ❌ | ❌ | ❌ | ❌ 마커 금지 type | ❌ | ❌ | ❌ | ⚠️ same-type — 다른 인물로 정/역 가능 | ❌ 약력은 안내문 아님 | ❌ | ❌ 마커 금지 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ 서사 흐름 아님 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| 27 안내문 (불일치) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ⚠️ same-type | ✅ **정/역 변환** (27↔28) | ❌ | ❌ | ❌ 빈칸 의미 약함 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| 28 안내문 (일치) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ **정/역** | ⚠️ same-type | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+
+###### G3 어휘/어법 (29~30) 행
+
+| 원본 \ 새 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38 | 39 | 40 | 41-42 | 43-45 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 29 어법 | ⚠️ 본문 형식이 편지면 가능 | ⚠️ 서사면 | ✅ 본문이 주장형이면 | ⚠️ 비유 표현 있으면 | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ⚠️ same-type | ✅ (어법↔어휘는 같은 본문 사용 가능) | ✅ | ✅ | ✅ | ✅ | ⚠️ 5문장 분리 가능하면 | ⚠️ 4단락 분할 | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ❌ | ❌ |
+| 30 어휘 | ⚠️ | ⚠️ | ✅ | ⚠️ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ⚠️ same-type | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ❌ | ❌ |
+
+###### G4 빈칸형 (31~34) 행
+
+| 원본 \ 새 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38 | 39 | 40 | 41-42 | 43-45 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 31 빈칸-구 | ⚠️ | ⚠️ | ✅ | ⚠️ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ⚠️ | ⚠️ | ⚠️ same-type (위치 옮김) | ⚠️ 구→절 빈칸 확장 | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ❌ | ❌ |
+| 32 빈칸-절 | ⚠️ | ⚠️ | ✅ | ⚠️ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ⚠️ | ⚠️ | ⚠️ 절→구 축소 | ⚠️ same-type | ⚠️ 같은 grade 32/33/34 상호 | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ❌ | ❌ |
+| 33 빈칸-절 | ⚠️ | ⚠️ | ✅ | ⚠️ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ same-type | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ❌ | ❌ |
+| 34 빈칸-절 | ⚠️ | ⚠️ | ✅ | ⚠️ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ same-type | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ❌ | ❌ |
+
+###### G5 논리형 (35~40) 행
+
+| 원본 \ 새 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38 | 39 | 40 | 41-42 | 43-45 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 35 무관문장 | ⚠️ | ⚠️ | ⚠️ 무관문장 제거 후 본문 일관성 강함 | ⚠️ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ⚠️ | ⚠️ | ✅ | ✅ | ✅ | ✅ | ⚠️ same-type | ⚠️ 5문장 → 4단락 분할 가능하면 | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ❌ | ❌ |
+| 36 순서배열 | ⚠️ 합본 본문이 길 수 | ⚠️ | ✅ 합본 후 단일 paragraph | ⚠️ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ⚠️ | ⚠️ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ same-type (분할 위치 변경) | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ❌ | ❌ |
+| 37 순서배열 | ⚠️ | ⚠️ | ✅ | ⚠️ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ⚠️ | ⚠️ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | ⚠️ same-type | ⚠️ | ⚠️ | ⚠️ | ❌ | ❌ |
+| 38 문장삽입 | ⚠️ | ⚠️ | ✅ | ⚠️ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ⚠️ | ⚠️ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ same-type (다른 문장 추출) | ⚠️ | ⚠️ | ❌ | ❌ |
+| 39 문장삽입 | ⚠️ | ⚠️ | ✅ | ⚠️ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ⚠️ | ⚠️ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ same-type | ⚠️ | ❌ | ❌ |
+| 40 요약문 | ⚠️ | ⚠️ | ✅ | ⚠️ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ⚠️ | ⚠️ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ same-type | ❌ | ❌ |
+
+###### G6 장문 (41-42, 43-45) 행
+
+| 원본 \ 새 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38 | 39 | 40 | 41-42 | 43-45 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 41-42 장문 | ⚠️ 발췌 | ⚠️ | ⚠️ 발췌 | ⚠️ | ⚠️ 발췌 시 thesis | ⚠️ | ⚠️ | ❌ | ❌ | ❌ | ⚠️ 한 단락 발췌 | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ same-type | ⚠️ 4단락 재구성 가능하면 |
+| 43-45 장문독해 | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ 등장 인물 약력 형태로 압축 가능 | ❌ | ❌ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ same-type (단락 셔플) | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ same-type |
+
+#### 3.3.3 매트릭스에서의 도메인 패턴 (요약)
+
+1. **G1 추론형 → G1 추론형 cross**: 20(주장) / 22(요지) / 23(주제) / 24(제목) 4개는 *같은 thesis 단위* 라 cross 호환 ✅. 본문 1개로 4개 출제 가능 — 자산화 가치 최고 (v0.4 의 V6 가 이 셀의 일부).
+2. **G3 어휘/어법 ↔ G3 cross**: 29↔30 cross ✅ (같은 본문에 어법 포인트와 어휘 포인트 둘 다 있음).
+3. **G4 빈칸형 → G1 추론형 / 다른 G4**: thesis 명확 본문이면 ✅. 특히 32/33/34 상호 cross 는 grade 만 다를 뿐 같은 유형 (⚠️ same-type 변형 — §3.4 참고).
+4. **G2 사실형 (26~28) 의 격리**: 인물 약력 / 안내문은 다른 type 으로의 cross 가 거의 ❌. 같은 그룹 안 정/역 변환 (27↔28) 만 ✅. 가장 자산화 가치 낮은 그룹.
+5. **G6 장문 격리**: 장문은 장문 사이의 cross (41-42 ↔ 43-45) 외에는 대부분 ⚠️. 발췌해서 21~40 단일 paragraph 출제는 가능하나 도메인 가치 낮음 — 장문은 장문대로 자산 보존하는 게 와이프 워크플로우에 맞음 (§5.1 인터뷰 검증 권고).
+6. **대각선 ⚠️ same-type**: 모든 type 의 대각선은 ⚠️ same-type — §3.4 가치 판단 별도.
+
+#### 3.3.4 PM 결정이 필요한 모호한 셀 (§5 와이프 인터뷰 권고)
+
+본 매트릭스는 도메인 1차 판단. 다음 셀은 와이프 검수 강력 권고:
+
+- (G1 → G3 어휘/어법) 의 ⚠️ — 추론형 본문이 어휘/어법 변별 포인트를 충분히 가지는 빈도. 추정 50% 본문에서 가능, 50% 본문에서는 변별 포인트 부족 → LLM 이 본문에 *없는* 어휘/어법 포인트를 강제로 만들면 본문 자체를 살짝 변형해야 함 → cross-type variant 의 *본문 보존 가정* 깨짐.
+- (G5 35/36/37/38/39 → G2 사실형) ❌ 인가? — 도메인은 ❌ 처리. 그러나 무관문장 (35) 의 본문이 인물 약력처럼 보이는 케이스가 있을 수 있음 (희박).
+- (G6 → G1~G5) ⚠️ 전반 — 장문 발췌 가능성. 와이프가 실제로 장문을 발췌해서 단일 paragraph 형식으로 재출제하는지 빈도 확인.
+
+### 3.4 같은-type 변형 (대각선 셀 ⚠️ same-type 의 처리)
+
+v0.4 의 V1~V10 은 모두 *type-preserving* 변형이었다. cross-type 모델 (v0.5) 에서 *대각선 셀* 이 같은 위치를 차지하지만, 도메인 의미는 다르다.
+
+#### 3.4.1 v0.4 V1~V10 의 도메인 가치 재평가
+
+| v0.4 ID | 변형 규칙 (type-preserving) | 도메인 가치 (와이프 워크플로우) | v0.5 처리 |
+|---|---|---|---|
+| V1 `vocabulary_swap` | 어휘(30) 본문 5곳 중 1곳을 다른 부적절 단어로 swap | **중** — 본문 그대로 같은 type 재출제는 학생 다회 노출 가치 있음 | 대각선 ⚠️ 30→30 셀로 흡수 |
+| V2 `vocabulary_inline` | 어휘(30) → Gap A 본문 내장 박스 sub-form 변환 | **중** — sub-form 전환이지 본문 변형 아님 (출력 형식만 다름) | **별 카테고리** — variant 가 아니라 *sub-form 렌더 모드*. §2 Gap A 와 통합 (UI/렌더러 책임) |
+| V3 `grammar_swap` | 어법(29) 본문 1곳 다른 어법 오류로 swap | 중 | 대각선 ⚠️ 29→29 셀 |
+| V4 `grammar_inline` | 어법(29) → Gap A 박스 sub-form | 중 (V2 와 동일 — sub-form) | 별 카테고리 (sub-form 렌더 모드) |
+| V5 `blank_inference` | 빈칸-구/절 빈칸 위치 옮김 | **높음** — 같은 본문에 다른 위치 빈칸 출제는 학생 변별 가치 큼 | 대각선 ✅ 31→31, 32↔33↔34 셀 |
+| V6 `topic_main_idea_swap` | 22/23/24 선택지만 갱신 | **최고** | **3.3 매트릭스 G1↔G1 ✅** 셀의 핵심 — variant 로 표현 (cross-type 호환의 첫 케이스) |
+| V7 `order_shuffle` | 36/37 단락 분할 위치 옮김 | 중 (1지문 1변형) | 대각선 ⚠️ 36→36, 37→37 |
+| V8 `sentence_insertion_shift` | 38/39 추출 문장 옮김 | 중 | 대각선 ⚠️ 38→38, 39→39 |
+| V9 `irrelevant_sentence_inject` | 35 무관문장 위치/내용 변경 | 중 | 대각선 ⚠️ 35→35 |
+| V10 `summary_blank_swap` | 40 (A)/(B) 다른 위치 빈칸 | 중 | 대각선 ⚠️ 40→40 |
+
+#### 3.4.2 v0.5 의 same-type 처리 원칙
+
+- 대각선 ⚠️ 셀 = cross-type 매트릭스의 한 셀일 뿐. *별 enum* 필요 없음.
+- 같은 type 출제는 같은 본문으로 *변별 포인트 다른 문제* 출제 — V1/V3/V5/V7/V8/V9/V10 모두 이 패턴.
+- **sub-form (V2/V4) 은 variant 가 아니다** — 출력 *렌더 모드* 의 선택일 뿐 (`inline_choices` 활성 vs 비활성). 어휘(30) 의 표준 마커형 vs Gap A 박스형은 같은 Question 의 다른 출력 형태. 본 v0.5 부터 variant 카테고리에서 제외. §2.2 Gap A 의 sub-form 정의는 그대로 유지.
+
+#### 3.4.3 architect 에게 위임 — VariantKind enum 의미 갱신
+
+본 v0.5 의 cross-type 모델은 `shared/schemas/question.py` 의 `VariantKind` enum 설계에 영향:
+
+- **현재 (v0.4 enum)**: V1~V10 식별자가 *type-preserving 변형 규칙* 을 표현 (예: `VOCABULARY_SWAP`).
+- **v0.5 후의 의미**: `variant_kind` 는 *cross-type 본문 재사용 trace* 의 식별자가 되는 게 자연. 두 가지 architect 옵션:
+  - **(opt-A)** `VariantKind` enum 폐기 + `variant_kind` 를 단순 bool 또는 단일 `CROSS_TYPE` enum 값으로 축소. 추가 메타는 `variant_metadata: JSONB` (원본 type, 복원 방법 등).
+  - **(opt-B)** `VariantKind` 를 *(원본 type, 새 type)* 쌍의 식별자로 재정의 — 단 24×24 = 576 조합이라 enum 으로 부적절. JSONB + 두 필드 (`origin_type`, `new_type`) 로 표현하는 게 자연.
+  - **domain 의견**: (opt-A) 권고. `variant_kind = CROSS_TYPE` 단일 값 + JSONB 메타에 `origin_question_type`, `reconstruction_method` 기록. ADR-0017 D2-c JSONB 결정과 정합.
+
+본 카탈로그 PR 범위 *외* — architect 가 ADR-0017 보강 PR 에서 결정.
+
+### 3.5 LLM 변형 프롬프트 가이드 (cross-type 패턴)
+
+v0.4 §3.5 의 V1~V10 별 사전 가이드는 *type-preserving* 가정 — cross-type 모델에서 의미가 바뀌므로 폐기. 대신 cross-type variant 의 LLM 호출은 다음 *2단계 파이프라인* 으로 재정의.
+
+#### 3.5.1 2단계 파이프라인
 
 ```
-variant 생성 → qa-validator 검증 → passed=False?
-  ├─ Yes: retry (mode="retry_on_uniqueness_fail") — 최대 3회
-  ├─ No: 사용자에게 노출 + uniqueness_validated=True 캐시
-  └─ 3회 retry 모두 실패: 사용자에게 "검증 미통과" 라벨로 노출, 사용자 검수로 위임
+Stage 1: 본문 복원 (§3.2)
+  입력: 원본 Question + Passage
+  처리:
+    - 14 type (§3.2.1): mechanical — body 추출만, LLM 호출 0.
+    - 빈칸형 4 type (§3.2.2): mechanical — 정답 치환, LLM 호출 0.
+    - 어휘/어법/underline 3 type (§3.2.3): LLM 보조 — 옳은 형태 추론 (small call).
+    - 무관/순서/문장삽입 5 type (§3.2.4): mechanical — 구조 재구성, LLM 호출 0.
+  출력: ReconstructedPassage (정제 영어 본문 1개 또는 multi-paragraph)
+
+Stage 2: 새 type 출제
+  입력: ReconstructedPassage + 사용자 선택 새 type
+  처리: Phase 2 의 *최초 출제* 프롬프트 재사용 (NRTW).
+  출력: 새 Question (variant_kind != ORIGINAL, derived_from_question_id 채움)
 ```
 
-CLAUDE.md §1.3 핵심 가치 명제 #3 ("편집 가능한 출력") 정합 — 자동 검증 실패도 사용자가 검수 후 채택할 수 있음.
+#### 3.5.2 LLM 호출 효율
 
-#### 3.6.4 Phase 3 진입 시 qa-validator 활성화
+- Stage 1 의 14 + 4 + 5 = 23 type 은 LLM 호출 0. Stage 1 의 어휘/어법/underline 3 type 만 small LLM call.
+- Stage 2 는 24 type 중 사용자 선택 *1 type* 의 출제 프롬프트. Phase 2 의 출제 프롬프트와 *완전 동일* 구조 — 코드 재사용 강함.
 
-CLAUDE.md §7.6 ("Phase 3 시작 시 활성화") 정합. Phase 3 첫 변형 생성 PR 과 동시 또는 직후 별 PR.
+#### 3.5.3 Phase 3 진입 시점의 LLM 코드 (backend-dev 입력)
 
----
+- `packages/llm/variant/reconstructor.py` (가설) — Stage 1 의 type 별 mechanical 어댑터 + LLM 보조.
+- `packages/llm/variant/cross_type_generator.py` (가설) — Stage 2. Phase 2 의 출제 호출을 wrapping (`type=사용자선택`, `passage=ReconstructedPassage`).
+- 별 type 별 V1~V10 프롬프트 마크다운은 *없음*. Stage 2 는 24 type 별 *최초 출제 프롬프트* 1세트가 SSOT.
+
+#### 3.5.4 Phase 3 첫 PR 권고 시퀀스
+
+1. **G1 → G1 cross (22/23/24 상호)** — §3.3 매트릭스 ✅ 셀의 핵심. Stage 1 = mechanical (§3.2.1, LLM 호출 0). Stage 2 = type 별 출제 프롬프트 (Phase 2 와 동일). v0.4 의 V6 가 이 셀의 special case.
+2. **G4 빈칸형 → G1 추론형** (32~34 → 22/23/24) — Stage 1 = mechanical (빈칸 채움). Stage 2 = Phase 2 출제. **와이프 인용 예시의 가장 직접적인 케이스**.
+3. **G3 → G4 빈칸형** (29/30 → 31~34) — Stage 1 = LLM 보조 (정답 추론). Stage 2 = 빈칸 출제.
+4. 나머지 ✅ / ⚠️ 셀은 차차.
+
+별 PR (코드 + `docs/prompts/`) — 본 카탈로그 v0.5 후 architect ADR 갱신 → backend-dev 코드.
+
+### 3.6 qa-validator 검증 시나리오 (cross-type 정합)
+
+ADR-0017 D3-c 하이브리드 (`Question.uniqueness_validated` 최신 + `qa_validation_results` history) 는 cross-type 전환에도 본질 변함 없음. 다만 *검증 카테고리 매핑* 은 v0.4 의 V1~V10 enum 기준에서 *새 type 기준* 으로 재라벨.
+
+#### 3.6.1 공통 검증 흐름 (변함 없음)
+
+1. 입력: 1개 `Question` (variant_kind != ORIGINAL).
+2. 검증 LLM call — 변형 생성 LLM 과 다른 모델/프롬프트.
+3. 출력: `QAValidationResult` (passed / category / note / timestamp).
+4. 저장: 캐시 + history (ADR-0017 D3-c).
+
+#### 3.6.2 cross-type 별 검증 카테고리 매핑 (Stage 1 + Stage 2 분리)
+
+##### Stage 1 (본문 복원) 검증
+
+| 복원 방법 | 검증 카테고리 | 검증 방법 |
+|---|---|---|
+| §3.2.1 mechanical (body 그대로) | format | 출제용 마커 0 검출 (정규식) |
+| §3.2.2 빈칸 채움 | naturalness | LLM 2차 호출 — 채운 본문이 자연 흐름인지 |
+| §3.2.3 어휘/어법 옳은 형태 교체 | naturalness + literal_repetition | LLM 2차 + 본문 fuzzy match (교체된 단어가 원본 explanation 과 정합인지) |
+| §3.2.4 무관 제거 / 순서 합본 / 문장 삽입 | naturalness | LLM 2차 호출 — 결과가 자연 흐름인지 |
+
+##### Stage 2 (새 type 출제) 검증
+
+각 *새 type* 의 표준 출제 검증 — Phase 2 의 출제 검증과 동일. 즉 *cross-type variant 의 Stage 2 검증* 은 *Phase 2 출제 검증* 의 직접 재사용.
+
+| 새 type 그룹 | 핵심 검증 카테고리 |
+|---|---|
+| G1 추론형 (18~24) | thesis 정합 (정답 ↔ 본문 thesis), 형식 (영어 명사구/제목/한국어 단문), uniqueness |
+| G2 사실형 (26~28) | 본문 사실 정합 (5개 진술 중 1개만 모순), uniqueness |
+| G3 어휘/어법 (29~30) | uniqueness, 회색지대 회피 (어법), dictionary 동의어 회피 (어휘) |
+| G4 빈칸형 (31~34) | uniqueness, literal_repetition (정답이 본문 어디 그대로 등장 검출) |
+| G5 논리형 (35~40) | 응결 단서 (35/36/37/38/39), 본문 압축 정합 (40) |
+| G6 장문 (41-42, 43-45) | sub_question 별 독립 검증, 4:1 분포 (43-45 referent) |
+
+#### 3.6.3 실패 시 흐름 (변함 없음)
+
+```
+variant 생성 (Stage 1 + Stage 2) → qa-validator 검증
+  ├─ Stage 1 fail: Stage 1 retry (최대 2회) → 통과 시 Stage 2 진행
+  ├─ Stage 2 fail: Stage 2 retry (최대 3회) — Phase 2 출제 검증의 retry 로직 재사용
+  └─ 모든 retry 실패: 사용자에게 "검증 미통과" 라벨로 노출, 사용자 검수 위임
+```
+
+CLAUDE.md §1.3 핵심 가치 #3 ("편집 가능한 출력") 정합.
+
+### 3.7 architect 에게 위임할 후속 (본 PR 범위 외)
+
+본 카탈로그 v0.5 가 트리거하는 architect / backend-dev 후속 작업:
+
+1. **ADR-0017 보강 PR** — `variant_kind` enum 의미 갱신 (§3.4.3). domain 권고: `VariantKind` 단순화 (`CROSS_TYPE` 단일 값) + JSONB 메타 (`origin_question_type`, `reconstruction_method`).
+2. **ReconstructedPassage 의 영속화 결정** — Stage 1 산출물을 별 entity 로 저장 vs in-memory only. domain 의견: 영속화 권고 (Passage 의 한 변형으로 저장 → 와이프가 *복원 본문 자체* 도 자료로 활용 가능. CLAUDE.md §1.3 자산화 가치 명제 정합).
+3. **`Question.type` 의 *원본 type* 보존 메타** — 변형의 출처 type 추적용 필드 (`variant_metadata.origin_question_type` 또는 별 컬럼). domain 권고: JSONB.
+4. **LLM 코드 재설계** — `packages/llm/variant/` 의 Stage 1/2 분리 (§3.5.1). 기존 V1~V10 별 가설 코드는 폐기.
+5. **UI/frontend 재설계** — 사용자가 cross-type 매트릭스에서 *원본 Question → 새 type* 선택 흐름. ✅ / ⚠️ 셀의 시각적 안내. ❌ 셀은 disable.
+
 
 ## 4. Annotation kind 카탈로그 (구문분석 도메인)
 
@@ -1007,19 +986,19 @@ D-1/D-2/D-3 모두 SyntaxAnnotation과 무관 (Passage 메타 / Translation / Wo
 
 ## 5. 미해결 / 추가 조사 필요
 
-### 5.1 [PM + 와이프] 변형 유형 사용 빈도 / Gap A 어휘+어법 혼합형
+### 5.1 [PM + 와이프] cross-type 매트릭스 사용 빈도 + sub-form 검증
 
-audit-review-domain §5.1 + 본 §3.4 우선순위 검증.
+audit-review-domain §5.1 + 본 §3.3 매트릭스 + §3.5.4 우선순위 검증. v0.4 의 V1~V10 별 빈도 질문은 §5.8 (cross-type 매트릭스 ⚠️ 셀 검증) 으로 흡수.
 
 **질문**:
-1. 와이프가 학원에서 실제로 다루는 변형문제 유형 중 §3.4의 1순위 5개(V2/V4/V5/V6/V7) 사용 빈도는?
-2. Gap A 본문 내장형에서 **어휘+어법 혼합형** (한 지문에 어휘 박스 + 어법 박스가 같이 박힌 형태) 케이스가 실제로 있는가? 있다면 빈도?
-3. Gap B 매트릭스에서 **장문(41-42)의 42번이 매트릭스로 변형되는** 케이스 실존?
-4. §3.2의 V1~V10 중 빠진 변형 유형이 있는가?
+1. cross-type variant 우선순위 셀 (§3.5.4: G1↔G1 / G4→G1 / G3→G4) 의 와이프 실제 사용 빈도?
+2. Gap A 본문 내장형에서 **어휘+어법 혼합형** (한 지문에 어휘 박스 + 어법 박스가 같이 박힌 형태) 케이스가 실제로 있는가? 빈도?
+3. Gap B 매트릭스에서 **장문(41-42) 의 42번이 매트릭스로 변형되는** 케이스 실존?
+4. 본 cross-type 매트릭스에서 빠진 *변환* 시나리오가 있는가? (예: 두 본문 결합 → 새 type — 본 v0.5 는 1:1 derive 가정)
 
-**기한**: Phase 3 진입 전. v0.1 스키마 작업 #5는 본 질문에 의존하지 않음.
+**기한**: Phase 3 진입 전. v0.1 스키마는 본 질문에 의존하지 않음.
 
-**담당**: PM이 와이프 인터뷰 후 v0.3 변형 카탈로그 갱신.
+**담당**: PM 이 와이프 인터뷰 후 v0.6 카탈로그 갱신.
 
 ### 5.2 [PM + 와이프] 빠진 sub-form / 신규 type 가능성
 
@@ -1084,49 +1063,95 @@ audit-review-domain §5.6와 동일.
 
 ### 5.7 [PM] Phase 3 정답 유일성 검증 메타 — Question에 자리 만들기
 
-audit-review-domain §4.1 + 본 §3.2 V1~V10 모두에 영향.
+audit-review-domain §4.1 + 본 §3.6 cross-type 검증 시나리오에 영향.
 
-**질문**: `Question.uniqueness_validated: bool` + `Question.uniqueness_validator_note: Optional[str]` v0.1 스키마에 자리 만들 것인가?
+**질문**: `Question.uniqueness_validated: bool` + `Question.uniqueness_validator_note: Optional[str]` v0.1 스키마에 자리 만들 것인가? — *이미 v0.1 schema 에 반영됨* (`shared/schemas/question.py`, ADR-0017 D3-c 결정). 본 항목은 close 상태.
 
-**기한**: 작업 #5 진행 중.
+**기한**: 완료 (ADR-0017 D3-c, 2026-05-15).
 
-**담당**: architect + PM. domain은 권고.
+**담당**: architect + PM. domain은 권고 제출 완료.
 
-### 5.8 [domain-expert 자체] 후속 산출물
+### 5.8 [PM + 와이프] cross-type 매트릭스 ⚠️ 셀 검증 (v0.5 신규)
 
-본 카탈로그 v0.4 가 트리거하는 domain-expert 자체 후속 작업:
+§3.3 cross-type 매트릭스의 ⚠️ 조건부 셀이 *실제 출제 워크플로우* 에서 도메인 가치 있는지 검증. domain 1차 판단이지 와이프 출제 빈도 데이터에 근거하지 않음.
 
-- `docs/prompts/variant_*.md` — V6/V2/V4/V5/V7 (1순위 5개) LLM 프롬프트 본문 + few-shot 예시. **Phase 3 진입 시점**. §3.5 사전 가이드를 모태로 작성.
-- 와이프 인터뷰 후 v0.5 카탈로그 — §5.1, §5.2, §5.4 답변 흡수.
-- 자료 sweep 추가 — 아잉카·내신 sample을 받으면 §2 sub-form 추가.
-- annotation kind 카탈로그 v0.2 — 와이프 sample 받은 후 §4 보강.
-- qa-validator 활성화 sprint (Phase 3) — §3.6 검증 카테고리를 자동 알고리즘으로.
+**질문**:
+1. G1 추론형 (18~24) 본문이 어휘/어법 (29/30) 변별 포인트를 충분히 가지는 빈도 — 추정 50/50, 실제는?
+2. G6 장문 (41-42 / 43-45) 의 *발췌 후 단일 paragraph 형식 재출제* 를 와이프가 실제로 하는가? 아니면 장문은 장문대로 보존?
+3. G5 의 35/36/37/38/39 본문이 cross-type 후 G1 추론형으로 의미 있는가? (특히 36/37 합본 결과 본문의 thesis 정합)
+4. 빈칸 32↔33↔34 상호 cross 가 실제로 의미 있는가? 평가원 grade 분류는 다르지만 본문은 같은 카테고리.
+5. 27↔28 정/역 변환은 별 type 인가 같은 type 의 변형인가? (도메인은 정/역으로 분류)
+
+**기한**: Phase 3 진입 전.
+
+**담당**: PM 이 와이프 인터뷰. domain-expert 가 답변을 v0.6 카탈로그에 흡수.
+
+### 5.9 [PM + architect] ReconstructedPassage 영속화 결정 (v0.5 신규)
+
+§3.7-2 의 architect 위임 항목. domain 권고: 영속화.
+
+**질문**: cross-type variant Stage 1 의 산출물 *복원된 본문* 을 어떻게 다루는가?
+- (i) in-memory only — Stage 2 입력으로만 사용, 영속 0.
+- (ii) `Passage` 의 한 변형 row 로 저장 — *완전 본문* 자체가 와이프 자료 자산 (CLAUDE.md §1.3).
+- (iii) `Question.variant_metadata.reconstructed_passage_id` 로 별 Passage 와 연결.
+
+**domain 의견**: (ii) 또는 (iii). 단순 in-memory 는 CLAUDE.md §1.3 자산화 가치 명제 위배.
+
+**기한**: Phase 3 진입 전 ADR (architect).
+
+**담당**: architect 결정. domain 권고 제출.
+
+### 5.10 [domain-expert 자체] 후속 산출물 (v0.5 갱신)
+
+본 카탈로그 v0.5 (cross-type 전환) 가 트리거하는 domain-expert 자체 후속 작업:
+
+- `docs/prompts/variant_stage1_reconstruct_*.md` — §3.2 의 type 그룹 별 본문 복원 가이드 (G3 어휘/어법 / G6 장문 등 LLM 보조 필요한 그룹). **Phase 3 진입 시점**.
+- `docs/prompts/cross_type_priority_cells.md` — §3.3 매트릭스의 ✅ 셀 중 Phase 3 첫 PR 우선순위 (G1↔G1, G4→G1, G3→G4). few-shot 2~3개씩.
+- v0.6 카탈로그 — §5.1, §5.2, §5.4, §5.8 답변 흡수 (와이프 인터뷰 후).
+- 자료 sweep 추가 — 아잉카·내신 sample 받으면 §2 sub-form 추가, cross-type ⚠️ 셀 빈도 보강.
+- qa-validator 활성화 sprint (Phase 3) — §3.6.2 Stage 1/2 분리 검증을 자동 알고리즘으로.
 
 ---
 
 ## 6. 핸드오프 메모
 
-### 6.1 → architect (작업 #5)
+### 6.1 → architect (v0.5 후속 — ADR-0017 보강 PR)
 
-본 카탈로그가 작업 #5 입력으로 들어간다. 우선순위:
+본 v0.5 카탈로그의 cross-type 전환이 ADR-0017 의 *논리* 결정에 영향. architect 가 결정 / 갱신할 항목:
 
-1. **§1.1의 24개 type enum**을 `Question.type` Pydantic enum으로 흡수. exam-generator 코드와 1:1 호환.
-2. **§2의 sub-form**을 `Question`의 부가 필드로 표현 (`inline_choices`, `choice_format` 디스크리미네이터). §5.3 결정 후 확정.
-3. **§3의 variant_kind**를 `Question.variant_kind` enum 자리로 두되 v0.1은 `"original"`만 활성. V1~V10은 Phase 3 진입 전 enum 추가.
-4. **§4의 SyntaxAnnotation kind enum 7종**을 `shared/schemas/annotation.py`에 흡수. span 식별 방식은 §5.5 ADR로 미룸.
-5. **§5의 미해결 항목** 중 §5.3, §5.5, §5.6, §5.7은 architect 결정. 본 카탈로그가 의견·근거 제시 완료.
+1. **`VariantKind` enum 의미 갱신 (§3.4.3)** — domain 권고: enum 단순화 (`CROSS_TYPE` 단일 값) + `variant_metadata` JSONB 로 `origin_question_type`, `new_question_type`, `reconstruction_method` 기록. v0.4 의 V1~V10 enum 은 폐기.
+2. **ReconstructedPassage 영속화 (§5.9)** — domain 권고: `Passage` 한 row 로 저장 또는 별 link 필드. ADR-0017 보강 또는 별 ADR.
+3. **§5.3 / §5.5 / §5.6** — 본 카탈로그가 v0.4 에서 제출한 의견 그대로 유효 (cross-type 전환과 직교).
 
-### 6.2 → PM (Dennis)
+본 v0.5 는 *카탈로그 문서만*. ADR / 코드 / 스키마 변경 0.
 
-§5.1, §5.2, §5.4의 와이프 인터뷰 일정. 우선순위:
+### 6.2 → backend-dev (Phase 3 진입 시점)
 
-1. **Phase 1 진입 전**: §5.4 (SyntaxAnnotation sample) — Phase 1 핵심 산출물 차단 해제.
-2. **Phase 3 진입 전**: §5.1, §5.2 (변형 유형 빈도, 신규 type 가능성).
+본 v0.5 가 backend-dev 의 Phase 3 LLM 코드 설계 input. v0.4 의 V1~V10 별 라우트 / 프롬프트 가설은 폐기. cross-type 2단계 파이프라인 (§3.5.1) 으로 재설계:
 
-### 6.3 → 다른 agent
+- `packages/llm/variant/reconstructor.py` — Stage 1 (type 그룹별 mechanical + LLM 보조).
+- `packages/llm/variant/cross_type_generator.py` — Stage 2 (Phase 2 출제 프롬프트 재사용).
+- `POST /passages/{id}/variants` 라우트 — body: `{origin_question_id, new_type, options?}`.
 
-- **frontend-dev**: §4.2 annotation kind enum + 영상 §4.4 단축키 명세를 Tiptap PoC 다음 단계 입력으로.
-- **qa-validator**: §3.2 V1~V10 각 검증 기준을 Phase 3 진입 시 자동 검증 알고리즘으로 변환. §5.7 메타 필드 영속화 패턴.
+### 6.3 → frontend-dev (Phase 3 UI 재설계)
+
+본 v0.5 가 frontend UI 의 cross-type 선택 흐름을 결정:
+
+- 원본 Question 1개 선택 → §3.3 매트릭스의 *그 type 행* 노출 → 사용자가 새 type 선택.
+- ✅ 셀: 즉시 enable. ⚠️ 셀: 경고 ("본문 길이/구조 검증 권고") + enable. ❌ 셀: disable + tooltip ("도메인 부적합").
+- v0.4 가설 — type-preserving 변형 5개 (V2/V4/V5/V6/V7) UI 는 폐기.
+
+### 6.4 → PM (Dennis)
+
+§5.1, §5.2, §5.4, §5.8 의 와이프 인터뷰 일정. 우선순위:
+
+1. **Phase 1 진입 전**: §5.4 (SyntaxAnnotation sample).
+2. **Phase 3 진입 전**: §5.1, §5.2, §5.8, §5.9 (cross-type 매트릭스 ⚠️ 셀 검증 + 새 type 가능성 + ReconstructedPassage 영속화).
+
+### 6.5 → 다른 agent
+
+- **qa-validator**: §3.6 cross-type 별 검증 카테고리 (Stage 1 / Stage 2 분리) 를 Phase 3 진입 시 자동 검증 알고리즘으로 변환.
+- **code-reviewer**: backend-dev / frontend-dev Phase 3 PR 에서 cross-type 매트릭스 정합 검토 (사용자가 ❌ 셀 선택 못하게 차단 등).
 
 ---
 
@@ -1138,4 +1163,4 @@ audit-review-domain §4.1 + 본 §3.2 V1~V10 모두에 영향.
 | v0.2 | 2026-05-02 | 전면 재작성 — 24개 유형 인벤토리 + sub-form (Gap A/B/K) + variant_kind 10개 + annotation kind 7종 + 미해결 8개. CLAUDE.md v0.3 §6.2 정정 반영. |
 | v0.3 | 2026-05-02 | 각 24개 type 에 snake_case 영문 enum value 후보 컬럼 추가. |
 | v0.4 | 2026-05-15 | ADR-0017 Accepted 후속 — V1~V10 모두 `VariantKind` enum value 명시 (`shared/schemas/question.py` 동시 보강). V6 명 변경 `THEME_REWORD` → `TOPIC_MAIN_IDEA_SWAP`. §3.4 1순위 표 상세화. §3.5 LLM 프롬프트 사전 가이드 신규. §3.6 qa-validator 검증 시나리오 신규. |
-| v0.3 | 2026-05-02 | (1) §1.1 24개 유형 표에 **enum value 후보 (snake_case 영문)** 컬럼 추가 — `Question.type` Pydantic enum의 1차 source. (2) §1.1에 LAYOUT_PATTERN 컬럼 추가. (3) enum value 명명 컨벤션 명시 (architect 검토 권고). (4) §3.2.0 V1~V10 요약 표 추가 — 적용 type을 enum value 후보로 매핑. PM 명세 (24개 type code 추출 + 매핑 표) 반영. |
+| v0.5 | 2026-05-18 | **§3 전면 재작성 — cross-type variant 모델로 전환** (와이프 검수 발견). variant = "원본 Question 정답으로 본문 복원 → 사용자가 선택한 새 type 출제". §3.2 type 별 본문 복원 규칙 신규. §3.3 24×24 호환성 매트릭스 신규. §3.4 v0.4 V1~V10 의 cross-type 모델 흡수 매핑 (대각선 셀로 흡수 또는 sub-form 으로 재분류 또는 폐기). §3.5 2단계 파이프라인 (Stage 1 복원 + Stage 2 출제) 가이드. §3.6 cross-type 검증 카테고리 매핑 갱신. §3.7 architect 위임 follow-up. §5.8/§5.9 신규 (와이프 인터뷰 + ReconstructedPassage 영속화). §6 핸드오프 갱신 (V1~V10 라우트 가설 폐기, cross-type 2단계 파이프라인 input). 본 PR 은 카탈로그 문서만 — 코드/스키마/ADR 변경은 별 PR. |
